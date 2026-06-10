@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Terminal</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="dark">
+  <main class="login-container">
+    <div class="login-card">
+      <h1>Terminal Access</h1>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <div class="error" id="error" role="alert" aria-live="polite"></div>
+        <button type="submit" class="btn-primary" id="btn-submit">Log in</button>
+      </form>
+      <footer class="legal">
+        <a href="https://legal.kaufmann.dev/privacy?site=terminal.kaufmann.dev" target="_blank" rel="noopener">Privacy</a>
+        <span class="sep">·</span>
+        <a href="https://legal.kaufmann.dev/privacy?site=terminal.kaufmann.dev" target="_blank" rel="noopener">Imprint</a>
+      </footer>
+    </div>
+  </main>
+  <script>
+    (async () => {
+      const form = document.getElementById('login-form');
+      const errorEl = document.getElementById('error');
+      const btn = document.getElementById('btn-submit');
+
+      let csrfToken = '';
+      try {
+        const res = await fetch('/csrf-token');
+        const data = await res.json();
+        csrfToken = data.csrfToken || '';
+      } catch (e) {
+        errorEl.textContent = 'Unable to initialize login. Please refresh.';
+        btn.disabled = true;
+        return;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorEl.textContent = '';
+        btn.disabled = true;
+
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        try {
+          const res = await fetch('/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            window.location.href = data.redirect || '/terminal';
+            return;
+          }
+
+          const data = await res.json().catch(() => ({}));
+          errorEl.textContent = data.error || 'Invalid email or password.';
+        } catch (err) {
+          errorEl.textContent = 'Network error. Please try again.';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

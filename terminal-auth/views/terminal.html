@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="dark terminal-body">
+  <header class="terminal-header">
+    <span class="terminal-title">terminal.kaufmann.dev</span>
+    <button id="logout-btn" class="btn-logout" title="Logout">Logout</button>
+  </header>
+  <main class="terminal-main">
+    <iframe id="ttyd-frame" src="/ttyd" title="Terminal" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+  </main>
+  <script>
+    (async () => {
+      const logoutBtn = document.getElementById('logout-btn');
+
+      let csrfToken = '';
+      try {
+        const res = await fetch('/csrf-token');
+        const data = await res.json();
+        csrfToken = data.csrfToken || '';
+      } catch (e) {
+        // Non-critical; logout may fail without CSRF token
+      }
+
+      logoutBtn.addEventListener('click', async () => {
+        logoutBtn.disabled = true;
+        try {
+          const res = await fetch('/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'CSRF-Token': csrfToken,
+            },
+          });
+          if (res.ok) {
+            window.location.href = '/';
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+        logoutBtn.disabled = false;
+      });
+    })();
+  </script>
+</body>
+</html>

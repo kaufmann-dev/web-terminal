@@ -1,0 +1,22 @@
+# Caddy reverse proxy for terminal.kaufmann.dev
+# Place this in /etc/caddy/Caddyfile or your Caddy config directory
+
+terminal.kaufmann.dev {
+    # Security headers (Caddy handles some; we add extras)
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+
+    # Reverse proxy to the auth app
+    reverse_proxy localhost:3000 {
+        # WebSocket support
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

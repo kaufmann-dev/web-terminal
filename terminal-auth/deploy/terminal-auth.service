@@ -1,0 +1,26 @@
+[Unit]
+Description=Terminal Auth Web App
+After=network.target
+
+[Service]
+Type=simple
+User=terminal
+Group=terminal
+WorkingDirectory=/opt/terminal-auth
+EnvironmentFile=/opt/terminal-auth/.env
+ExecStart=/usr/bin/node /opt/terminal-auth/app.js
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/terminal-auth
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
