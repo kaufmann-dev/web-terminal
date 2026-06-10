@@ -221,7 +221,7 @@ app.use('/ttyd', ttydAuthGate, ttydProxy);
 
 // Upgrade handling for WebSocket proxy
 const server = app.listen(PORT, () => {
-  console.log(`Terminal auth app listening on port ${PORT}`);
+  console.log(`web-terminal listening on port ${PORT}`);
 });
 
 server.on('upgrade', (req, socket, head) => {

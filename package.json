@@ -1,5 +1,5 @@
 {
-  "name": "terminal-auth",
+  "name": "web-terminal",
   "version": "1.0.0",
   "description": "Secure private browser-based terminal with ttyd",
   "main": "app.js",

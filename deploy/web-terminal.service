@@ -1,14 +1,14 @@
 [Unit]
-Description=Terminal Auth Web App
+Description=web-terminal auth app
 After=network.target
 
 [Service]
 Type=simple
 User=terminal
 Group=terminal
-WorkingDirectory=/opt/terminal-auth
-EnvironmentFile=/opt/terminal-auth/.env
-ExecStart=/usr/bin/node /opt/terminal-auth/app.js
+WorkingDirectory=/opt/web-terminal
+EnvironmentFile=/opt/web-terminal/.env
+ExecStart=/usr/bin/node /opt/web-terminal/app.js
 Restart=on-failure
 RestartSec=5
 
@@ -16,7 +16,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/terminal-auth
+ReadWritePaths=/opt/web-terminal
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

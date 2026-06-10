@@ -25,7 +25,6 @@ A secure, minimal web application that protects a browser-based terminal (`ttyd`
 ## Project Structure
 
 ```
-terminal-auth/
 ├── app.js                      # Express app with auth + ttyd proxy
 ├── package.json
 ├── .env.example                # Example environment variables
@@ -38,7 +37,7 @@ terminal-auth/
 ├── public/css/
 │   └── style.css               # Minimal dark styles
 ├── deploy/
-│   ├── terminal-auth.service   # systemd service for the app
+│   ├── web-terminal.service    # systemd service for the app
 │   ├── ttyd.service            # systemd service for ttyd
 │   └── Caddyfile               # Example Caddy reverse proxy
 └── README.md                   # This file
@@ -76,9 +75,9 @@ chmod +x /usr/local/bin/ttyd
 ### 3. Deploy the auth app
 
 ```bash
-sudo mkdir -p /opt/terminal-auth
-sudo chown $USER:$USER /opt/terminal-auth
-cd /opt/terminal-auth
+sudo mkdir -p /opt/web-terminal
+sudo chown $USER:$USER /opt/web-terminal
+cd /opt/web-terminal
 git clone <this-repo> .
 npm install --production
 ```
@@ -131,15 +130,15 @@ ss -tlnp | grep 7681
 #### Auth app
 
 ```bash
-sudo cp deploy/terminal-auth.service /etc/systemd/system/terminal-auth.service
+sudo cp deploy/web-terminal.service /etc/systemd/system/web-terminal.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now terminal-auth
+sudo systemctl enable --now web-terminal
 ```
 
 Check status:
 
 ```bash
-sudo systemctl status terminal-auth
+sudo systemctl status web-terminal
 ```
 
 ### 6. Configure the reverse proxy
@@ -216,7 +215,7 @@ Expected response:
 2. Update `AUTH_PASSWORD_HASH` in `.env`.
 3. Restart the auth app:
    ```bash
-   sudo systemctl restart terminal-auth
+   sudo systemctl restart web-terminal
    ```
 
 ## Logging & Monitoring
@@ -224,7 +223,7 @@ Expected response:
 View logs:
 
 ```bash
-sudo journalctl -u terminal-auth -f
+sudo journalctl -u web-terminal -f
 sudo journalctl -u ttyd -f
 ```
 
@@ -235,7 +234,7 @@ Click the **Logout** button in the top-right of the terminal page. This destroys
 ## Development / Local Testing
 
 ```bash
-cd terminal-auth
+cd web-terminal
 cp .env.example .env
 # Edit .env and set SESSION_SECRET and a test password hash
 npm install
