@@ -201,11 +201,17 @@ const ttydProxy = createProxyMiddleware({
   target: TTYD_URL,
   changeOrigin: true,
   ws: true,
-  onError: (err, req, res) => {
-    console.error('TTYD proxy error:', err.message);
-    if (res && !res.headersSent) {
-      res.status(502).send('Terminal backend unavailable.');
-    }
+  // Mounted at root (see below) so the /ttyd prefix is preserved and forwarded
+  // unchanged, matching ttyd's --base-path /ttyd for both HTTP and WebSocket.
+  // A plain string pathFilter is a prefix match, so this covers /ttyd/* too.
+  pathFilter: '/ttyd',
+  on: {
+    error: (err, req, res) => {
+      console.error('TTYD proxy error:', err.message);
+      if (res && !res.headersSent) {
+        res.status(502).send('Terminal backend unavailable.');
+      }
+    },
   },
 });
 
@@ -217,7 +223,8 @@ function ttydAuthGate(req, res, next) {
   return res.status(403).send('Forbidden');
 }
 
-app.use('/ttyd', ttydAuthGate, ttydProxy);
+app.use('/ttyd', ttydAuthGate);
+app.use(ttydProxy);
 
 // Upgrade handling for WebSocket proxy
 const server = app.listen(PORT, () => {
