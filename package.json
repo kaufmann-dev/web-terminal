@@ -7,6 +7,8 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "@openai/codex": "0.144.5",
+    "agent-browser": "0.32.1",
     "argon2": "^0.40.1",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.7",
@@ -17,7 +19,8 @@
     "express-session": "^1.18.0",
     "helmet": "^7.1.0",
     "http-proxy-middleware": "^4.2.0",
-    "memorystore": "^1.6.8"
+    "memorystore": "^1.6.8",
+    "opencode-ai": "1.18.3"
   },
   "engines": {
     "node": "24.x"

@@ -1,5 +1,43 @@
 [phases.setup]
-nixPkgs = ["...", "ttyd", "tmux"]
+nixPkgs = [
+  "...",
+  "chromium",
+  "chezmoi",
+  "curl",
+  "fd",
+  "fzf",
+  "gcc",
+  "gh",
+  "git",
+  "git-filter-repo",
+  "gnumake",
+  "jq",
+  "less",
+  "micro",
+  "pkg-config",
+  "python3",
+  "ripgrep",
+  "rsync",
+  "tmux",
+  "tree",
+  "ttyd",
+  "unzip",
+  "yq-go",
+  "zip",
+]
+aptPkgs = [
+  "bash-completion",
+  "ca-certificates",
+  "dnsutils",
+  "iproute2",
+  "iputils-ping",
+  "lsof",
+  "openssh-client",
+  "procps",
+]
+
+[phases.build]
+cmds = ["bash scripts/install-git-wrangler.sh"]
 
 [start]
-cmd = 'app_root="$PWD"; workdir="${TERMINAL_WORKDIR:-/code}"; mkdir -p "$workdir" || exit 1; ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable --url-arg /bin/bash "$app_root/scripts/attach-terminal-session.sh" & exec node app.js'
+cmd = "bash scripts/start.sh"

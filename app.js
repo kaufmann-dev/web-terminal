@@ -24,18 +24,40 @@ const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const TTYD_URL = process.env.TTYD_URL || 'http://127.0.0.1:7681';
 const TERMINAL_WORKDIR = process.env.TERMINAL_WORKDIR || '/code';
+const TERMINAL_HOME = process.env.TERMINAL_HOME || TERMINAL_WORKDIR;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const TMUX_SOCKET_NAME = 'web-terminal';
 const TERMINAL_SESSION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const TMUX_COMMAND_TIMEOUT_MS = 5000;
+const TERMINAL_ENVIRONMENT = {
+  ...process.env,
+  HOME: TERMINAL_HOME,
+  XDG_CONFIG_HOME: path.join(TERMINAL_HOME, '.config'),
+  XDG_DATA_HOME: path.join(TERMINAL_HOME, '.local', 'share'),
+  XDG_CACHE_HOME: path.join(TERMINAL_HOME, '.cache'),
+  PATH: [
+    path.join(__dirname, 'node_modules', '.bin'),
+    path.join(TERMINAL_HOME, '.local', 'bin'),
+    process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+  ].join(path.delimiter),
+  EDITOR: process.env.EDITOR || 'micro',
+  VISUAL: process.env.VISUAL || 'micro',
+  OPENCODE_DISABLE_AUTOUPDATE: '1',
+  AGENT_BROWSER_CONTENT_BOUNDARIES: '1',
+  TERMINAL_WORKDIR,
+  TERMINAL_HOME,
+};
+delete TERMINAL_ENVIRONMENT.AUTH_EMAIL;
+delete TERMINAL_ENVIRONMENT.AUTH_PASSWORD;
+delete TERMINAL_ENVIRONMENT.SESSION_SECRET;
 
 if (!AUTH_EMAIL || !AUTH_PASSWORD || !SESSION_SECRET) {
   console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET');
   process.exit(1);
 }
 
-if (!path.isAbsolute(TERMINAL_WORKDIR)) {
-  console.error('TERMINAL_WORKDIR must be an absolute path.');
+if (!path.isAbsolute(TERMINAL_WORKDIR) || !path.isAbsolute(TERMINAL_HOME)) {
+  console.error('TERMINAL_WORKDIR and TERMINAL_HOME must be absolute paths.');
   process.exit(1);
 }
 
@@ -145,6 +167,7 @@ function requireApiAuth(req, res, next) {
 
 async function runTmux(args) {
   return execFileAsync('tmux', ['-L', TMUX_SOCKET_NAME, ...args], {
+    env: TERMINAL_ENVIRONMENT,
     timeout: TMUX_COMMAND_TIMEOUT_MS,
     maxBuffer: 1024 * 1024,
   });
@@ -321,6 +344,9 @@ app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, async (
         '-c',
         TERMINAL_WORKDIR,
         '/bin/bash',
+        '--rcfile',
+        path.join(__dirname, 'scripts', 'terminal.bashrc'),
+        '-i',
       ]);
     } catch (err) {
       if (await terminalSessionExists(name)) {
