@@ -16,14 +16,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const AUTH_EMAIL = process.env.AUTH_EMAIL;
-const AUTH_PASSWORD_HASH = process.env.AUTH_PASSWORD_HASH;
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const TTYD_URL = process.env.TTYD_URL || 'http://127.0.0.1:7681';
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY || 'false';
 
-if (!AUTH_EMAIL || !AUTH_PASSWORD_HASH || !SESSION_SECRET) {
-  console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD_HASH, SESSION_SECRET');
+if (!AUTH_EMAIL || !AUTH_PASSWORD || !SESSION_SECRET) {
+  console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET');
   process.exit(1);
 }
 
@@ -35,6 +35,8 @@ if (!['true', 'false'].includes(TRUST_PROXY)) {
 if (TRUST_PROXY === 'true') {
   app.set('trust proxy', true);
 }
+
+let authPasswordHash;
 
 // Security headers
 app.use(helmet({
@@ -178,7 +180,7 @@ app.post('/login', loginLimiter, doubleCsrfProtection, async (req, res) => {
 
   let passwordMatch = false;
   try {
-    passwordMatch = await argon2.verify(AUTH_PASSWORD_HASH, password);
+    passwordMatch = await argon2.verify(authPasswordHash, password);
   } catch (err) {
     console.error('Password verification error:', err.message);
     return res.status(401).json({ error: 'Invalid email or password.' });
@@ -255,19 +257,32 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
-// Upgrade handling for WebSocket proxy
-const server = app.listen(PORT, () => {
-  console.log(`web-terminal listening on port ${PORT}`);
-});
-
-server.on('upgrade', (req, socket, head) => {
-  sessionMiddleware(req, {}, () => {
-    if (!req.session || !req.session.authenticated) {
-      socket.destroy();
-      return;
-    }
-    ttydProxy.upgrade(req, socket, head);
+async function startServer() {
+  authPasswordHash = await argon2.hash(AUTH_PASSWORD, {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 4,
   });
+
+  const server = app.listen(PORT, () => {
+    console.log(`web-terminal listening on port ${PORT}`);
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    sessionMiddleware(req, {}, () => {
+      if (!req.session || !req.session.authenticated) {
+        socket.destroy();
+        return;
+      }
+      ttydProxy.upgrade(req, socket, head);
+    });
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to initialize authentication:', err.message);
+  process.exit(1);
 });
 
 module.exports = app;

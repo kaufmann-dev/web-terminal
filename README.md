@@ -6,18 +6,7 @@ A private, password-protected terminal you can open in a web browser. One admin 
 
 ## Coolify Deployment
 
-### 1. Create the password hash
-
-Clone the repository on a trusted machine, install its dependencies, and generate an Argon2id hash:
-
-```bash
-npm ci
-npm run hash-password -- 'your-long-unique-password'
-```
-
-Save the generated hash. Do not use the plain password as an environment variable.
-
-### 2. Create the application
+### 1. Create the application
 
 Connect this repository to a new Coolify application and use these settings:
 
@@ -26,25 +15,25 @@ Connect this repository to a new Coolify application and use these settings:
 
 The included Nixpacks configuration installs `ttyd` and starts it privately alongside the web application. The deployment is not a static site and needs no pre- or post-deployment command.
 
-### 3. Set the environment variables
+### 2. Set the environment variables
 
 Required:
 
 - `AUTH_EMAIL` — the email address used to sign in.
-- `AUTH_PASSWORD_HASH` — the Argon2id hash generated in step 1.
+- `AUTH_PASSWORD` — the long, unique password used to sign in; the app hashes it automatically at startup.
 - `SESSION_SECRET` — a unique random string of at least 32 characters.
+- `TRUST_PROXY` — set to `true` so secure session cookies work behind Coolify's HTTPS proxy.
 
 Optional:
 
-- `TRUST_PROXY` — defaults to `false`; set it to `true` when Coolify terminates HTTPS at its reverse proxy.
 - `NODE_ENV` — defaults to `production`.
 - `TTYD_URL` — defaults to `http://127.0.0.1:7681`, which matches the bundled terminal process.
 
 Coolify supplies `PORT` automatically; do not set a fixed port.
 
-### 4. Deploy and sign in
+### 3. Deploy and sign in
 
-Deploy the application, open its Coolify domain, and sign in with `AUTH_EMAIL` and the original password used to create `AUTH_PASSWORD_HASH`.
+Deploy the application, open its Coolify domain, and sign in with `AUTH_EMAIL` and `AUTH_PASSWORD`.
 
 Check `https://your-domain.example/health` if you want to confirm that the web application is responding.
 
@@ -54,7 +43,7 @@ Check `https://your-domain.example/health` if you want to confirm that the web a
 - Run only one application replica because sessions are stored in the running process.
 - Treat files created from the terminal as disposable unless you configure persistent storage in Coolify.
 
-To change the password, generate a new hash, replace `AUTH_PASSWORD_HASH` in Coolify, and redeploy the application.
+To change the password, replace `AUTH_PASSWORD` in Coolify and redeploy the application.
 
 ## Run Locally
 
@@ -63,10 +52,9 @@ Install Node.js 24 and `ttyd`, then run:
 ```bash
 npm ci
 cp .env.example .env
-npm run hash-password -- 'your-test-password'
 ```
 
-Put the generated hash and a random `SESSION_SECRET` in `.env`, ensure `ttyd` is available at `http://127.0.0.1:7681`, then run:
+Set `AUTH_PASSWORD` and a random `SESSION_SECRET` in `.env`, ensure `ttyd` is available at `http://127.0.0.1:7681`, then run:
 
 ```bash
 npm start
@@ -79,7 +67,7 @@ Open `http://localhost:3000`. Use `NODE_ENV=development` and `TRUST_PROXY=false`
 - **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and set `TRUST_PROXY=true`.
 - **Terminal shows “backend unavailable”:** Check the deployment logs for the `ttyd` process and leave `TTYD_URL` at its default unless you intentionally run it elsewhere.
 - **WebSocket connection fails:** Confirm the proxy allows WebSocket upgrades for the application domain.
-- **Health check fails:** Verify the three required environment variables are present and inspect the application logs.
+- **Health check fails:** Verify the required environment variables are present and inspect the application logs.
 
 ## License
 

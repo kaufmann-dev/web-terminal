@@ -13,16 +13,16 @@ npm ci
 
 ```bash
 node --check app.js
-node --check scripts/hash-password.js
 node --check public/js/login.js
 node --check public/js/terminal.js
 ```
 
-- Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`, `AUTH_PASSWORD_HASH`, and `SESSION_SECRET` are set.
+- Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` are set.
 
 ## Security and Architecture
 
 - Keep `app.js` as the Express entrypoint for login, sessions, CSRF protection, rate limiting, static assets, health checks, and the `ttyd` proxy.
+- Hash `AUTH_PASSWORD` once with Argon2id before opening the HTTP listener; never log the password or compare it directly during login.
 - Preserve both authentication gates for `/ttyd`: normal HTTP requests pass through `ttydAuthGate`, while WebSocket upgrades are checked in the server `upgrade` handler.
 - Keep `ttyd` private on loopback port `7681` with base path `/ttyd`. The iframe URL, proxy path, service command, and Nixpacks start command must remain aligned.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.

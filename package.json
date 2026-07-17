@@ -4,8 +4,7 @@
   "description": "Secure private browser-based terminal with ttyd",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "hash-password": "node scripts/hash-password.js"
+    "start": "node app.js"
   },
   "dependencies": {
     "argon2": "^0.40.1",
