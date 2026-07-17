@@ -142,6 +142,13 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
   const baseUrl = `http://127.0.0.1:${port}`;
   const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?session=main`;
   assert.equal(await rejectedUpgrade(wsUrl, { origin: baseUrl }), 401);
+  assert.equal(await rejectedUpgrade(wsUrl, {
+    origin: 'https://terminal.example',
+    headers: {
+      'X-Forwarded-Host': 'terminal.example:443',
+      'X-Forwarded-Proto': 'https',
+    },
+  }), 401);
 
   const { cookies, csrfToken } = await authenticate(baseUrl);
   const headers = { Cookie: cookieHeader(cookies) };

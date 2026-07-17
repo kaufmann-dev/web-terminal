@@ -74,7 +74,10 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
 }
 
 function requestOrigin(req) {
-  const host = req.headers.host;
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const host = typeof forwardedHost === 'string'
+    ? forwardedHost.split(',')[0].trim()
+    : req.headers.host;
   if (!host) {
     return null;
   }
@@ -86,7 +89,16 @@ function requestOrigin(req) {
   if (protocol !== 'http' && protocol !== 'https') {
     return null;
   }
-  return `${protocol}://${host}`;
+
+  try {
+    const url = new URL(`${protocol}://${host}`);
+    if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+      return null;
+    }
+    return url.origin;
+  } catch (err) {
+    return null;
+  }
 }
 
 function hasExactSameOrigin(req) {

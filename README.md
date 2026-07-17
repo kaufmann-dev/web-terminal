@@ -168,7 +168,8 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **Dotfiles fail on first startup:** Confirm the container can reach GitHub. Later update failures
   fall back to the existing local checkout.
 - **Terminal stays on “Connecting” or repeatedly reconnects:** Confirm the reverse proxy preserves
-  same-origin WebSocket upgrades and forwards the original host and protocol.
+  same-origin WebSocket upgrades and supplies the public host and protocol through
+  `X-Forwarded-Host` and `X-Forwarded-Proto`.
 - **Native dependency installation fails locally:** Install a C/C++ compiler, make, Python, and
   pkg-config, then rerun `npm ci` under Node.js 24.
 - **Health check fails:** Verify all required authentication variables are set.

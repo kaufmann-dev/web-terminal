@@ -33,8 +33,9 @@ node --test test/*.test.js
   static assets, health checks, and authenticated terminal WebSockets.
 - Hash `AUTH_PASSWORD` once with Argon2id before opening the HTTP listener; never log the password or compare it directly during login.
 - Keep terminal WebSockets in `ws` no-server mode at `/ws/terminal`. Authenticate upgrades with
-  the Express session middleware, require an exact same-origin `Origin`, validate session names,
-  and never create a session during an upgrade.
+  the Express session middleware, require an exact same-origin `Origin` after reconstructing and
+  normalizing the public authority from trusted proxy headers, validate session names, and never
+  create a session during an upgrade.
 - Keep application-managed terminal sessions process-local in `terminal-session-manager.js`. Each
   named session owns one `node-pty` Bash process, a headless xterm with 10,000 lines of scrollback,
   an ordered state/output queue, and at most one attached browser client.
