@@ -1,86 +1,144 @@
 # Private Browser Terminal
 
-A private, password-protected terminal you can open in a web browser. One admin account signs in through a secure login page, then uses a full shell powered by `ttyd`.
+A private, password-protected development terminal that runs in your browser. It includes a
+Node.js 24 environment, AI coding tools, GitHub tooling, a Chromium automation CLI, and a
+persistent workspace.
 
-> **Security warning:** A browser terminal can run shell commands in its deployment container. Protect it with HTTPS, strong credentials, and restricted network access. This Coolify setup does not provide a shell on the Coolify host.
+> **Security warning:** This terminal can run arbitrary commands inside its application container.
+> Protect it with HTTPS, strong credentials, and restricted network access. It does not provide a
+> shell on the Coolify host.
 
 ## Coolify Deployment
 
 ### 1. Create the application
 
-Connect this repository to a new Coolify application and use these settings:
+Connect this repository to a Coolify application with:
 
 - **Build Pack:** Nixpacks
 - **Base Directory:** `/`
+- **Replicas:** `1`
 
-The included Nixpacks configuration installs `ttyd` and starts it privately alongside the web application. The deployment is not a static site and needs no pre- or post-deployment command.
+Do not set `NIXPACKS_NODE_VERSION`. The repository's `package.json` selects Node.js 24.
 
-### 2. Set the environment variables
+### 2. Set environment variables
 
 Required:
 
-- `AUTH_EMAIL` — the email address used to sign in.
-- `AUTH_PASSWORD` — the long, unique password used to sign in; the app hashes it automatically at startup.
-- `SESSION_SECRET` — a unique random string of at least 32 characters.
+- `AUTH_EMAIL` — email address used to sign in.
+- `AUTH_PASSWORD` — long, unique password used to sign in.
+- `SESSION_SECRET` — unique random string of at least 32 characters.
 
 Optional:
 
 - `NODE_ENV` — defaults to `production`.
-- `TTYD_URL` — defaults to `http://127.0.0.1:7681`, which matches the bundled terminal process.
-- `TERMINAL_WORKDIR` — defaults to `/code`; the terminal opens in this directory.
+- `TTYD_URL` — defaults to `http://127.0.0.1:7681`.
+- `TERMINAL_WORKDIR` — defaults to `/code`, where new terminal sessions start.
+- `TERMINAL_HOME` — defaults to `TERMINAL_WORKDIR`; controls `~` and persisted tool state.
 
-Coolify supplies `PORT` automatically; do not set a fixed port.
+Coolify supplies `PORT` automatically. Do not set a fixed application port.
 
-### 3. Add persistent storage
+### 3. Mount persistent storage
 
-In Coolify's **Persistent Storage** settings, add a volume:
+Add one Coolify persistent volume:
 
 - **Name:** any descriptive name, such as `web-terminal-code`.
 - **Source Path:** leave empty for a named volume.
 - **Destination Path:** `/code`.
 
-For a bind mount instead, use a persistent host path such as `/data/web-terminal-code` as the **Source Path** and `/code` as the **Destination Path**. If you choose another destination, set `TERMINAL_WORKDIR` to that exact absolute path.
+With the default settings, `/code` is both the workspace and terminal home. Projects, dotfiles,
+Git and SSH configuration, `gh` login, Codex/OpenCode state, chezmoi state, and optional
+agent-browser profiles survive redeploys in this volume.
 
-### 4. Deploy and sign in
+If you use different terminal paths, mount persistent storage over all of them and set
+`TERMINAL_WORKDIR` and `TERMINAL_HOME` to absolute paths.
 
-Deploy the application, open its Coolify domain, and sign in with `AUTH_EMAIL` and `AUTH_PASSWORD`.
+### 4. Deploy
 
-Check `https://your-domain.example/health` if you want to confirm that the web application is responding.
+Deploy, open the assigned domain, and sign in with `AUTH_EMAIL` and `AUTH_PASSWORD`. The image
+build installs all included programs again on every deployment; credentials and personal state
+remain on `/code`.
+
+Check `https://your-domain.example/health` to confirm the web application is responding.
+
+## Included Commands
+
+The terminal includes:
+
+- Node.js 24, npm, and npx
+- `codex` 0.144.5 and `opencode` 1.18.3
+- `agent-browser` 0.32.1 with Chromium
+- `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
+- `chezmoi`, `micro`, `tmux`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
+- focused process, network, and DNS diagnostics
+
+The browser terminal PATH prioritizes the image's pinned commands and also includes
+`~/.local/bin`, so user-level scripts stored on `/code` remain callable.
+
+## First Use
+
+The first container start initializes and applies
+[`kaufmann-dev/dotfiles`](https://github.com/kaufmann-dev/dotfiles). Later starts pull and apply
+updates. If GitHub is temporarily unavailable, the last local dotfiles state is applied instead.
+
+Authenticate the tools you use:
+
+```bash
+gh auth login
+codex login
+opencode auth login
+git-wrangler init
+```
+
+These logins persist below `/code` with the default volume. Git Wrangler Bash completion is
+available automatically. Agent-browser runs headlessly by default; use its persistent profile or
+state options only when a task needs browser login state to survive.
+
+Do not reinstall Codex or OpenCode with a runtime installer. Their exact versions are already in
+the deployment image and available immediately as `codex` and `opencode`.
 
 ## Everyday Use
 
-- Click **Logout** when you finish a session.
-- Run only one application replica because sessions are stored in the running process.
-- Store projects under `TERMINAL_WORKDIR`. They survive redeployments only when Coolify mounts persistent storage at that path.
-
-To change the password, replace `AUTH_PASSWORD` in Coolify and redeploy the application.
+- Store repositories under `/code`, for example `/code/projects/my-app`.
+- `cd ~` returns to `/code` with the default configuration.
+- Use `micro`, `$EDITOR`, or an AI CLI to edit files.
+- Use `tmux` for sessions that should survive browser disconnects.
+- Click **Logout** when finished.
 
 ## Run Locally
 
-Install Node.js 24 and `ttyd`, then run:
+Install Node.js 24, `ttyd`, and chezmoi, then run:
 
 ```bash
 npm ci
 cp .env.example .env
 ```
 
-Set `AUTH_PASSWORD`, a random `SESSION_SECRET`, and your preferred `TERMINAL_WORKDIR` in `.env`. Create the directory with `mkdir -p`, start `ttyd` there, then run the app:
+Set the required authentication values in `.env`, choose writable local terminal paths, export the
+file's values, and start the same supervisor used by Coolify:
 
 ```bash
-mkdir -p "${TERMINAL_WORKDIR:-/code}"
-ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --cwd "${TERMINAL_WORKDIR:-/code}" --writable /bin/bash &
-npm start
+set -a
+source .env
+set +a
+bash scripts/start.sh
 ```
 
-Open `http://localhost:3000`. Use `NODE_ENV=development` when testing without HTTPS.
+Open `http://localhost:3000`. Use `NODE_ENV=development` when testing locally without HTTPS. The
+full bundled system toolset and Chromium are provided by the Nixpacks image, not by `npm ci`.
 
 ## Troubleshooting
 
-- **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and redeploy the latest application version.
-- **Terminal shows “backend unavailable”:** Check the deployment logs for the `ttyd` process and leave `TTYD_URL` at its default unless you intentionally run it elsewhere.
-- **Terminal starts in the wrong directory:** Ensure `TERMINAL_WORKDIR` exactly matches the persistent-storage destination path.
-- **WebSocket connection fails:** Confirm the proxy allows WebSocket upgrades for the application domain.
-- **Health check fails:** Verify the required environment variables are present and inspect the application logs.
+- **`codex: command not found`:** Redeploy the latest image and run `command -v codex`. Do not use
+  the standalone installer; the bundled command comes from `/app/node_modules/.bin`.
+- **Terminal starts in the wrong place:** Ensure `TERMINAL_WORKDIR` is an absolute path matching
+  the persistent-volume destination.
+- **`cd ~` opens the wrong directory:** Check `TERMINAL_HOME`; it defaults to `TERMINAL_WORKDIR`.
+- **Dotfiles fail on first startup:** Confirm the container can reach GitHub. Later update failures
+  fall back to the existing local checkout.
+- **Terminal shows “backend unavailable”:** Inspect deployment logs and keep `TTYD_URL` at its
+  default unless ttyd is intentionally hosted elsewhere.
+- **WebSocket connection fails:** Confirm the application proxy allows WebSocket upgrades.
+- **Health check fails:** Verify all required authentication variables are set.
 
 ## License
 
