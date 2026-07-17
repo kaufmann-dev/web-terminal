@@ -116,7 +116,8 @@ the deployment image and available immediately as `codex` and `opencode`.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Reconnecting restores up to 10,000 retained scrollback lines plus the current screen. Output
-  produced while disconnected appears in order before live output resumes.
+  produced while disconnected appears in order before live output resumes. Returning to a visible
+  tab or regaining browser connectivity immediately retries any pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. There is no tmux copy mode, Codex-specific wheel
   routing, or synthetic keyboard input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab

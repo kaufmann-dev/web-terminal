@@ -101,6 +101,8 @@
       this.ready = false;
       this.reconnectDelay = 250;
       this.reconnectTimer = null;
+      this.reconnectInProgress = false;
+      this.reconnectRequested = false;
       this.resizeTimer = null;
       this.writeQueue = Promise.resolve();
 
@@ -288,24 +290,60 @@
       window.clearTimeout(this.reconnectTimer);
       const delay = this.reconnectDelay;
       this.reconnectDelay = Math.min(5000, this.reconnectDelay * 2);
-      this.reconnectTimer = window.setTimeout(async () => {
+      this.reconnectTimer = window.setTimeout(() => {
+        this.reconnectTimer = null;
+        this.attemptReconnect();
+      }, delay);
+    }
+
+    async attemptReconnect() {
+      if (this.disposed || this.socket || this.reconnectInProgress) {
+        return;
+      }
+
+      this.reconnectInProgress = true;
+      let shouldRetry = false;
+      try {
+        const data = await apiRequest('/api/terminal-sessions');
         if (this.disposed) {
           return;
         }
-        try {
-          const data = await apiRequest('/api/terminal-sessions');
-          if (!(data.sessions || []).some((session) => session.name === this.sessionName)) {
-            setConnectionStatus('Terminal session ended.', true);
-            this.onSessionExit();
-            return;
-          }
-          this.connect();
-        } catch (err) {
-          if (!this.disposed && (!(err instanceof ApiError) || err.status !== 401)) {
+        if (!(data.sessions || []).some((session) => session.name === this.sessionName)) {
+          setConnectionStatus('Terminal session ended.', true);
+          this.onSessionExit();
+          return;
+        }
+        this.connect();
+      } catch (err) {
+        shouldRetry = !(err instanceof ApiError) || err.status !== 401;
+      } finally {
+        this.reconnectInProgress = false;
+        const retryImmediately = this.reconnectRequested;
+        this.reconnectRequested = false;
+        if (shouldRetry && !this.disposed && !this.socket) {
+          if (retryImmediately) {
+            this.attemptReconnect();
+          } else {
             this.scheduleReconnect();
           }
         }
-      }, delay);
+      }
+    }
+
+    reconnectNow() {
+      if (this.disposed || this.socket) {
+        return;
+      }
+      if (this.reconnectInProgress) {
+        this.reconnectRequested = true;
+        return;
+      }
+      if (this.reconnectTimer === null) {
+        return;
+      }
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.attemptReconnect();
     }
 
     send(message) {
@@ -321,6 +359,8 @@
       this.disposed = true;
       this.ready = false;
       window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.reconnectRequested = false;
       window.clearTimeout(this.resizeTimer);
       this.resizeObserver.disconnect();
       terminalHost.removeEventListener('click', this.focusTerminal);
@@ -586,6 +626,19 @@
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
   logoutBtn.addEventListener('click', logout);
+
+  function reconnectActiveSessionNow() {
+    if (activeController) {
+      activeController.reconnectNow();
+    }
+  }
+
+  window.addEventListener('online', reconnectActiveSessionNow);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      reconnectActiveSessionNow();
+    }
+  });
 
   window.addEventListener('focus', () => {
     if (!mutationInProgress) {
