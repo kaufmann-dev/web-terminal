@@ -253,9 +253,30 @@ function createWebTerminal(options = {}) {
 
   const xtermEntry = require.resolve('@xterm/xterm');
   const fitEntry = require.resolve('@xterm/addon-fit');
+  const interEntry = require.resolve('@fontsource/inter');
+  const jetBrainsMonoEntry = require.resolve('@fontsource/jetbrains-mono');
   const xtermModule = path.join(path.dirname(xtermEntry), 'xterm.mjs');
   const fitModule = path.join(path.dirname(fitEntry), 'addon-fit.mjs');
   const xtermStylesheet = path.join(path.dirname(path.dirname(xtermEntry)), 'css', 'xterm.css');
+  const fontFiles = new Map([
+    ['inter-400.woff2', path.join(path.dirname(interEntry), 'files', 'inter-latin-400-normal.woff2')],
+    ['inter-500.woff2', path.join(path.dirname(interEntry), 'files', 'inter-latin-500-normal.woff2')],
+    ['inter-600.woff2', path.join(path.dirname(interEntry), 'files', 'inter-latin-600-normal.woff2')],
+    [
+      'jetbrains-mono-400.woff2',
+      path.join(path.dirname(jetBrainsMonoEntry), 'files', 'jetbrains-mono-latin-400-normal.woff2'),
+    ],
+    [
+      'jetbrains-mono-600.woff2',
+      path.join(path.dirname(jetBrainsMonoEntry), 'files', 'jetbrains-mono-latin-600-normal.woff2'),
+    ],
+  ]);
+
+  for (const [fileName, filePath] of fontFiles) {
+    app.get(`/vendor/fonts/${fileName}`, (req, res) => {
+      res.type('font/woff2').sendFile(filePath);
+    });
+  }
 
   app.get('/vendor/xterm/xterm.mjs', requireAuth, (req, res) => res.sendFile(xtermModule));
   app.get('/vendor/xterm/addon-fit.mjs', requireAuth, (req, res) => res.sendFile(fitModule));

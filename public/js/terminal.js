@@ -3,6 +3,10 @@
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
   ]);
+  await Promise.all([
+    document.fonts.load('400 14px "JetBrains Mono"'),
+    document.fonts.load('600 14px "JetBrains Mono"'),
+  ]);
 
   const logoutBtn = document.getElementById('logout-btn');
   const sidebar = document.getElementById('session-sidebar');
@@ -102,12 +106,15 @@
 
       this.terminal = new Terminal({
         cursorBlink: true,
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontFamily: '"JetBrains Mono", monospace',
         fontSize: 14,
+        fontWeight: '400',
+        fontWeightBold: '600',
+        lineHeight: 1.2,
         scrollback: 10000,
         theme: {
           background: '#0b0c10',
-          foreground: '#c5c6c7',
+          foreground: '#d5d9df',
           cursor: '#66fcf1',
           selectionBackground: '#285f5c',
         },

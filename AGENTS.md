@@ -53,8 +53,9 @@ node --test test/*.test.js
   environments. Express must retain them.
 - Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also
   process-local. Do not configure multiple application replicas without replacing both designs.
-- Serve only the pinned xterm browser module, fit addon, and stylesheet through explicit
-  same-origin vendor routes. Do not copy package artifacts into the repository or add a bundler.
+- Serve only the pinned xterm browser module, fit addon, stylesheet, and self-hosted font files
+  through explicit same-origin vendor routes. Do not copy package artifacts into the repository
+  or add a bundler.
 - `views/` and `public/` are served directly; there is no frontend framework or asset build step.
 
 ## Deployment Configuration
