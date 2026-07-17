@@ -1,6 +1,6 @@
 # Private Browser Terminal
 
-A private, password-protected terminal you can open in a web browser. One admin account signs in through a secure login page, then uses a full shell powered by `ttyd`.
+A private, password-protected terminal you can open in a web browser. One admin account signs in through a secure login page, then uses persistent named shells powered by `ttyd` and `tmux`.
 
 > **Security warning:** A browser terminal can run shell commands in its deployment container. Protect it with HTTPS, strong credentials, and restricted network access. This Coolify setup does not provide a shell on the Coolify host.
 
@@ -13,7 +13,7 @@ Connect this repository to a new Coolify application and use these settings:
 - **Build Pack:** Nixpacks
 - **Base Directory:** `/`
 
-The included Nixpacks configuration installs `ttyd` and starts it privately alongside the web application. The deployment is not a static site and needs no pre- or post-deployment command.
+The included Nixpacks configuration installs `ttyd` and `tmux`, then starts `ttyd` privately alongside the web application. The deployment is not a static site and needs no pre- or post-deployment command.
 
 ### 2. Set the environment variables
 
@@ -49,26 +49,29 @@ Check `https://your-domain.example/health` if you want to confirm that the web a
 
 ## Everyday Use
 
-- Click **Logout** when you finish a session.
-- Run only one application replica because sessions are stored in the running process.
+- The first visit creates a session named `main`. Use the sidebar to create and switch between more named sessions.
+- Closing the page, losing the connection, or clicking **Logout** detaches the browser. Commands, Codex jobs, and other processes keep running inside `tmux`.
+- Deleting a terminal session is destructive: it stops every process running in that session.
+- Terminal processes do not survive a Coolify redeploy or container restart. Files under persistent storage do survive.
+- Run only one application replica because login state and terminal sessions are local to the running container.
 - Store projects under `TERMINAL_WORKDIR`. They survive redeployments only when Coolify mounts persistent storage at that path.
 
 To change the password, replace `AUTH_PASSWORD` in Coolify and redeploy the application.
 
 ## Run Locally
 
-Install Node.js 24 and `ttyd`, then run:
+Install Node.js 24, `ttyd`, and `tmux`, then run:
 
 ```bash
 npm ci
 cp .env.example .env
 ```
 
-Set `AUTH_PASSWORD`, a random `SESSION_SECRET`, and your preferred `TERMINAL_WORKDIR` in `.env`. Create the directory with `mkdir -p`, start `ttyd` there, then run the app:
+Set `AUTH_PASSWORD`, a random `SESSION_SECRET`, and your preferred `TERMINAL_WORKDIR` in `.env`. Create that exact directory (the example uses the default `/code`), start the private `ttyd` service from the repository root, then run the app:
 
 ```bash
-mkdir -p "${TERMINAL_WORKDIR:-/code}"
-ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --cwd "${TERMINAL_WORKDIR:-/code}" --writable /bin/bash &
+mkdir -p /code
+ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable --url-arg /bin/bash "$PWD/scripts/attach-terminal-session.sh" &
 npm start
 ```
 
@@ -78,7 +81,9 @@ Open `http://localhost:3000`. Use `NODE_ENV=development` when testing without HT
 
 - **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and redeploy the latest application version.
 - **Terminal shows “backend unavailable”:** Check the deployment logs for the `ttyd` process and leave `TTYD_URL` at its default unless you intentionally run it elsewhere.
+- **Sessions cannot be listed or created:** Confirm `tmux` is installed and available to both the Node and `ttyd` processes.
 - **Terminal starts in the wrong directory:** Ensure `TERMINAL_WORKDIR` exactly matches the persistent-storage destination path.
+- **Sessions disappeared after deployment:** This is expected when the container restarts; only files stored on a persistent volume survive redeployment.
 - **WebSocket connection fails:** Confirm the proxy allows WebSocket upgrades for the application domain.
 - **Health check fails:** Verify the required environment variables are present and inspect the application logs.
 

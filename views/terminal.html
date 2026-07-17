@@ -8,11 +8,47 @@
 </head>
 <body class="dark terminal-body">
   <header class="terminal-header">
-    <span class="terminal-title">terminal.kaufmann.dev</span>
+    <div class="terminal-header-main">
+      <button id="sidebar-toggle" class="btn-icon sidebar-toggle" type="button" aria-controls="session-sidebar" aria-expanded="false" title="Show terminal sessions">
+        <span aria-hidden="true">☰</span>
+        <span class="sr-only">Show terminal sessions</span>
+      </button>
+      <span class="terminal-title">terminal.kaufmann.dev</span>
+      <span id="active-session-label" class="active-session-label"></span>
+    </div>
     <button id="logout-btn" class="btn-logout" title="Logout">Logout</button>
   </header>
   <main class="terminal-main">
-    <iframe id="ttyd-frame" src="/ttyd" title="Terminal" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+    <aside id="session-sidebar" class="session-sidebar" aria-label="Terminal sessions">
+      <div class="session-sidebar-header">
+        <h1>Sessions</h1>
+        <button id="sidebar-close" class="btn-icon sidebar-close" type="button" title="Hide terminal sessions">
+          <span aria-hidden="true">×</span>
+          <span class="sr-only">Hide terminal sessions</span>
+        </button>
+      </div>
+
+      <form id="session-form" class="session-form">
+        <label for="session-name">New session</label>
+        <div class="session-form-row">
+          <input id="session-name" name="sessionName" type="text" maxlength="32" pattern="[a-z0-9][a-z0-9-]{0,31}" placeholder="project-name" autocomplete="off" required>
+          <button id="create-session-btn" class="btn-session-create" type="submit">Add</button>
+        </div>
+        <p class="session-name-hint">Lowercase letters, numbers, and hyphens.</p>
+      </form>
+
+      <div id="session-list" class="session-list" aria-label="Available sessions"></div>
+      <p id="session-status" class="session-status" role="status" aria-live="polite"></p>
+    </aside>
+
+    <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Hide terminal sessions"></button>
+
+    <section class="terminal-workspace" aria-label="Active terminal">
+      <div id="terminal-placeholder" class="terminal-placeholder">
+        <p id="terminal-placeholder-message">Loading terminal sessions…</p>
+      </div>
+      <iframe id="ttyd-frame" title="Terminal" sandbox="allow-scripts allow-same-origin allow-forms" hidden></iframe>
+    </section>
   </main>
   <script src="/static/js/terminal.js"></script>
 </body>

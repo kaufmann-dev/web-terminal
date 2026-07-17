@@ -10,20 +10,32 @@ const helmet = require('helmet');
 const compression = require('compression');
 const argon2 = require('argon2');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const path = require('path');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const execFileAsync = promisify(execFile);
 
 const AUTH_EMAIL = process.env.AUTH_EMAIL;
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const TTYD_URL = process.env.TTYD_URL || 'http://127.0.0.1:7681';
+const TERMINAL_WORKDIR = process.env.TERMINAL_WORKDIR || '/code';
 const NODE_ENV = process.env.NODE_ENV || 'production';
+const TMUX_SOCKET_NAME = 'web-terminal';
+const TERMINAL_SESSION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const TMUX_COMMAND_TIMEOUT_MS = 5000;
 
 if (!AUTH_EMAIL || !AUTH_PASSWORD || !SESSION_SECRET) {
   console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET');
+  process.exit(1);
+}
+
+if (!path.isAbsolute(TERMINAL_WORKDIR)) {
+  console.error('TERMINAL_WORKDIR must be an absolute path.');
   process.exit(1);
 }
 
@@ -124,6 +136,83 @@ function requireAuth(req, res, next) {
   return res.redirect('/');
 }
 
+function requireApiAuth(req, res, next) {
+  if (req.session && req.session.authenticated) {
+    return next();
+  }
+  return res.status(401).json({ error: 'Authentication required.' });
+}
+
+async function runTmux(args) {
+  return execFileAsync('tmux', ['-L', TMUX_SOCKET_NAME, ...args], {
+    timeout: TMUX_COMMAND_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
+function isNoTmuxServerError(err) {
+  return err && err.code === 1 && (
+    /no server running|no sessions|error connecting to .*\(No such file or directory\)/i
+      .test(err.stderr || '')
+  );
+}
+
+async function terminalSessionExists(name) {
+  try {
+    await runTmux(['has-session', '-t', `=${name}`]);
+    return true;
+  } catch (err) {
+    if (err && err.code === 1) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+async function listTerminalSessions() {
+  let stdout;
+  try {
+    ({ stdout } = await runTmux([
+      'list-sessions',
+      '-F',
+      '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_windows}',
+    ]));
+  } catch (err) {
+    if (isNoTmuxServerError(err)) {
+      return [];
+    }
+    throw err;
+  }
+
+  return stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [name, created, attachedClients, windows] = line.split('\t');
+      return {
+        name,
+        createdAt: new Date(Number(created) * 1000).toISOString(),
+        attachedClients: Number(attachedClients),
+        windows: Number(windows),
+      };
+    })
+    .sort((a, b) => {
+      if (a.name === 'main') return -1;
+      if (b.name === 'main') return 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+function isValidTerminalSessionName(name) {
+  return typeof name === 'string' && TERMINAL_SESSION_NAME_PATTERN.test(name);
+}
+
+function terminalSessionServiceError(res, err) {
+  console.error('Terminal session service error:', err.message);
+  return res.status(503).json({ error: 'Terminal session service unavailable.' });
+}
+
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -201,6 +290,72 @@ app.get('/csrf-token', (req, res) => {
   res.json({ csrfToken: generateCsrfToken(req, res) });
 });
 
+app.get('/api/terminal-sessions', requireApiAuth, async (req, res) => {
+  try {
+    return res.json({ sessions: await listTerminalSessions() });
+  } catch (err) {
+    return terminalSessionServiceError(res, err);
+  }
+});
+
+app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, async (req, res) => {
+  const { name } = req.body || {};
+
+  if (!isValidTerminalSessionName(name)) {
+    return res.status(400).json({
+      error: 'Session names must be 1-32 lowercase letters, numbers, or hyphens.',
+    });
+  }
+
+  try {
+    if (await terminalSessionExists(name)) {
+      return res.status(409).json({ error: 'A session with that name already exists.' });
+    }
+
+    try {
+      await runTmux([
+        'new-session',
+        '-d',
+        '-s',
+        name,
+        '-c',
+        TERMINAL_WORKDIR,
+        '/bin/bash',
+      ]);
+    } catch (err) {
+      if (await terminalSessionExists(name)) {
+        return res.status(409).json({ error: 'A session with that name already exists.' });
+      }
+      throw err;
+    }
+
+    const sessionInfo = (await listTerminalSessions()).find((sessionInfoItem) => (
+      sessionInfoItem.name === name
+    ));
+    return res.status(201).json({ session: sessionInfo });
+  } catch (err) {
+    return terminalSessionServiceError(res, err);
+  }
+});
+
+app.delete('/api/terminal-sessions/:name', requireApiAuth, doubleCsrfProtection, async (req, res) => {
+  const { name } = req.params;
+
+  if (!isValidTerminalSessionName(name)) {
+    return res.status(400).json({ error: 'Invalid terminal session name.' });
+  }
+
+  try {
+    if (!(await terminalSessionExists(name))) {
+      return res.status(404).json({ error: 'Terminal session not found.' });
+    }
+    await runTmux(['kill-session', '-t', `=${name}`]);
+    return res.status(204).end();
+  } catch (err) {
+    return terminalSessionServiceError(res, err);
+  }
+});
+
 // Terminal page
 app.get('/terminal', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'terminal.html'));
@@ -230,8 +385,10 @@ const ttydProxy = createProxyMiddleware({
   on: {
     error: (err, req, res) => {
       console.error('TTYD proxy error:', err.message);
-      if (res && !res.headersSent) {
+      if (res && typeof res.status === 'function' && !res.headersSent) {
         res.status(502).send('Terminal backend unavailable.');
+      } else if (res && typeof res.destroy === 'function' && !res.destroyed) {
+        res.destroy();
       }
     },
   },
@@ -272,6 +429,11 @@ app.use((err, req, res, next) => {
 });
 
 async function startServer() {
+  await execFileAsync('tmux', ['-V'], {
+    timeout: TMUX_COMMAND_TIMEOUT_MS,
+    maxBuffer: 1024,
+  });
+
   authPasswordHash = await argon2.hash(AUTH_PASSWORD, {
     type: argon2.argon2id,
     memoryCost: 65536,

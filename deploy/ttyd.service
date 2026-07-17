@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=terminal
 Group=terminal
-ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable --cwd /home/terminal /bin/bash
+ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable --url-arg /bin/bash /opt/web-terminal/scripts/attach-terminal-session.sh
 Restart=on-failure
 RestartSec=5
 
