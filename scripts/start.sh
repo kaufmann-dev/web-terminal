@@ -37,14 +37,21 @@ run_in_terminal_environment() {
     "$@"
 }
 
+run_chezmoi() {
+  # Container startup has no controlling TTY. The persistent terminal home can
+  # contain files previously managed by chezmoi, so apply its desired state
+  # without waiting for an overwrite prompt.
+  run_in_terminal_environment chezmoi --force --no-tty "$@"
+}
+
 sync_dotfiles() {
   local source_path
-  source_path="$(run_in_terminal_environment chezmoi source-path)"
+  source_path="$(run_chezmoi source-path)"
 
   if [[ -d "$source_path/.git" ]]; then
-    if ! run_in_terminal_environment chezmoi update; then
+    if ! run_chezmoi update; then
       printf 'Warning: chezmoi update failed; applying existing local state.\n' >&2
-      run_in_terminal_environment chezmoi apply
+      run_chezmoi apply
     fi
     return
   fi
@@ -54,7 +61,7 @@ sync_dotfiles() {
     exit 1
   fi
 
-  run_in_terminal_environment chezmoi init --apply \
+  run_chezmoi init --apply \
     https://github.com/kaufmann-dev/dotfiles.git
 }
 

@@ -80,7 +80,9 @@ The browser terminal PATH prioritizes the image's pinned commands and also inclu
 
 The first container start initializes and applies
 [`kaufmann-dev/dotfiles`](https://github.com/kaufmann-dev/dotfiles). Later starts pull and apply
-updates. If GitHub is temporarily unavailable, the last local dotfiles state is applied instead.
+updates. Startup applies the managed dotfiles state non-interactively, so a conflicting managed
+file such as `~/.codex/config.toml` is replaced instead of blocking the container for input. If
+GitHub is temporarily unavailable, the last local dotfiles state is applied instead.
 
 Authenticate the tools you use:
 
