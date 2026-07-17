@@ -73,26 +73,19 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
   return terminalEnvironment;
 }
 
-function requestOrigin(req) {
-  const forwardedHost = req.headers['x-forwarded-host'];
-  const host = typeof forwardedHost === 'string'
-    ? forwardedHost.split(',')[0].trim()
-    : req.headers.host;
-  if (!host) {
-    return null;
-  }
-
-  const forwardedProto = req.headers['x-forwarded-proto'];
-  const protocol = typeof forwardedProto === 'string'
-    ? forwardedProto.split(',')[0].trim()
-    : (req.socket.encrypted ? 'https' : 'http');
-  if (protocol !== 'http' && protocol !== 'https') {
+function normalizePublicOrigin(value) {
+  if (typeof value !== 'string' || !value.trim()) {
     return null;
   }
 
   try {
-    const url = new URL(`${protocol}://${host}`);
-    if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    const url = new URL(value.trim());
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:')
+      || url.username
+      || url.password
+      || url.pathname !== '/'
+      || url.search
+      || url.hash) {
       return null;
     }
     return url.origin;
@@ -101,10 +94,9 @@ function requestOrigin(req) {
   }
 }
 
-function hasExactSameOrigin(req) {
+function hasExactSameOrigin(req, publicOrigin) {
   const origin = req.headers.origin;
-  const expectedOrigin = requestOrigin(req);
-  return typeof origin === 'string' && expectedOrigin !== null && origin === expectedOrigin;
+  return typeof origin === 'string' && origin === publicOrigin;
 }
 
 function rejectUpgrade(socket, statusCode, message) {
@@ -126,10 +118,12 @@ function isStrictBase64(value) {
 }
 
 function createWebTerminal(options = {}) {
+  const configuredPublicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN;
   const config = {
     authEmail: options.authEmail ?? process.env.AUTH_EMAIL,
     authPassword: options.authPassword ?? process.env.AUTH_PASSWORD,
     sessionSecret: options.sessionSecret ?? process.env.SESSION_SECRET,
+    publicOrigin: normalizePublicOrigin(configuredPublicOrigin),
     terminalWorkdir: options.terminalWorkdir ?? process.env.TERMINAL_WORKDIR ?? '/code',
     terminalHome: options.terminalHome
       ?? process.env.TERMINAL_HOME
@@ -139,8 +133,13 @@ function createWebTerminal(options = {}) {
     port: options.port ?? Number(process.env.PORT || 3000),
   };
 
-  if (!config.authEmail || !config.authPassword || !config.sessionSecret) {
-    throw new Error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET');
+  if (!config.authEmail || !config.authPassword || !config.sessionSecret || !configuredPublicOrigin) {
+    throw new Error(
+      'Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET, PUBLIC_ORIGIN',
+    );
+  }
+  if (!config.publicOrigin) {
+    throw new Error('PUBLIC_ORIGIN must be an HTTP(S) origin without a path, query, or fragment.');
   }
   if (!path.isAbsolute(config.terminalWorkdir) || !path.isAbsolute(config.terminalHome)) {
     throw new Error('TERMINAL_WORKDIR and TERMINAL_HOME must be absolute paths.');
@@ -551,7 +550,7 @@ function createWebTerminal(options = {}) {
         rejectUpgrade(socket, 404, 'WebSocket endpoint not found.');
         return;
       }
-      if (!hasExactSameOrigin(req)) {
+      if (!hasExactSameOrigin(req, config.publicOrigin)) {
         rejectUpgrade(socket, 403, 'WebSocket origin rejected.');
         return;
       }
@@ -694,6 +693,6 @@ module.exports = {
   hasExactSameOrigin,
   isStrictBase64,
   isValidTerminalSessionName,
-  requestOrigin,
+  normalizePublicOrigin,
   timingSafeEqualString,
 };

@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const WebSocket = require('ws');
-const { createWebTerminal } = require('../app');
+const { createWebTerminal, normalizePublicOrigin } = require('../app');
 const { SOCKET_CLOSE_CODES } = require('../terminal-session-manager');
 
 class FakeSessionManager {
@@ -123,11 +123,13 @@ function waitForClose(socket) {
 }
 
 test('WebSocket upgrades require authentication and exact same-origin', async (t) => {
+  const publicOrigin = 'https://terminal.example';
   const sessionManager = new FakeSessionManager();
   const service = createWebTerminal({
     authEmail: 'test@example.com',
     authPassword: 'test-password',
     sessionSecret: 'test-session-secret-at-least-32-characters',
+    publicOrigin,
     nodeEnv: 'development',
     terminalWorkdir: process.cwd(),
     terminalHome: process.cwd(),
@@ -141,25 +143,25 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
   const port = service.server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
   const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?session=main`;
-  assert.equal(await rejectedUpgrade(wsUrl, { origin: baseUrl }), 401);
+  assert.equal(await rejectedUpgrade(wsUrl, { origin: publicOrigin }), 401);
   assert.equal(await rejectedUpgrade(wsUrl, {
-    origin: 'https://terminal.example',
+    origin: 'https://attacker.example',
     headers: {
-      'X-Forwarded-Host': 'terminal.example:443',
+      'X-Forwarded-Host': 'attacker.example',
       'X-Forwarded-Proto': 'https',
     },
-  }), 401);
+  }), 403);
 
   const { cookies, csrfToken } = await authenticate(baseUrl);
   const headers = { Cookie: cookieHeader(cookies) };
   assert.equal(await rejectedUpgrade(wsUrl, { origin: 'https://attacker.example', headers }), 403);
 
-  const invalidSocket = await openSocket(wsUrl, { origin: baseUrl, headers });
+  const invalidSocket = await openSocket(wsUrl, { origin: publicOrigin, headers });
   const invalidClose = waitForClose(invalidSocket);
   invalidSocket.send('{not valid json');
   assert.equal((await invalidClose).code, SOCKET_CLOSE_CODES.PROTOCOL_ERROR);
 
-  const logoutSocket = await openSocket(wsUrl, { origin: baseUrl, headers });
+  const logoutSocket = await openSocket(wsUrl, { origin: publicOrigin, headers });
   logoutSocket.send(JSON.stringify({ type: 'attach', cols: 80, rows: 24 }));
   for (let attempt = 0; attempt < 20 && sessionManager.attachedSockets.size === 0; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -177,4 +179,12 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
   assert.equal(logoutResponse.status, 200);
   assert.equal((await logoutClose).code, SOCKET_CLOSE_CODES.LOGGED_OUT);
   assert.equal(sessionManager.sessions.has('main'), true);
+});
+
+test('PUBLIC_ORIGIN accepts only normalized HTTP(S) origins', () => {
+  assert.equal(normalizePublicOrigin('https://terminal.example:443/'), 'https://terminal.example');
+  assert.equal(normalizePublicOrigin('http://localhost:3000'), 'http://localhost:3000');
+  assert.equal(normalizePublicOrigin('https://terminal.example/path'), null);
+  assert.equal(normalizePublicOrigin('https://user@terminal.example'), null);
+  assert.equal(normalizePublicOrigin('file:///tmp/terminal'), null);
 });

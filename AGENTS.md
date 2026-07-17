@@ -24,7 +24,8 @@ node --check public/js/terminal.js
 node --test test/*.test.js
 ```
 
-- Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` are set.
+- Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`,
+  `AUTH_PASSWORD`, `SESSION_SECRET`, and `PUBLIC_ORIGIN` are set.
 - After shell-script changes, run `bash -n` on every file under `scripts/`.
 
 ## Security and Architecture
@@ -33,9 +34,9 @@ node --test test/*.test.js
   static assets, health checks, and authenticated terminal WebSockets.
 - Hash `AUTH_PASSWORD` once with Argon2id before opening the HTTP listener; never log the password or compare it directly during login.
 - Keep terminal WebSockets in `ws` no-server mode at `/ws/terminal`. Authenticate upgrades with
-  the Express session middleware, require an exact same-origin `Origin` after reconstructing and
-  normalizing the public authority from trusted proxy headers, validate session names, and never
-  create a session during an upgrade.
+  the Express session middleware, require `Origin` to exactly match the normalized
+  `PUBLIC_ORIGIN`, validate session names, and never create a session during an upgrade. Do not
+  infer the public origin from reverse-proxy headers.
 - Keep application-managed terminal sessions process-local in `terminal-session-manager.js`. Each
   named session owns one `node-pty` Bash process, a headless xterm with 10,000 lines of scrollback,
   an ordered state/output queue, and at most one attached browser client.

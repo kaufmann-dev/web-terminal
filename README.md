@@ -34,6 +34,8 @@ Required:
 - `AUTH_EMAIL` — email address used to sign in.
 - `AUTH_PASSWORD` — long, unique password used to sign in.
 - `SESSION_SECRET` — unique random string of at least 32 characters.
+- `PUBLIC_ORIGIN` — browser-facing HTTP(S) origin, for example
+  `https://terminal.kaufmann.dev`. Include the scheme and any non-default port, with no path.
 
 Optional:
 
@@ -65,7 +67,8 @@ build installs all included programs again on every deployment; credentials and 
 remain on `/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
-proxy must preserve WebSocket upgrades for the same origin.
+proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
+browser address bar.
 
 ## Included Commands
 
@@ -168,11 +171,12 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **Dotfiles fail on first startup:** Confirm the container can reach GitHub. Later update failures
   fall back to the existing local checkout.
 - **Terminal stays on “Connecting” or repeatedly reconnects:** Confirm the reverse proxy preserves
-  same-origin WebSocket upgrades and supplies the public host and protocol through
-  `X-Forwarded-Host` and `X-Forwarded-Proto`.
+  WebSocket upgrades and `PUBLIC_ORIGIN` exactly matches the browser-facing scheme, host, and
+  non-default port. Do not include a path.
 - **Native dependency installation fails locally:** Install a C/C++ compiler, make, Python, and
   pkg-config, then rerun `npm ci` under Node.js 24.
-- **Health check fails:** Verify all required authentication variables are set.
+- **Health check fails:** Verify all required environment variables are set, including
+  `PUBLIC_ORIGIN`.
 
 ## License
 
