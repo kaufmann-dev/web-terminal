@@ -48,7 +48,7 @@ app.use(helmet({
       connectSrc: ["'self'", "wss:", "ws:"],
       imgSrc: ["'self'"],
       fontSrc: ["'self'"],
-      frameAncestors: ["'none'"], // disable iframe embedding
+      frameAncestors: ["'self'"], // allow the same-origin ttyd iframe; block external embedding
     },
   },
   crossOriginEmbedderPolicy: false,
