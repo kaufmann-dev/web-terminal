@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+readonly APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 session_name="${1:-}"
 
 if [[ "$#" -ne 1 ]]; then
@@ -14,4 +15,4 @@ if [[ ! "$session_name" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; then
   exit 64
 fi
 
-exec tmux -L web-terminal attach-session -t "=$session_name"
+exec tmux -L web-terminal -f "$APP_ROOT/scripts/tmux.conf" attach-session -t "=$session_name"

@@ -27,6 +27,7 @@ const TERMINAL_WORKDIR = process.env.TERMINAL_WORKDIR || '/code';
 const TERMINAL_HOME = process.env.TERMINAL_HOME || TERMINAL_WORKDIR;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const TMUX_SOCKET_NAME = 'web-terminal';
+const TMUX_CONFIG_PATH = path.join(__dirname, 'scripts', 'tmux.conf');
 const TERMINAL_SESSION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const TMUX_COMMAND_TIMEOUT_MS = 5000;
 const TERMINAL_ENVIRONMENT = {
@@ -166,7 +167,7 @@ function requireApiAuth(req, res, next) {
 }
 
 async function runTmux(args) {
-  return execFileAsync('tmux', ['-L', TMUX_SOCKET_NAME, ...args], {
+  return execFileAsync('tmux', ['-L', TMUX_SOCKET_NAME, '-f', TMUX_CONFIG_PATH, ...args], {
     env: TERMINAL_ENVIRONMENT,
     timeout: TMUX_COMMAND_TIMEOUT_MS,
     maxBuffer: 1024 * 1024,
