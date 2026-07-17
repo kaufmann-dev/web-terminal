@@ -55,6 +55,7 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
     PATH: [
       path.join(__dirname, 'node_modules', '.bin'),
       path.join(terminalHome, '.local', 'bin'),
+      '/usr/local/bin',
       process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
     ].join(path.delimiter),
     TERM: 'xterm-256color',

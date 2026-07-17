@@ -1,9 +1,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 const WebSocket = require('ws');
-const { createWebTerminal, normalizePublicOrigin } = require('../app');
+const {
+  createTerminalEnvironment,
+  createWebTerminal,
+  normalizePublicOrigin,
+} = require('../app');
 const { SOCKET_CLOSE_CODES } = require('../terminal-session-manager');
 
 class FakeSessionManager {
@@ -187,4 +192,23 @@ test('PUBLIC_ORIGIN accepts only normalized HTTP(S) origins', () => {
   assert.equal(normalizePublicOrigin('https://terminal.example/path'), null);
   assert.equal(normalizePublicOrigin('https://user@terminal.example'), null);
   assert.equal(normalizePublicOrigin('file:///tmp/terminal'), null);
+});
+
+test('terminal PATH includes locally installed image commands', () => {
+  const originalPath = process.env.PATH;
+  process.env.PATH = '/nix/profile/bin:/usr/bin';
+  try {
+    const environment = createTerminalEnvironment({
+      terminalHome: '/terminal-home',
+      terminalWorkdir: '/terminal-workdir',
+    });
+    assert.deepEqual(environment.PATH.split(path.delimiter).slice(0, 4), [
+      path.join(__dirname, '..', 'node_modules', '.bin'),
+      '/terminal-home/.local/bin',
+      '/usr/local/bin',
+      '/nix/profile/bin',
+    ]);
+  } finally {
+    process.env.PATH = originalPath;
+  }
 });

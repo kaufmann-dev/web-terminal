@@ -76,8 +76,9 @@ node --test test/*.test.js
 - Keep `TERMINAL_WORKDIR` defaulted to `/code` and `TERMINAL_HOME` defaulted to the effective work
   directory. Both must be absolute, directory creation must remain idempotent, and new PTY
   sessions must start in `TERMINAL_WORKDIR` with the managed terminal Bash configuration.
-- The terminal PATH must prioritize `/app/node_modules/.bin`, include `$TERMINAL_HOME/.local/bin`,
-  and preserve the image PATH so pinned CLIs, user scripts, and Nix packages are callable.
+- The terminal PATH must prioritize `/app/node_modules/.bin`, include `$TERMINAL_HOME/.local/bin`
+  and `/usr/local/bin`, and preserve the image PATH so pinned CLIs, user scripts, locally installed
+  image commands, and Nix packages are callable.
 - On first startup, initialize and apply `https://github.com/kaufmann-dev/dotfiles.git`. On later
   starts, update it; if the remote update fails, apply the existing local source. Do not continue
   after first-time initialization or local apply failures.

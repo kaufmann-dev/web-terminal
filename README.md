@@ -81,8 +81,9 @@ The terminal includes:
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
-The browser terminal PATH prioritizes the image's pinned commands and also includes
-`~/.local/bin`, so user-level scripts stored on `/code` remain callable.
+The browser terminal PATH starts with `/app/node_modules/.bin` and `~/.local/bin`, explicitly
+includes `/usr/local/bin` for Git Wrangler, and then preserves the Nixpacks image PATH. Pinned npm
+commands, user scripts stored on `/code`, Git Wrangler, and Nix packages are all callable.
 
 ## First Use
 

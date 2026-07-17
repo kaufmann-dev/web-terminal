@@ -8,7 +8,7 @@ readonly TERMINAL_HOME_VALUE="${TERMINAL_HOME:-$TERMINAL_WORKDIR_VALUE}"
 readonly XDG_CONFIG_HOME_VALUE="$TERMINAL_HOME_VALUE/.config"
 readonly XDG_DATA_HOME_VALUE="$TERMINAL_HOME_VALUE/.local/share"
 readonly XDG_CACHE_HOME_VALUE="$TERMINAL_HOME_VALUE/.cache"
-readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
+readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
 
 require_absolute_path() {
   local name="$1"
