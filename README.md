@@ -104,8 +104,9 @@ the deployment image and available immediately as `codex` and `opencode`.
 
 - The first visit creates a session named `main`. Use the sidebar to create and switch between more named sessions.
 - Closing the page, losing the connection, or clicking **Logout** detaches the browser. Commands, Codex jobs, and other processes keep running inside `tmux`.
-- Mouse-wheel scrolling uses tmux copy mode so full-screen tools such as Codex do not receive wheel
-  gestures as arrow-key input. Press `q` to leave copy mode and return to the live terminal.
+- In Codex, scrolling up opens Codex's clean transcript pager instead of tmux's raw redraw history.
+  Keep scrolling or use `PgUp`/`PgDn`, then press `q` to return to the live prompt. Outside Codex,
+  scrolling uses tmux copy mode; press `q` to leave it.
 - Deleting a terminal session is destructive: it stops every process running in that session.
 - Terminal processes do not survive a Coolify redeploy or container restart. Files under persistent storage do survive.
 - Run only one application replica because login state and terminal sessions are local to the running container.
