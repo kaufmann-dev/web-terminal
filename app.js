@@ -48,7 +48,7 @@ app.use(helmet({
       connectSrc: ["'self'", "wss:", "ws:"],
       imgSrc: ["'self'"],
       fontSrc: ["'self'"],
-      frameAncestors: ["'self'"], // allow the same-origin ttyd iframe; block external embedding
+      frameAncestors: ["'none'"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -247,7 +247,23 @@ function ttydAuthGate(req, res, next) {
   return res.status(403).send('Forbidden');
 }
 
-app.use('/ttyd', ttydAuthGate);
+const ttydContentSecurityPolicy = helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    connectSrc: ["'self'", 'wss:', 'ws:'],
+    imgSrc: ["'self'", 'data:'],
+    fontSrc: ["'self'"],
+    frameAncestors: ["'self'"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    objectSrc: ["'none'"],
+    scriptSrcAttr: ["'none'"],
+  },
+});
+
+app.use('/ttyd', ttydContentSecurityPolicy, ttydAuthGate);
 app.use(ttydProxy);
 
 app.use((err, req, res, next) => {
