@@ -268,13 +268,6 @@ body.dark {
   gap: 10px;
 }
 
-.terminal-logo {
-  display: block;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-}
-
 .terminal-title {
   color: var(--text);
   font-size: 13px;
