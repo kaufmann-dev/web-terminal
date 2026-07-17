@@ -22,16 +22,26 @@ Required:
 - `AUTH_EMAIL` — the email address used to sign in.
 - `AUTH_PASSWORD` — the long, unique password used to sign in; the app hashes it automatically at startup.
 - `SESSION_SECRET` — a unique random string of at least 32 characters.
-- `TRUST_PROXY` — set to `true` so secure session cookies work behind Coolify's HTTPS proxy.
 
 Optional:
 
 - `NODE_ENV` — defaults to `production`.
 - `TTYD_URL` — defaults to `http://127.0.0.1:7681`, which matches the bundled terminal process.
+- `TERMINAL_WORKDIR` — defaults to `/code`; the terminal opens in this directory.
 
 Coolify supplies `PORT` automatically; do not set a fixed port.
 
-### 3. Deploy and sign in
+### 3. Add persistent storage
+
+In Coolify's **Persistent Storage** settings, add a volume:
+
+- **Name:** any descriptive name, such as `web-terminal-code`.
+- **Source Path:** leave empty for a named volume.
+- **Destination Path:** `/code`.
+
+For a bind mount instead, use a persistent host path such as `/data/web-terminal-code` as the **Source Path** and `/code` as the **Destination Path**. If you choose another destination, set `TERMINAL_WORKDIR` to that exact absolute path.
+
+### 4. Deploy and sign in
 
 Deploy the application, open its Coolify domain, and sign in with `AUTH_EMAIL` and `AUTH_PASSWORD`.
 
@@ -41,7 +51,7 @@ Check `https://your-domain.example/health` if you want to confirm that the web a
 
 - Click **Logout** when you finish a session.
 - Run only one application replica because sessions are stored in the running process.
-- Treat files created from the terminal as disposable unless you configure persistent storage in Coolify.
+- Store projects under `TERMINAL_WORKDIR`. They survive redeployments only when Coolify mounts persistent storage at that path.
 
 To change the password, replace `AUTH_PASSWORD` in Coolify and redeploy the application.
 
@@ -54,18 +64,21 @@ npm ci
 cp .env.example .env
 ```
 
-Set `AUTH_PASSWORD` and a random `SESSION_SECRET` in `.env`, ensure `ttyd` is available at `http://127.0.0.1:7681`, then run:
+Set `AUTH_PASSWORD`, a random `SESSION_SECRET`, and your preferred `TERMINAL_WORKDIR` in `.env`. Create the directory with `mkdir -p`, start `ttyd` there, then run the app:
 
 ```bash
+mkdir -p "${TERMINAL_WORKDIR:-/code}"
+ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --cwd "${TERMINAL_WORKDIR:-/code}" --writable /bin/bash &
 npm start
 ```
 
-Open `http://localhost:3000`. Use `NODE_ENV=development` and `TRUST_PROXY=false` when testing without HTTPS.
+Open `http://localhost:3000`. Use `NODE_ENV=development` when testing without HTTPS.
 
 ## Troubleshooting
 
-- **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and set `TRUST_PROXY=true`.
+- **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and redeploy the latest application version.
 - **Terminal shows “backend unavailable”:** Check the deployment logs for the `ttyd` process and leave `TTYD_URL` at its default unless you intentionally run it elsewhere.
+- **Terminal starts in the wrong directory:** Ensure `TERMINAL_WORKDIR` exactly matches the persistent-storage destination path.
 - **WebSocket connection fails:** Confirm the proxy allows WebSocket upgrades for the application domain.
 - **Health check fails:** Verify the required environment variables are present and inspect the application logs.
 

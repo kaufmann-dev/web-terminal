@@ -2,4 +2,4 @@
 nixPkgs = ["...", "ttyd"]
 
 [start]
-cmd = "ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable /bin/bash & exec node app.js"
+cmd = 'workdir="${TERMINAL_WORKDIR:-/code}"; mkdir -p "$workdir" || exit 1; ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --cwd "$workdir" --writable /bin/bash & exec node app.js'

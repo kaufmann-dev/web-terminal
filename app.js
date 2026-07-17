@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const MemoryStore = require('memorystore')(session);
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
@@ -20,21 +21,14 @@ const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const TTYD_URL = process.env.TTYD_URL || 'http://127.0.0.1:7681';
 const NODE_ENV = process.env.NODE_ENV || 'production';
-const TRUST_PROXY = process.env.TRUST_PROXY || 'false';
 
 if (!AUTH_EMAIL || !AUTH_PASSWORD || !SESSION_SECRET) {
   console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET');
   process.exit(1);
 }
 
-if (!['true', 'false'].includes(TRUST_PROXY)) {
-  console.error('TRUST_PROXY must be either true or false.');
-  process.exit(1);
-}
-
-if (TRUST_PROXY === 'true') {
-  app.set('trust proxy', true);
-}
+// Coolify terminates HTTPS at the single reverse-proxy hop in front of the app.
+app.set('trust proxy', 1);
 
 let authPasswordHash;
 
@@ -64,6 +58,10 @@ app.use(express.json());
 const sessionMiddleware = session({
   name: 'terminal.sid',
   secret: SESSION_SECRET,
+  store: new MemoryStore({
+    checkPeriod: 60 * 60 * 1000,
+    max: 1000,
+  }),
   resave: false,
   saveUninitialized: false,
   cookie: {
