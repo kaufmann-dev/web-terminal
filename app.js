@@ -219,6 +219,7 @@ async function listTerminalSessions() {
         windows: Number(windows),
       };
     })
+    .filter((sessionInfo) => isValidTerminalSessionName(sessionInfo.name))
     .sort((a, b) => {
       if (a.name === 'main') return -1;
       if (b.name === 'main') return 1;
