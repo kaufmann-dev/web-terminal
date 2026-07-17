@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["ttyd"]
+
+[start]
+cmd = "ttyd --interface 127.0.0.1 --port 7681 --base-path /ttyd --writable /bin/bash & exec node app.js"

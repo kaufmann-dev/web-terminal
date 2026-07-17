@@ -3,7 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
-const csrf = require('csurf');
+const cookieParser = require('cookie-parser');
+const { doubleCsrf } = require('csrf-csrf');
 const helmet = require('helmet');
 const compression = require('compression');
 const argon2 = require('argon2');
@@ -19,15 +20,20 @@ const AUTH_PASSWORD_HASH = process.env.AUTH_PASSWORD_HASH;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const TTYD_URL = process.env.TTYD_URL || 'http://127.0.0.1:7681';
 const NODE_ENV = process.env.NODE_ENV || 'production';
-const TRUST_PROXY = process.env.TRUST_PROXY || false;
+const TRUST_PROXY = process.env.TRUST_PROXY || 'false';
 
 if (!AUTH_EMAIL || !AUTH_PASSWORD_HASH || !SESSION_SECRET) {
   console.error('Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD_HASH, SESSION_SECRET');
   process.exit(1);
 }
 
-if (TRUST_PROXY) {
-  app.set('trust proxy', TRUST_PROXY === 'true' ? true : TRUST_PROXY);
+if (!['true', 'false'].includes(TRUST_PROXY)) {
+  console.error('TRUST_PROXY must be either true or false.');
+  process.exit(1);
+}
+
+if (TRUST_PROXY === 'true') {
+  app.set('trust proxy', true);
 }
 
 // Security headers
@@ -66,6 +72,24 @@ const sessionMiddleware = session({
   },
 });
 app.use(sessionMiddleware);
+app.use(cookieParser());
+
+const {
+  doubleCsrfProtection,
+  generateCsrfToken,
+  invalidCsrfTokenError,
+} = doubleCsrf({
+  getSecret: () => SESSION_SECRET,
+  getSessionIdentifier: (req) => req.session.id,
+  cookieName: 'terminal.csrf',
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: NODE_ENV === 'production',
+    path: '/',
+  },
+  getCsrfTokenFromRequest: (req) => req.headers['csrf-token'],
+});
 
 // Rate limiting for login
 const loginLimiter = rateLimit({
@@ -88,9 +112,6 @@ const bruteForceLimiter = rateLimit({
 });
 
 app.use('/login', bruteForceLimiter);
-
-// CSRF protection (exempt WebSocket upgrade paths)
-const csrfProtection = csrf({ cookie: false });
 
 // Static assets (public CSS)
 app.use('/static', express.static(path.join(__dirname, 'public')));
@@ -139,7 +160,7 @@ function timingSafeEqualString(a, b) {
 }
 
 // Login handler
-app.post('/login', loginLimiter, csrfProtection, async (req, res) => {
+app.post('/login', loginLimiter, doubleCsrfProtection, async (req, res) => {
   const { email, password } = req.body || {};
 
   // Generic validation to avoid leaking information
@@ -175,8 +196,9 @@ app.post('/login', loginLimiter, csrfProtection, async (req, res) => {
 });
 
 // CSRF token endpoint for frontend
-app.get('/csrf-token', csrfProtection, (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
+app.get('/csrf-token', (req, res) => {
+  req.session.csrfInitialized = true;
+  res.json({ csrfToken: generateCsrfToken(req, res) });
 });
 
 // Terminal page
@@ -185,7 +207,7 @@ app.get('/terminal', requireAuth, (req, res) => {
 });
 
 // Logout
-app.post('/logout', requireAuth, csrfProtection, (req, res) => {
+app.post('/logout', requireAuth, doubleCsrfProtection, (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error('Session destruction error:', err);
@@ -225,6 +247,13 @@ function ttydAuthGate(req, res, next) {
 
 app.use('/ttyd', ttydAuthGate);
 app.use(ttydProxy);
+
+app.use((err, req, res, next) => {
+  if (err === invalidCsrfTokenError) {
+    return res.status(403).json({ error: 'Invalid CSRF token.' });
+  }
+  return next(err);
+});
 
 // Upgrade handling for WebSocket proxy
 const server = app.listen(PORT, () => {
