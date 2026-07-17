@@ -198,7 +198,7 @@ async function listTerminalSessions() {
     ({ stdout } = await runTmux([
       'list-sessions',
       '-F',
-      '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_windows}',
+      '#{session_name}\t#{session_attached}\t#{session_windows}',
     ]));
   } catch (err) {
     if (isNoTmuxServerError(err)) {
@@ -212,10 +212,9 @@ async function listTerminalSessions() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [name, created, attachedClients, windows] = line.split('\t');
+      const [name, attachedClients, windows] = line.split('\t');
       return {
         name,
-        createdAt: new Date(Number(created) * 1000).toISOString(),
         attachedClients: Number(attachedClients),
         windows: Number(windows),
       };
