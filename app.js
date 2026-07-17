@@ -198,7 +198,7 @@ async function listTerminalSessions() {
     ({ stdout } = await runTmux([
       'list-sessions',
       '-F',
-      '#{session_name}\t#{session_attached}\t#{session_windows}',
+      '#{session_name}|#{session_attached}|#{session_windows}',
     ]));
   } catch (err) {
     if (isNoTmuxServerError(err)) {
@@ -212,7 +212,7 @@ async function listTerminalSessions() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [name, attachedClients, windows] = line.split('\t');
+      const [name, attachedClients, windows] = line.split('|');
       return {
         name,
         attachedClients: Number(attachedClients),
@@ -358,9 +358,6 @@ app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, async (
     const sessionInfo = (await listTerminalSessions()).find((sessionInfoItem) => (
       sessionInfoItem.name === name
     ));
-    if (!sessionInfo) {
-      throw new Error(`Terminal session ${name} exited before it became available.`);
-    }
     return res.status(201).json({ session: sessionInfo });
   } catch (err) {
     return terminalSessionServiceError(res, err);
