@@ -358,6 +358,9 @@ app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, async (
     const sessionInfo = (await listTerminalSessions()).find((sessionInfoItem) => (
       sessionInfoItem.name === name
     ));
+    if (!sessionInfo) {
+      throw new Error(`Terminal session ${name} exited before it became available.`);
+    }
     return res.status(201).json({ session: sessionInfo });
   } catch (err) {
     return terminalSessionServiceError(res, err);
