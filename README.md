@@ -93,8 +93,8 @@ opencode auth login
 git-wrangler init
 ```
 
-These logins persist below `/code` with the default volume. Git Wrangler Bash completion is
-available automatically. Agent-browser runs headlessly by default; use its persistent profile or
+These logins persist below `/code` with the default volume. Git Wrangler's Bash completion is
+installed in the image. Agent-browser runs headlessly by default; use its persistent profile or
 state options only when a task needs browser login state to survive.
 
 Do not reinstall Codex or OpenCode with a runtime installer. Their exact versions are already in
