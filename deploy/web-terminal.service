@@ -1,5 +1,5 @@
 [Unit]
-Description=web-terminal auth app
+Description=web-terminal web and PTY service
 After=network.target
 
 [Service]
@@ -11,12 +11,15 @@ EnvironmentFile=/opt/web-terminal/.env
 ExecStart=/usr/bin/node /opt/web-terminal/app.js
 Restart=on-failure
 RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=15
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/web-terminal
+ReadWritePaths=/opt/web-terminal /code
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

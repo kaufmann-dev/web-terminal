@@ -13,12 +13,15 @@ npm ci
   immutable image: `@openai/codex@0.144.5`, `opencode-ai@1.18.3`, and
   `agent-browser@0.32.1`. Do not replace them with runtime installers or global npm installs.
 
-- The repository has no lint, test, type-check, or build script. After JavaScript changes, run the applicable syntax checks:
+- The repository has no lint, type-check, or build script. After JavaScript changes, run the
+  applicable syntax checks and targeted Node tests:
 
 ```bash
 node --check app.js
+node --check terminal-session-manager.js
 node --check public/js/login.js
 node --check public/js/terminal.js
+node --test test/*.test.js
 ```
 
 - Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` are set.
@@ -26,17 +29,30 @@ node --check public/js/terminal.js
 
 ## Security and Architecture
 
-- Keep `app.js` as the Express entrypoint for login, sessions, CSRF protection, rate limiting, static assets, health checks, and the `ttyd` proxy.
+- Keep `app.js` as the Express entrypoint for login, sessions, CSRF protection, rate limiting,
+  static assets, health checks, and authenticated terminal WebSockets.
 - Hash `AUTH_PASSWORD` once with Argon2id before opening the HTTP listener; never log the password or compare it directly during login.
-- Preserve both authentication gates for `/ttyd`: normal HTTP requests pass through `ttydAuthGate`, while WebSocket upgrades are checked in the server `upgrade` handler.
-- Keep `ttyd` private on loopback port `7681` with base path `/ttyd`. The iframe URL, proxy path, service command, and Nixpacks start command must remain aligned.
-- Keep application-managed terminal sessions isolated on the `web-terminal` tmux socket. Session names must remain validated before they reach the attach-only ttyd wrapper, and browser disconnects or logout must not kill tmux sessions.
-- Treat terminal-session deletion as the only UI operation that intentionally stops the processes in a session. Do not add raw tmux commands or arbitrary ttyd URL arguments.
+- Keep terminal WebSockets in `ws` no-server mode at `/ws/terminal`. Authenticate upgrades with
+  the Express session middleware, require an exact same-origin `Origin`, validate session names,
+  and never create a session during an upgrade.
+- Keep application-managed terminal sessions process-local in `terminal-session-manager.js`. Each
+  named session owns one `node-pty` Bash process, a headless xterm with 10,000 lines of scrollback,
+  an ordered state/output queue, and at most one attached browser client.
+- Feed PTY output through headless xterm before sending it. Reconnect snapshots must serialize
+  retained normal scrollback and the active/alternate screen before live output resumes.
+- Browser disconnects, refresh, session switching, and logout must detach clients without stopping
+  PTYs. A newer client replaces the older client for the same named session.
+- Treat terminal-session deletion as the only UI operation that intentionally stops processes.
+  Signal every process in the PTY's Linux session with SIGHUP, then SIGKILL survivors after two
+  seconds. Natural shell exit removes the session.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy` because client-controlled forwarding headers could bypass IP-based rate limits.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
-- Keep `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` out of the terminal, ttyd, and chezmoi
+- Keep `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` out of terminal and chezmoi
   environments. Express must retain them.
-- Sessions use a bounded, expiring in-process `memorystore`. Do not configure multiple application replicas without first replacing it with shared session storage.
+- Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also
+  process-local. Do not configure multiple application replicas without replacing both designs.
+- Serve only the pinned xterm browser module, fit addon, and stylesheet through explicit
+  same-origin vendor routes. Do not copy package artifacts into the repository or add a bundler.
 - `views/` and `public/` are served directly; there is no frontend framework or asset build step.
 
 ## Deployment Configuration
@@ -49,14 +65,14 @@ node --check public/js/terminal.js
   architectures or ambiguous checksums.
 - Nixpacks installs Chromium for `agent-browser`; do not use agent-browser's runtime browser
   installer. Keep `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment.
-- `scripts/start.sh` supervises Express and ttyd. It must forward shutdown to both processes and
-  stop the container if either process exits. ttyd must invoke only the validated tmux attach
-  wrapper and accept the session name as its sole URL argument.
-- Keep ttyd private on loopback. Its terminal environment sets `HOME`, XDG directories, and PATH;
-  the Express process keeps the container's original HOME. The Node session API must use the same
-  sanitized terminal environment when creating tmux sessions.
+- Keep the compiler, make, Python, and pkg-config system packages required to build `node-pty`.
+  Do not add ttyd or tmux back to the image.
+- `scripts/start.sh` validates and creates terminal paths, applies chezmoi, and then replaces itself
+  with `node app.js`. The Node shutdown path must close WebSockets and terminate all child PTYs.
+- The PTY environment sets `HOME`, XDG directories, PATH, `TERM=xterm-256color`, and
+  `COLORTERM=truecolor`; the Express process keeps the container's original HOME.
 - Keep `TERMINAL_WORKDIR` defaulted to `/code` and `TERMINAL_HOME` defaulted to the effective work
-  directory. Both must be absolute, directory creation must remain idempotent, and new tmux
+  directory. Both must be absolute, directory creation must remain idempotent, and new PTY
   sessions must start in `TERMINAL_WORKDIR` with the managed terminal Bash configuration.
 - The terminal PATH must prioritize `/app/node_modules/.bin`, include `$TERMINAL_HOME/.local/bin`,
   and preserve the image PATH so pinned CLIs, user scripts, and Nix packages are callable.
@@ -69,4 +85,5 @@ node --check public/js/terminal.js
 - Keep the dotfiles repository aligned with the browser and MCP defaults. The web terminal uses
   agent-browser and GitHub's remote MCP; Massive remains an optional credential-gated dotfiles
   integration and is not installed in this image.
-- Treat `deploy/` as the manual VPS alternative. Update its systemd and Caddy examples whenever paths, ports, process commands, or the `/ttyd` base path change.
+- Treat `deploy/` as the manual VPS alternative. Update its systemd and Caddy examples whenever
+  paths, ports, process commands, or WebSocket routing change.

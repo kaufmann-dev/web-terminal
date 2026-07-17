@@ -1,5 +1,9 @@
 # Live Terminal Session Missing From API
 
+> **Historical and obsolete:** This record describes the removed tmux backend. Named sessions are
+> now tracked directly by the process-local `node-pty` session manager, so this parser and its
+> delimiter no longer exist.
+
 - Fixed: 2026-07-17 20:35:12 CEST (+0200)
 - Current commit: `8a897a3b9284daea98952226a3578f379debcfa5`
 

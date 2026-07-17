@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Terminal</title>
+  <link rel="stylesheet" href="/vendor/xterm/xterm.css">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="dark terminal-body">
@@ -47,7 +48,8 @@
       <div id="terminal-placeholder" class="terminal-placeholder">
         <p id="terminal-placeholder-message">Loading terminal sessions…</p>
       </div>
-      <iframe id="ttyd-frame" title="Terminal" sandbox="allow-scripts allow-same-origin allow-forms" hidden></iframe>
+      <div id="terminal-host" class="terminal-host" aria-label="Terminal input" hidden></div>
+      <div id="connection-status" class="connection-status" role="status" aria-live="polite" hidden></div>
     </section>
   </main>
   <script src="/static/js/terminal.js"></script>

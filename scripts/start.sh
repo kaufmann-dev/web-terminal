@@ -65,10 +65,6 @@ sync_dotfiles() {
     https://github.com/kaufmann-dev/dotfiles.git
 }
 
-stop_processes() {
-  kill "$ttyd_pid" "$app_pid" 2>/dev/null || true
-}
-
 require_absolute_path TERMINAL_WORKDIR "$TERMINAL_WORKDIR_VALUE"
 require_absolute_path TERMINAL_HOME "$TERMINAL_HOME_VALUE"
 mkdir -p \
@@ -80,30 +76,5 @@ mkdir -p \
 
 sync_dotfiles
 
-run_in_terminal_environment \
-  ttyd \
-  --interface 127.0.0.1 \
-  --port 7681 \
-  --base-path /ttyd \
-  --writable \
-  --url-arg \
-  /bin/bash "$APP_ROOT/scripts/attach-terminal-session.sh" &
-ttyd_pid=$!
-
-(
-  cd "$APP_ROOT"
-  exec node app.js
-) &
-app_pid=$!
-
-trap stop_processes INT TERM EXIT
-set +e
-wait -n "$ttyd_pid" "$app_pid"
-exit_status=$?
-set -e
-
-stop_processes
-wait "$ttyd_pid" 2>/dev/null || true
-wait "$app_pid" 2>/dev/null || true
-trap - EXIT
-exit "$exit_status"
+cd "$APP_ROOT"
+exec node app.js

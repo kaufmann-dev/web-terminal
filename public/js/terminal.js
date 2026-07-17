@@ -1,4 +1,9 @@
-(() => {
+(async () => {
+  const [{ Terminal }, { FitAddon }] = await Promise.all([
+    import('/vendor/xterm/xterm.mjs'),
+    import('/vendor/xterm/addon-fit.mjs'),
+  ]);
+
   const logoutBtn = document.getElementById('logout-btn');
   const sidebar = document.getElementById('session-sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -10,16 +15,19 @@
   const sessionList = document.getElementById('session-list');
   const sessionStatus = document.getElementById('session-status');
   const activeSessionLabel = document.getElementById('active-session-label');
-  const terminalFrame = document.getElementById('ttyd-frame');
+  const terminalHost = document.getElementById('terminal-host');
+  const connectionStatus = document.getElementById('connection-status');
   const terminalPlaceholder = document.getElementById('terminal-placeholder');
   const terminalPlaceholderMessage = document.getElementById('terminal-placeholder-message');
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
+  const noReconnectCloseCodes = new Set([4000, 4001, 4002, 4003, 4004]);
 
   let csrfToken = '';
   let sessions = [];
   let activeSessionName = null;
+  let activeController = null;
   let mutationInProgress = false;
 
   class ApiError extends Error {
@@ -58,6 +66,12 @@
     sessionStatus.classList.toggle('is-error', isError);
   }
 
+  function setConnectionStatus(message, isError = false) {
+    connectionStatus.textContent = message;
+    connectionStatus.classList.toggle('is-error', isError);
+    connectionStatus.hidden = !message;
+  }
+
   function setSidebarOpen(open) {
     document.body.classList.toggle('sessions-open', open);
     sidebarToggle.setAttribute('aria-expanded', String(open));
@@ -74,12 +88,259 @@
     window.history.replaceState({}, '', url);
   }
 
+  class TerminalController {
+    constructor(sessionName, onSessionExit) {
+      this.sessionName = sessionName;
+      this.onSessionExit = onSessionExit;
+      this.socket = null;
+      this.disposed = false;
+      this.ready = false;
+      this.reconnectDelay = 250;
+      this.reconnectTimer = null;
+      this.resizeTimer = null;
+      this.writeQueue = Promise.resolve();
+
+      this.terminal = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: 14,
+        scrollback: 10000,
+        theme: {
+          background: '#0b0c10',
+          foreground: '#c5c6c7',
+          cursor: '#66fcf1',
+          selectionBackground: '#285f5c',
+        },
+      });
+      this.fitAddon = new FitAddon();
+      this.terminal.loadAddon(this.fitAddon);
+      this.terminal.open(terminalHost);
+
+      this.inputDisposable = this.terminal.onData((data) => {
+        if (this.ready) {
+          this.send({ type: 'input', data });
+        }
+      });
+      this.binaryDisposable = this.terminal.onBinary((data) => {
+        if (this.ready) {
+          this.send({ type: 'binary', data: window.btoa(data) });
+        }
+      });
+      this.resizeObserver = new ResizeObserver(() => {
+        window.clearTimeout(this.resizeTimer);
+        this.resizeTimer = window.setTimeout(() => this.fitAndNotify(), 100);
+      });
+      this.resizeObserver.observe(terminalHost);
+      terminalHost.addEventListener('click', this.focusTerminal);
+
+      this.fitAndNotify();
+      this.connect();
+    }
+
+    focusTerminal = () => {
+      if (this.ready) {
+        this.terminal.focus();
+      }
+    };
+
+    dimensions() {
+      this.fitAddon.fit();
+      const cols = Math.min(500, Math.max(2, this.terminal.cols));
+      const rows = Math.min(200, Math.max(1, this.terminal.rows));
+      if (cols !== this.terminal.cols || rows !== this.terminal.rows) {
+        this.terminal.resize(cols, rows);
+      }
+      return { cols, rows };
+    }
+
+    fitAndNotify() {
+      if (this.disposed || !terminalHost.isConnected || terminalHost.hidden) {
+        return;
+      }
+      let size;
+      try {
+        size = this.dimensions();
+      } catch (err) {
+        return;
+      }
+      if (this.ready) {
+        this.send({ type: 'resize', ...size });
+      }
+    }
+
+    connect() {
+      if (this.disposed) {
+        return;
+      }
+
+      this.ready = false;
+      setConnectionStatus('Connecting…');
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${protocol}//${window.location.host}/ws/terminal?session=${encodeURIComponent(this.sessionName)}`;
+      const socket = new WebSocket(url);
+      socket.binaryType = 'arraybuffer';
+      this.socket = socket;
+
+      socket.addEventListener('open', () => {
+        if (this.socket !== socket || this.disposed) {
+          socket.close(1000, 'Terminal changed.');
+          return;
+        }
+        this.send({ type: 'attach', ...this.dimensions() });
+        setConnectionStatus('Restoring terminal…');
+      });
+
+      socket.addEventListener('message', (event) => {
+        if (this.socket !== socket || this.disposed) {
+          return;
+        }
+        if (typeof event.data !== 'string') {
+          const bytes = new Uint8Array(event.data);
+          this.writeQueue = this.writeQueue.then(() => new Promise((resolve) => {
+            this.terminal.write(bytes, resolve);
+          }));
+          return;
+        }
+
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch (err) {
+          socket.close(4000, 'Invalid server message.');
+          return;
+        }
+
+        if (message.type === 'snapshot') {
+          this.ready = false;
+          this.writeQueue = this.writeQueue.then(() => {
+            this.terminal.reset();
+          });
+          return;
+        }
+        if (message.type === 'ready') {
+          this.writeQueue = this.writeQueue.then(() => {
+            if (this.socket !== socket || this.disposed) {
+              return;
+            }
+            this.ready = true;
+            this.reconnectDelay = 250;
+            setConnectionStatus('');
+            this.terminal.focus();
+          });
+          return;
+        }
+        if (message.type === 'exit') {
+          this.ready = false;
+          setConnectionStatus('Terminal process exited.', true);
+          this.onSessionExit();
+          return;
+        }
+        if (message.type === 'error') {
+          setConnectionStatus(message.message || 'Terminal connection error.', true);
+        }
+      });
+
+      socket.addEventListener('close', (event) => {
+        if (this.socket !== socket || this.disposed) {
+          return;
+        }
+        this.socket = null;
+        this.ready = false;
+
+        if (event.code === 4001) {
+          setConnectionStatus('This session was opened in another tab.', true);
+          return;
+        }
+        if (event.code === 4002 || event.code === 4004) {
+          setConnectionStatus('Your login session has ended.', true);
+          window.location.href = '/';
+          return;
+        }
+        if (event.code === 4003) {
+          setConnectionStatus('Terminal session ended.', true);
+          this.onSessionExit();
+          return;
+        }
+        if (noReconnectCloseCodes.has(event.code)) {
+          setConnectionStatus(event.reason || 'Terminal connection closed.', true);
+          return;
+        }
+
+        setConnectionStatus('Connection lost. Reconnecting…', true);
+        this.scheduleReconnect();
+      });
+
+      socket.addEventListener('error', () => {
+        if (this.socket === socket && !this.disposed) {
+          setConnectionStatus('Terminal connection error.', true);
+        }
+      });
+    }
+
+    scheduleReconnect() {
+      window.clearTimeout(this.reconnectTimer);
+      const delay = this.reconnectDelay;
+      this.reconnectDelay = Math.min(5000, this.reconnectDelay * 2);
+      this.reconnectTimer = window.setTimeout(async () => {
+        if (this.disposed) {
+          return;
+        }
+        try {
+          const data = await apiRequest('/api/terminal-sessions');
+          if (!(data.sessions || []).some((session) => session.name === this.sessionName)) {
+            setConnectionStatus('Terminal session ended.', true);
+            this.onSessionExit();
+            return;
+          }
+          this.connect();
+        } catch (err) {
+          if (!this.disposed && (!(err instanceof ApiError) || err.status !== 401)) {
+            this.scheduleReconnect();
+          }
+        }
+      }, delay);
+    }
+
+    send(message) {
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify(message));
+      }
+    }
+
+    dispose() {
+      if (this.disposed) {
+        return;
+      }
+      this.disposed = true;
+      this.ready = false;
+      window.clearTimeout(this.reconnectTimer);
+      window.clearTimeout(this.resizeTimer);
+      this.resizeObserver.disconnect();
+      terminalHost.removeEventListener('click', this.focusTerminal);
+      this.inputDisposable.dispose();
+      this.binaryDisposable.dispose();
+      if (this.socket && (this.socket.readyState === WebSocket.CONNECTING
+        || this.socket.readyState === WebSocket.OPEN)) {
+        this.socket.close(1000, 'Terminal changed.');
+      }
+      this.terminal.dispose();
+      terminalHost.replaceChildren();
+    }
+  }
+
+  function disposeActiveController() {
+    if (activeController) {
+      activeController.dispose();
+      activeController = null;
+    }
+  }
+
   function showEmptyTerminal(message) {
+    disposeActiveController();
     activeSessionName = null;
     activeSessionLabel.textContent = '';
-    terminalFrame.hidden = true;
-    terminalFrame.removeAttribute('src');
-    terminalFrame.dataset.session = '';
+    terminalHost.hidden = true;
+    setConnectionStatus('');
     terminalPlaceholderMessage.textContent = message;
     terminalPlaceholder.hidden = false;
     updateTerminalUrl(null);
@@ -91,15 +352,17 @@
       return;
     }
 
-    activeSessionName = name;
-    activeSessionLabel.textContent = `/ ${name}`;
-    terminalPlaceholder.hidden = true;
-    terminalFrame.hidden = false;
-    terminalFrame.title = `Terminal session ${name}`;
-
-    if (terminalFrame.dataset.session !== name) {
-      terminalFrame.dataset.session = name;
-      terminalFrame.src = `/ttyd/?arg=${encodeURIComponent(name)}`;
+    if (activeSessionName !== name || !activeController) {
+      disposeActiveController();
+      activeSessionName = name;
+      activeSessionLabel.textContent = `/ ${name}`;
+      terminalPlaceholder.hidden = true;
+      terminalHost.hidden = false;
+      activeController = new TerminalController(name, () => {
+        window.setTimeout(() => {
+          refreshSessions().catch((err) => setStatus(err.message, true));
+        }, 0);
+      });
     }
 
     updateTerminalUrl(name);
@@ -129,7 +392,7 @@
     const details = document.createElement('span');
     details.className = 'session-row-details';
     const clientLabel = session.attachedClients === 1 ? 'client' : 'clients';
-    details.textContent = `${session.attachedClients} ${clientLabel} · ${session.windows} windows`;
+    details.textContent = `${session.attachedClients} ${clientLabel}`;
 
     openButton.append(name, details);
     openButton.addEventListener('click', () => selectSession(session.name, { closeSidebar: true }));
@@ -329,5 +592,11 @@
     }
   }, refreshIntervalMs);
 
-  initialize();
-})();
+  await initialize();
+})().catch((err) => {
+  const status = document.getElementById('session-status');
+  const placeholder = document.getElementById('terminal-placeholder-message');
+  status.textContent = err.message || 'Unable to initialize the terminal.';
+  status.classList.add('is-error');
+  placeholder.textContent = 'Terminal initialization failed.';
+});

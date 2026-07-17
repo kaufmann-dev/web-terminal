@@ -437,11 +437,40 @@ body.dark {
   position: relative;
 }
 
-.terminal-workspace iframe {
+.terminal-host {
   width: 100%;
   height: 100%;
-  border: none;
-  display: block;
+  padding: 0.35rem 0.45rem;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+}
+
+.terminal-host .xterm-viewport {
+  overscroll-behavior: contain;
+}
+
+.connection-status {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.9rem;
+  z-index: 5;
+  max-width: min(28rem, calc(100% - 1.8rem));
+  padding: 0.35rem 0.55rem;
+  background: rgba(20, 25, 34, 0.92);
+  color: var(--text);
+  border: 1px solid rgba(69, 162, 158, 0.45);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.connection-status.is-error {
+  color: var(--error);
+  border-color: rgba(255, 107, 107, 0.55);
 }
 
 .terminal-placeholder {

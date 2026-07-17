@@ -1,20 +1,29 @@
 # Browser Disconnect Stops Terminal Work
 
-- Fixed: 2026-07-17 17:02:41 UTC (+0000)
-- Current commit: `e83a86b3849868f622cda00f3cf16147ef589fbd`
+- Fixed: 2026-07-17 22:51:00 CEST (+0200)
+- Pre-fix commit: `aafda95b10ce9e061740fe90150b77b1a316947a`
 
 ## Symptom
 
-Closing the terminal page, losing the browser connection, or logging out stopped the active shell and foreground programs such as Codex. Deleting an attached terminal session could also crash the Node process while handling the closed WebSocket.
+Closing the terminal page, losing the browser connection, or logging out originally stopped the
+active shell and foreground programs such as Codex. The intermediate tmux fix preserved work but
+introduced a second terminal state and made scrolling unreliable.
 
 ## Confirmed Root Cause
 
-`ttyd` spawned `/bin/bash` directly for each WebSocket client and sent its default SIGHUP when that client disconnected. The shell and its foreground process therefore belonged to the browser connection and exited with it. The proxy error callback also assumed its response argument was always an Express response, although WebSocket errors provide a raw socket.
+ttyd originally owned the shell process and sent SIGHUP when its WebSocket client disconnected.
+Moving the shell into tmux separated it from the browser lifetime, but ttyd and tmux then retained
+independent terminal states.
 
 ## Changes
 
-- Added application-managed sessions on the dedicated `web-terminal` tmux socket so browser connections attach and detach without owning the shell process.
-- Added authenticated, CSRF-protected APIs and a responsive UI for listing, creating, opening, and deleting named sessions.
-- Added an attach-only wrapper that validates the single ttyd URL argument before invoking tmux.
-- Added tmux to both deployment paths and documented the session lifecycle.
-- Updated the ttyd proxy error handler to handle both HTTP responses and WebSocket sockets without crashing Node.
+- Express now owns one `node-pty` Bash process per validated named session. WebSocket attachment is
+  separate from PTY lifetime, so disconnect, refresh, session switching, and logout only detach the
+  browser.
+- Output produced without a browser is processed by headless xterm and included in the next ordered
+  reconnect snapshot.
+- A newer browser client replaces the older client without stopping the PTY.
+- Natural shell exit removes the named session. Explicit deletion remains destructive and signals
+  every process in the PTY's Linux session, escalating survivors after two seconds.
+- Application shutdown performs the same PTY cleanup. Sessions remain process-local and do not
+  survive application or container restarts.
