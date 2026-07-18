@@ -125,15 +125,6 @@ body.dark {
   letter-spacing: -0.025em;
 }
 
-.login-card h1::before {
-  display: block;
-  width: 32px;
-  height: 2px;
-  margin-bottom: 14px;
-  background: var(--accent-bright);
-  content: "";
-}
-
 .field {
   margin-bottom: 18px;
 }
