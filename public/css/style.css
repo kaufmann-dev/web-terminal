@@ -301,6 +301,13 @@ body.dark {
   display: none;
 }
 
+.sidebar-toggle-icon {
+  width: 15px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 -5px currentColor, 0 5px currentColor;
+}
+
 .btn-logout {
   height: 30px;
   padding: 0 11px;
