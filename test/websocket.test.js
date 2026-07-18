@@ -212,3 +212,40 @@ test('terminal PATH includes locally installed image commands', () => {
     process.env.PATH = originalPath;
   }
 });
+
+test('terminal environment pins a UTF-8 locale and removes server credentials', () => {
+  const overrides = {
+    LANG: 'C',
+    LC_CTYPE: 'C',
+    LC_ALL: 'C',
+    AUTH_EMAIL: 'secret@example.com',
+    AUTH_PASSWORD: 'secret-password',
+    SESSION_SECRET: 'secret-session',
+  };
+  const originals = Object.fromEntries(
+    Object.keys(overrides).map((name) => [name, process.env[name]]),
+  );
+  Object.assign(process.env, overrides);
+
+  try {
+    const environment = createTerminalEnvironment({
+      terminalHome: '/terminal-home',
+      terminalWorkdir: '/terminal-workdir',
+    });
+
+    assert.equal(environment.LANG, 'C.UTF-8');
+    assert.equal(environment.LC_CTYPE, 'C.UTF-8');
+    assert.equal(Object.hasOwn(environment, 'LC_ALL'), false);
+    assert.equal(Object.hasOwn(environment, 'AUTH_EMAIL'), false);
+    assert.equal(Object.hasOwn(environment, 'AUTH_PASSWORD'), false);
+    assert.equal(Object.hasOwn(environment, 'SESSION_SECRET'), false);
+  } finally {
+    for (const [name, value] of Object.entries(originals)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+});

@@ -120,6 +120,8 @@ the deployment image and available immediately as `codex` and `opencode`.
   tab or regaining browser connectivity immediately retries any pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. There is no tmux copy mode, Codex-specific wheel
   routing, or synthetic keyboard input.
+- Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
+  locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab
   without stopping the PTY.
 - Deleting a terminal session is destructive: it sends SIGHUP to every process in the PTY's Linux

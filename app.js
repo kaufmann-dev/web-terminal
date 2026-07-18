@@ -49,6 +49,8 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
   const terminalEnvironment = {
     ...process.env,
     HOME: terminalHome,
+    LANG: 'C.UTF-8',
+    LC_CTYPE: 'C.UTF-8',
     XDG_CONFIG_HOME: path.join(terminalHome, '.config'),
     XDG_DATA_HOME: path.join(terminalHome, '.local', 'share'),
     XDG_CACHE_HOME: path.join(terminalHome, '.cache'),
@@ -71,6 +73,7 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
   delete terminalEnvironment.AUTH_EMAIL;
   delete terminalEnvironment.AUTH_PASSWORD;
   delete terminalEnvironment.SESSION_SECRET;
+  delete terminalEnvironment.LC_ALL;
   return terminalEnvironment;
 }
 
