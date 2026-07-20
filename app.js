@@ -4,16 +4,13 @@ require('dotenv').config();
 
 const http = require('http');
 const path = require('path');
-const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const MemoryStore = require('memorystore')(session);
-const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const helmet = require('helmet');
 const compression = require('compression');
-const argon2 = require('argon2');
 const { WebSocketServer } = require('ws');
 const {
   IMAGE_TYPES,
@@ -32,23 +29,13 @@ const TERMINAL_SESSION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const MAX_WEBSOCKET_PAYLOAD = 1024 * 1024;
 const ATTACH_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 30000;
+const OIDC_TRANSACTION_TTL_MS = 10 * 60 * 1000;
+const SESSION_IDLE_TTL_MS = 24 * 60 * 60 * 1000;
+const SESSION_ABSOLUTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WEBSOCKET_ACTIVITY_DEBOUNCE_MS = 15000;
 
 function isValidTerminalSessionName(name) {
   return typeof name === 'string' && TERMINAL_SESSION_NAME_PATTERN.test(name);
-}
-
-function timingSafeEqualString(a, b) {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) {
-    const maxLen = Math.max(bufA.length, bufB.length);
-    const padA = Buffer.alloc(maxLen);
-    const padB = Buffer.alloc(maxLen);
-    bufA.copy(padA);
-    bufB.copy(padB);
-    return crypto.timingSafeEqual(padA, padB) && false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function createTerminalEnvironment({
@@ -92,11 +79,70 @@ function createTerminalEnvironment({
     delete terminalEnvironment.FONTCONFIG_PATH;
   }
 
-  delete terminalEnvironment.AUTH_EMAIL;
-  delete terminalEnvironment.AUTH_PASSWORD;
+  delete terminalEnvironment.OIDC_ISSUER_URL;
+  delete terminalEnvironment.OIDC_CLIENT_ID;
+  delete terminalEnvironment.OIDC_CLIENT_SECRET;
+  delete terminalEnvironment.OIDC_ALLOWED_SUBJECT;
   delete terminalEnvironment.SESSION_SECRET;
   delete terminalEnvironment.LC_ALL;
   return terminalEnvironment;
+}
+
+function normalizeIssuerUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value.trim());
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:')
+      || url.username
+      || url.password
+      || url.search
+      || url.hash) {
+      return null;
+    }
+    return url.href;
+  } catch (err) {
+    return null;
+  }
+}
+
+function getApplicationSessionDeadline(authSession) {
+  if (!authSession || !Number.isFinite(authSession.loginAt)
+    || !Number.isFinite(authSession.lastActivityAt)) {
+    return null;
+  }
+  return Math.min(
+    authSession.lastActivityAt + SESSION_IDLE_TTL_MS,
+    authSession.loginAt + SESSION_ABSOLUTE_TTL_MS,
+  );
+}
+
+function isApplicationSessionActive(authSession, now) {
+  const deadline = getApplicationSessionDeadline(authSession);
+  return Boolean(authSession && authSession.authenticated && deadline !== null && now < deadline);
+}
+
+function applyApplicationSessionDeadline(authSession) {
+  const deadline = getApplicationSessionDeadline(authSession);
+  if (deadline === null || !authSession.cookie) {
+    return null;
+  }
+  authSession.cookie.expires = new Date(deadline);
+  return deadline;
+}
+
+function saveRequestSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+function regenerateRequestSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()));
+  });
 }
 
 function normalizePublicOrigin(value) {
@@ -145,9 +191,12 @@ function isStrictBase64(value) {
 
 function createWebTerminal(options = {}) {
   const configuredPublicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN;
+  const configuredIssuerUrl = options.oidcIssuerUrl ?? process.env.OIDC_ISSUER_URL;
   const config = {
-    authEmail: options.authEmail ?? process.env.AUTH_EMAIL,
-    authPassword: options.authPassword ?? process.env.AUTH_PASSWORD,
+    oidcIssuerUrl: normalizeIssuerUrl(configuredIssuerUrl),
+    oidcClientId: options.oidcClientId ?? process.env.OIDC_CLIENT_ID,
+    oidcClientSecret: options.oidcClientSecret ?? process.env.OIDC_CLIENT_SECRET,
+    oidcAllowedSubject: options.oidcAllowedSubject ?? process.env.OIDC_ALLOWED_SUBJECT,
     sessionSecret: options.sessionSecret ?? process.env.SESSION_SECRET,
     publicOrigin: normalizePublicOrigin(configuredPublicOrigin),
     terminalWorkdir: options.terminalWorkdir ?? process.env.TERMINAL_WORKDIR ?? '/code',
@@ -157,6 +206,9 @@ function createWebTerminal(options = {}) {
       ?? '/code',
     nodeEnv: options.nodeEnv ?? process.env.NODE_ENV ?? 'production',
     port: options.port ?? Number(process.env.PORT || 3000),
+    heartbeatIntervalMs: options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS,
+    websocketActivityDebounceMs:
+      options.websocketActivityDebounceMs ?? WEBSOCKET_ACTIVITY_DEBOUNCE_MS,
     clipboardImageDirectory: options.clipboardImageDirectory
       ?? path.join(
         options.terminalHome
@@ -169,10 +221,15 @@ function createWebTerminal(options = {}) {
       ),
   };
 
-  if (!config.authEmail || !config.authPassword || !config.sessionSecret || !configuredPublicOrigin) {
+  if (!configuredIssuerUrl || !config.oidcClientId || !config.oidcClientSecret
+    || !config.oidcAllowedSubject || !config.sessionSecret || !configuredPublicOrigin) {
     throw new Error(
-      'Missing required environment variables: AUTH_EMAIL, AUTH_PASSWORD, SESSION_SECRET, PUBLIC_ORIGIN',
+      'Missing required environment variables: OIDC_ISSUER_URL, OIDC_CLIENT_ID, '
+      + 'OIDC_CLIENT_SECRET, OIDC_ALLOWED_SUBJECT, SESSION_SECRET, PUBLIC_ORIGIN',
     );
+  }
+  if (!config.oidcIssuerUrl) {
+    throw new Error('OIDC_ISSUER_URL must be an HTTP(S) URL without credentials, query, or fragment.');
   }
   if (!config.publicOrigin) {
     throw new Error('PUBLIC_ORIGIN must be an HTTP(S) origin without a path, query, or fragment.');
@@ -190,13 +247,10 @@ function createWebTerminal(options = {}) {
     terminalWorkdir: config.terminalWorkdir,
     bashRcPath: path.join(__dirname, 'scripts', 'terminal.bashrc'),
   });
-  const hashPassword = options.hashPassword || ((password) => argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 65536,
-    timeCost: 3,
-    parallelism: 4,
-  }));
-  const verifyPassword = options.verifyPassword || argon2.verify;
+  const now = options.now || Date.now;
+  const suppliedOpenidClient = options.openidClient;
+  let openidClient;
+  let oidcConfiguration;
 
   const app = express();
   app.set('trust proxy', 1);
@@ -221,7 +275,18 @@ function createWebTerminal(options = {}) {
   const sessionStore = new MemoryStore({
     checkPeriod: 60 * 60 * 1000,
     max: 1000,
+    ttl: (_storeOptions, storedSession) => {
+      const applicationDeadline = getApplicationSessionDeadline(storedSession);
+      const transactionDeadline = storedSession?.oidcTransaction
+        ? storedSession.oidcTransaction.createdAt + OIDC_TRANSACTION_TTL_MS
+        : null;
+      const deadline = applicationDeadline ?? transactionDeadline;
+      return Number.isFinite(deadline) ? Math.max(1, deadline - now()) : 1;
+    },
   });
+  // Passive requests must not move the store deadline. Interactive activity
+  // explicitly saves the session with its recalculated cookie expiry.
+  sessionStore.touch = undefined;
   const sessionMiddleware = session({
     name: 'terminal.sid',
     secret: config.sessionSecret,
@@ -232,7 +297,6 @@ function createWebTerminal(options = {}) {
       httpOnly: true,
       secure: config.nodeEnv === 'production',
       sameSite: 'Lax',
-      maxAge: 24 * 60 * 60 * 1000,
     },
   });
   app.use(sessionMiddleware);
@@ -255,23 +319,69 @@ function createWebTerminal(options = {}) {
     getCsrfTokenFromRequest: (req) => req.headers['csrf-token'],
   });
 
-  const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true,
-    message: 'Too many login attempts. Please try again later.',
+  const loginSockets = new Map();
+
+  function trackLoginSocket(loginSessionId, socket) {
+    let sockets = loginSockets.get(loginSessionId);
+    if (!sockets) {
+      sockets = new Set();
+      loginSockets.set(loginSessionId, sockets);
+    }
+    sockets.add(socket);
+    socket.on('close', () => {
+      sockets.delete(socket);
+      if (sockets.size === 0) {
+        loginSockets.delete(loginSessionId);
+      }
+    });
+  }
+
+  function closeLoginSockets(loginSessionId, code, reason) {
+    const sockets = loginSockets.get(loginSessionId);
+    if (!sockets) {
+      return;
+    }
+    for (const socket of sockets) {
+      if (socket.readyState === 0 || socket.readyState === 1) {
+        socket.skipActivityFlush = true;
+        socket.close(code, reason);
+      }
+    }
+  }
+
+  function destroyRequestLogin(req, callback = () => {}) {
+    const loginSessionId = req.sessionID;
+    closeLoginSockets(loginSessionId, SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+    req.session.destroy((err) => callback(err));
+  }
+
+  function recordHttpActivity(req) {
+    const activityAt = now();
+    if (!isApplicationSessionActive(req.session, activityAt)) {
+      return false;
+    }
+    req.session.lastActivityAt = activityAt;
+    applyApplicationSessionDeadline(req.session);
+    return true;
+  }
+
+  app.use((req, res, next) => {
+    if (req.session) {
+      req.session.touch = () => req.session;
+    }
+    if (!req.session || !req.session.authenticated
+      || isApplicationSessionActive(req.session, now())) {
+      next();
+      return;
+    }
+    destroyRequestLogin(req, (err) => {
+      if (err) {
+        next(err);
+        return;
+      }
+      next();
+    });
   });
-  const bruteForceLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true,
-    message: 'Too many requests from this IP. Please try again later.',
-  });
-  app.use('/login', bruteForceLimiter);
 
   app.use('/static', express.static(path.join(__dirname, 'public')));
 
@@ -331,43 +441,102 @@ function createWebTerminal(options = {}) {
     return res.sendFile(path.join(__dirname, 'views', 'login.html'));
   });
 
-  app.get('/login', (req, res) => {
+  app.get('/login', async (req, res) => {
     if (req.session && req.session.authenticated) {
       return res.redirect('/terminal');
     }
-    return res.sendFile(path.join(__dirname, 'views', 'login.html'));
-  });
-
-  let authPasswordHash;
-  app.post('/login', loginLimiter, doubleCsrfProtection, async (req, res) => {
-    const { email, password } = req.body || {};
-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!timingSafeEqualString(normalizedEmail, config.authEmail.toLowerCase())) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    let passwordMatch = false;
     try {
-      passwordMatch = await verifyPassword(authPasswordHash, password);
+      const codeVerifier = openidClient.randomPKCECodeVerifier();
+      const codeChallenge = await openidClient.calculatePKCECodeChallenge(codeVerifier);
+      const transaction = {
+        codeVerifier,
+        state: openidClient.randomState(),
+        nonce: openidClient.randomNonce(),
+        createdAt: now(),
+      };
+      req.session.oidcTransaction = transaction;
+      req.session.cookie.expires = new Date(transaction.createdAt + OIDC_TRANSACTION_TTL_MS);
+      await saveRequestSession(req);
+      const authorizationUrl = openidClient.buildAuthorizationUrl(oidcConfiguration, {
+        redirect_uri: `${config.publicOrigin}/auth/callback`,
+        scope: 'openid',
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        state: transaction.state,
+        nonce: transaction.nonce,
+      });
+      return res.redirect(authorizationUrl.href);
     } catch (err) {
-      console.error('Password verification error:', err.message);
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      console.error('OIDC authorization initialization error:', err.message);
+      return res.status(503).send('Unable to start sign-in.');
     }
-    if (!passwordMatch) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    req.session.authenticated = true;
-    req.session.email = normalizedEmail;
-    req.session.loginAt = new Date().toISOString();
-    return res.json({ success: true, redirect: '/terminal' });
   });
 
-  app.get('/csrf-token', (req, res) => {
+  app.get('/auth/callback', async (req, res) => {
+    const transaction = req.session && req.session.oidcTransaction;
+    if (!transaction || typeof transaction !== 'object'
+      || !Number.isFinite(transaction.createdAt)
+      || now() - transaction.createdAt >= OIDC_TRANSACTION_TTL_MS
+      || now() < transaction.createdAt) {
+      if (transaction) {
+        await new Promise((resolve) => req.session.destroy(() => resolve()));
+      }
+      return res.status(400).send('Invalid or expired sign-in transaction.');
+    }
+
+    delete req.session.oidcTransaction;
+    try {
+      await saveRequestSession(req);
+    } catch (err) {
+      console.error('OIDC transaction invalidation error:', err.message);
+      return res.status(500).send('Unable to complete sign-in.');
+    }
+
+    let tokens;
+    try {
+      const callbackUrl = new URL(req.originalUrl, config.publicOrigin);
+      tokens = await openidClient.authorizationCodeGrant(oidcConfiguration, callbackUrl, {
+        pkceCodeVerifier: transaction.codeVerifier,
+        expectedState: transaction.state,
+        expectedNonce: transaction.nonce,
+      });
+    } catch (err) {
+      console.error('OIDC callback validation error:', err.message);
+      return res.status(400).send('Invalid sign-in response.');
+    }
+
+    const claims = tokens.claims();
+    const metadata = oidcConfiguration.serverMetadata();
+    if (!claims || typeof tokens.id_token !== 'string') {
+      return res.status(400).send('The identity provider did not return a valid ID token.');
+    }
+    if (claims.iss !== metadata.issuer || claims.sub !== config.oidcAllowedSubject) {
+      await new Promise((resolve) => req.session.destroy(() => resolve()));
+      return res.status(403).send('This identity is not allowed to access the terminal.');
+    }
+
+    try {
+      await regenerateRequestSession(req);
+      req.session.touch = () => req.session;
+      const loginAt = now();
+      req.session.authenticated = true;
+      req.session.issuer = claims.iss;
+      req.session.subject = claims.sub;
+      req.session.loginAt = loginAt;
+      req.session.lastActivityAt = loginAt;
+      req.session.idToken = tokens.id_token;
+      applyApplicationSessionDeadline(req.session);
+      await saveRequestSession(req);
+      return res.redirect('/terminal');
+    } catch (err) {
+      console.error('Application session creation error:', err.message);
+      return res.status(500).send('Unable to complete sign-in.');
+    } finally {
+      tokens = undefined;
+    }
+  });
+
+  app.get('/csrf-token', requireApiAuth, (req, res) => {
     req.session.csrfInitialized = true;
     res.json({ csrfToken: generateCsrfToken(req, res) });
   });
@@ -385,7 +554,9 @@ function createWebTerminal(options = {}) {
     }
 
     try {
-      return res.status(201).json({ session: sessionManager.createSession(name) });
+      const terminalSession = sessionManager.createSession(name);
+      recordHttpActivity(req);
+      return res.status(201).json({ session: terminalSession });
     } catch (err) {
       if (err instanceof DuplicateTerminalSessionError
         || err.code === 'TERMINAL_SESSION_EXISTS') {
@@ -411,6 +582,7 @@ function createWebTerminal(options = {}) {
       }
       try {
         const imagePath = await clipboardImageStore.save(req.body, contentType);
+        recordHttpActivity(req);
         return res.status(201).json({ path: imagePath });
       } catch (err) {
         if (err instanceof ClipboardImageValidationError
@@ -437,6 +609,7 @@ function createWebTerminal(options = {}) {
         if (!(await sessionManager.deleteSession(name))) {
           return res.status(404).json({ error: 'Terminal session not found.' });
         }
+        recordHttpActivity(req);
         return res.status(204).end();
       } catch (err) {
         console.error('Terminal session service error:', err.message);
@@ -446,48 +619,32 @@ function createWebTerminal(options = {}) {
   );
 
   app.get('/terminal', requireAuth, (req, res) => {
+    recordHttpActivity(req);
     res.sendFile(path.join(__dirname, 'views', 'terminal.html'));
   });
 
-  const loginSockets = new Map();
-
-  function trackLoginSocket(loginSessionId, socket) {
-    let sockets = loginSockets.get(loginSessionId);
-    if (!sockets) {
-      sockets = new Set();
-      loginSockets.set(loginSessionId, sockets);
-    }
-    sockets.add(socket);
-    socket.on('close', () => {
-      sockets.delete(socket);
-      if (sockets.size === 0) {
-        loginSockets.delete(loginSessionId);
-      }
-    });
-  }
-
-  function closeLoginSockets(loginSessionId, code, reason) {
-    const sockets = loginSockets.get(loginSessionId);
-    if (!sockets) {
-      return;
-    }
-    for (const socket of sockets) {
-      if (socket.readyState === 0 || socket.readyState === 1) {
-        socket.close(code, reason);
-      }
-    }
-  }
-
   app.post('/logout', requireAuth, doubleCsrfProtection, (req, res) => {
     const loginSessionId = req.sessionID;
+    const idToken = req.session.idToken;
+    const logoutUrl = openidClient.buildEndSessionUrl(oidcConfiguration, {
+      id_token_hint: idToken,
+      post_logout_redirect_uri: `${config.publicOrigin}/`,
+    });
     closeLoginSockets(loginSessionId, SOCKET_CLOSE_CODES.LOGGED_OUT, 'Logged out.');
     req.session.destroy((err) => {
       if (err) {
         console.error('Session destruction error:', err);
         return res.status(500).json({ error: 'Logout failed.' });
       }
-      res.clearCookie('terminal.sid');
-      return res.json({ success: true, redirect: '/' });
+      const cookieOptions = {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.nodeEnv === 'production',
+        path: '/',
+      };
+      res.clearCookie('terminal.sid', cookieOptions);
+      res.clearCookie('terminal.csrf', cookieOptions);
+      return res.json({ success: true, redirect: logoutUrl.href });
     });
   });
 
@@ -513,9 +670,70 @@ function createWebTerminal(options = {}) {
     }
   }
 
-  function handleTerminalSocket(socket, request, sessionName, loginSessionId) {
+  function persistSocketActivity(socket) {
+    if (!socket.activityPending || socket.skipActivityFlush) {
+      return;
+    }
+    socket.activityPending = false;
+    socket.lastActivityPersistedAt = now();
+    sessionStore.get(socket.loginSessionId, (getError, storedSession) => {
+      if (getError || !storedSession || !storedSession.authenticated) {
+        if (socket.readyState === 0 || socket.readyState === 1) {
+          socket.close(SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+        }
+        return;
+      }
+      storedSession.lastActivityAt = Math.max(
+        storedSession.lastActivityAt || 0,
+        socket.authSession.lastActivityAt,
+      );
+      applyApplicationSessionDeadline(storedSession);
+      socket.authSession = storedSession;
+      sessionStore.set(socket.loginSessionId, storedSession, (setError) => {
+        if (setError) {
+          console.error('WebSocket activity persistence error:', setError.message);
+        }
+      });
+    });
+  }
+
+  function expireSocketAuthentication(socket) {
+    socket.skipActivityFlush = true;
+    sessionStore.destroy(socket.loginSessionId, () => {});
+    socket.close(SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+  }
+
+  function recordSocketActivity(socket, activityAt) {
+    if (!isApplicationSessionActive(socket.authSession, activityAt)) {
+      expireSocketAuthentication(socket);
+      return false;
+    }
+    socket.authSession.lastActivityAt = activityAt;
+    applyApplicationSessionDeadline(socket.authSession);
+    socket.activityPending = true;
+    const elapsed = activityAt - socket.lastActivityPersistedAt;
+    if (!socket.lastActivityPersistedAt || elapsed >= config.websocketActivityDebounceMs) {
+      persistSocketActivity(socket);
+      return true;
+    }
+    if (!socket.activityTimer) {
+      socket.activityTimer = setTimeout(() => {
+        socket.activityTimer = null;
+        persistSocketActivity(socket);
+      }, config.websocketActivityDebounceMs - elapsed);
+      socket.activityTimer.unref();
+    }
+    return true;
+  }
+
+  function handleTerminalSocket(socket, request, sessionName, loginSessionId, authSession) {
     socket.isAlive = true;
     socket.loginSessionId = loginSessionId;
+    socket.authSession = authSession;
+    socket.lastActivityPersistedAt = 0;
+    socket.activityPending = false;
+    socket.activityTimer = null;
+    socket.skipActivityFlush = false;
     trackLoginSocket(loginSessionId, socket);
     socket.on('pong', () => {
       socket.isAlive = true;
@@ -578,8 +796,15 @@ function createWebTerminal(options = {}) {
       }
 
       if (message.type === 'input' && typeof message.data === 'string') {
+        const activityAt = now();
+        if (!isApplicationSessionActive(socket.authSession, activityAt)) {
+          expireSocketAuthentication(socket);
+          return;
+        }
         if (!sessionManager.writeInput(sessionName, socket, message.data)) {
           closeWithProtocolError(socket, 'Terminal is not attached.');
+        } else {
+          recordSocketActivity(socket, activityAt);
         }
         return;
       }
@@ -587,9 +812,16 @@ function createWebTerminal(options = {}) {
       if (message.type === 'binary'
         && typeof message.data === 'string'
         && isStrictBase64(message.data)) {
+        const activityAt = now();
+        if (!isApplicationSessionActive(socket.authSession, activityAt)) {
+          expireSocketAuthentication(socket);
+          return;
+        }
         const data = Buffer.from(message.data, 'base64');
         if (!sessionManager.writeBinary(sessionName, socket, data)) {
           closeWithProtocolError(socket, 'Terminal is not attached.');
+        } else {
+          recordSocketActivity(socket, activityAt);
         }
         return;
       }
@@ -611,6 +843,9 @@ function createWebTerminal(options = {}) {
 
     socket.on('close', () => {
       clearTimeout(attachTimer);
+      clearTimeout(socket.activityTimer);
+      socket.activityTimer = null;
+      persistSocketActivity(socket);
       sessionManager.detachClient(sessionName, socket);
     });
   }
@@ -621,7 +856,35 @@ function createWebTerminal(options = {}) {
     }
 
     await clipboardImageStore.initialize();
-    authPasswordHash = await hashPassword(config.authPassword);
+    openidClient = suppliedOpenidClient || await import('openid-client');
+    oidcConfiguration = await openidClient.discovery(
+      new URL(config.oidcIssuerUrl),
+      config.oidcClientId,
+      config.oidcClientSecret,
+    );
+    const oidcMetadata = oidcConfiguration.serverMetadata();
+    if (typeof oidcMetadata.issuer !== 'string'
+      || new URL(oidcMetadata.issuer).href !== config.oidcIssuerUrl) {
+      throw new Error('OIDC discovery metadata issuer does not match OIDC_ISSUER_URL.');
+    }
+    const requiredEndpoints = [
+      ['authorization_endpoint', oidcMetadata.authorization_endpoint],
+      ['token_endpoint', oidcMetadata.token_endpoint],
+      ['end_session_endpoint', oidcMetadata.end_session_endpoint],
+    ];
+    for (const [name, endpoint] of requiredEndpoints) {
+      if (typeof endpoint !== 'string' || !endpoint) {
+        throw new Error(`OIDC discovery metadata is missing ${name}.`);
+      }
+      try {
+        const endpointUrl = new URL(endpoint);
+        if (endpointUrl.protocol !== 'https:' && endpointUrl.protocol !== 'http:') {
+          throw new Error('unsupported protocol');
+        }
+      } catch (err) {
+        throw new Error(`OIDC discovery metadata has an invalid ${name}.`);
+      }
+    }
     server = http.createServer(app);
     webSocketServer = new WebSocketServer({
       noServer: true,
@@ -647,7 +910,12 @@ function createWebTerminal(options = {}) {
       }
 
       sessionMiddleware(req, {}, () => {
-        if (!req.session || !req.session.authenticated) {
+        const upgradeAt = now();
+        if (!req.session || !isApplicationSessionActive(req.session, upgradeAt)) {
+          if (req.session && req.session.authenticated) {
+            closeLoginSockets(req.sessionID, SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+            req.session.destroy(() => {});
+          }
           rejectUpgrade(socket, 401, 'Authentication required.');
           return;
         }
@@ -663,7 +931,7 @@ function createWebTerminal(options = {}) {
         }
 
         webSocketServer.handleUpgrade(req, socket, head, (webSocket) => {
-          handleTerminalSocket(webSocket, req, sessionName, req.sessionID);
+          handleTerminalSocket(webSocket, req, sessionName, req.sessionID, req.session);
         });
       });
     });
@@ -677,13 +945,25 @@ function createWebTerminal(options = {}) {
         socket.isAlive = false;
         socket.ping();
         sessionStore.get(socket.loginSessionId, (err, storedSession) => {
-          if ((err || !storedSession || !storedSession.authenticated)
-            && (socket.readyState === 0 || socket.readyState === 1)) {
-            socket.close(SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+          if (!err && storedSession && socket.activityPending) {
+            storedSession.lastActivityAt = Math.max(
+              storedSession.lastActivityAt || 0,
+              socket.authSession.lastActivityAt || 0,
+            );
+            applyApplicationSessionDeadline(storedSession);
+          }
+          if (err || !isApplicationSessionActive(storedSession, now())) {
+            socket.skipActivityFlush = true;
+            sessionStore.destroy(socket.loginSessionId, () => {});
+            if (socket.readyState === 0 || socket.readyState === 1) {
+              socket.close(SOCKET_CLOSE_CODES.AUTH_EXPIRED, 'Authentication expired.');
+            }
+          } else {
+            socket.authSession = storedSession;
           }
         });
       }
-    }, HEARTBEAT_INTERVAL_MS);
+    }, config.heartbeatIntervalMs);
     heartbeatInterval.unref();
 
     const port = startOptions.port ?? config.port;
@@ -778,12 +1058,19 @@ module.exports = {
   ATTACH_TIMEOUT_MS,
   HEARTBEAT_INTERVAL_MS,
   MAX_WEBSOCKET_PAYLOAD,
+  OIDC_TRANSACTION_TTL_MS,
+  SESSION_ABSOLUTE_TTL_MS,
+  SESSION_IDLE_TTL_MS,
   TERMINAL_SESSION_NAME_PATTERN,
+  WEBSOCKET_ACTIVITY_DEBOUNCE_MS,
+  applyApplicationSessionDeadline,
   createTerminalEnvironment,
   createWebTerminal,
+  getApplicationSessionDeadline,
   hasExactSameOrigin,
+  isApplicationSessionActive,
   isStrictBase64,
   isValidTerminalSessionName,
+  normalizeIssuerUrl,
   normalizePublicOrigin,
-  timingSafeEqualString,
 };

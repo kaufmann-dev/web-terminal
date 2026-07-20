@@ -22,8 +22,10 @@ require_absolute_path() {
 
 run_in_terminal_environment() {
   env \
-    -u AUTH_EMAIL \
-    -u AUTH_PASSWORD \
+    -u OIDC_ISSUER_URL \
+    -u OIDC_CLIENT_ID \
+    -u OIDC_CLIENT_SECRET \
+    -u OIDC_ALLOWED_SUBJECT \
     -u SESSION_SECRET \
     "HOME=$TERMINAL_HOME_VALUE" \
     "XDG_CONFIG_HOME=$XDG_CONFIG_HOME_VALUE" \

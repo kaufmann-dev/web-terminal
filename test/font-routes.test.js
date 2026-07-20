@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createWebTerminal } = require('../app');
+const { oidcServiceOptions } = require('./oidc-test-helpers');
 
 const fontRoutes = [
   '/vendor/fonts/inter-400.woff2',
@@ -14,16 +15,9 @@ const fontRoutes = [
 
 test('pinned fonts are public and unspecified font paths return 404', async (t) => {
   const service = createWebTerminal({
-    authEmail: 'test@example.com',
-    authPassword: 'test-password',
-    sessionSecret: 'test-session-secret-at-least-32-characters',
+    ...oidcServiceOptions(),
     publicOrigin: 'http://127.0.0.1',
-    nodeEnv: 'development',
-    terminalWorkdir: process.cwd(),
-    terminalHome: process.cwd(),
     sessionManager: { shutdown: async () => {} },
-    clipboardImageStore: { initialize: async () => {} },
-    hashPassword: async (password) => password,
   });
   await service.start({ port: 0, host: '127.0.0.1' });
   t.after(() => service.stop());

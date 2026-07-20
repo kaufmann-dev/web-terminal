@@ -6,11 +6,18 @@ const path = require('node:path');
 const test = require('node:test');
 const WebSocket = require('ws');
 const {
+  SESSION_IDLE_TTL_MS,
   createTerminalEnvironment,
   createWebTerminal,
   normalizePublicOrigin,
 } = require('../app');
 const { SOCKET_CLOSE_CODES } = require('../terminal-session-manager');
+const {
+  authenticate,
+  cookieHeader,
+  createFakeOpenidClient,
+  oidcServiceOptions,
+} = require('./oidc-test-helpers');
 
 class FakeSessionManager {
   constructor() {
@@ -71,37 +78,6 @@ class FakeSessionManager {
   async shutdown() {}
 }
 
-function updateCookies(cookieJar, response) {
-  for (const value of response.headers.getSetCookie()) {
-    const [pair] = value.split(';');
-    const separator = pair.indexOf('=');
-    cookieJar.set(pair.slice(0, separator), pair.slice(separator + 1));
-  }
-}
-
-function cookieHeader(cookieJar) {
-  return [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; ');
-}
-
-async function authenticate(baseUrl) {
-  const cookies = new Map();
-  const tokenResponse = await fetch(`${baseUrl}/csrf-token`);
-  updateCookies(cookies, tokenResponse);
-  const { csrfToken } = await tokenResponse.json();
-  const loginResponse = await fetch(`${baseUrl}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'CSRF-Token': csrfToken,
-      Cookie: cookieHeader(cookies),
-    },
-    body: JSON.stringify({ email: 'test@example.com', password: 'test-password' }),
-  });
-  updateCookies(cookies, loginResponse);
-  assert.equal(loginResponse.status, 200);
-  return { cookies, csrfToken };
-}
-
 function rejectedUpgrade(url, options) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, options);
@@ -128,21 +104,28 @@ function waitForClose(socket) {
   });
 }
 
+function getStoredSessions(store) {
+  return new Promise((resolve, reject) => {
+    store.all((err, sessions) => (err ? reject(err) : resolve(Object.values(sessions))));
+  });
+}
+
+async function waitFor(check, message) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(message);
+}
+
 test('WebSocket upgrades require authentication and exact same-origin', async (t) => {
   const publicOrigin = 'https://terminal.example';
   const sessionManager = new FakeSessionManager();
+  const openidClient = createFakeOpenidClient();
   const service = createWebTerminal({
-    authEmail: 'test@example.com',
-    authPassword: 'test-password',
-    sessionSecret: 'test-session-secret-at-least-32-characters',
+    ...oidcServiceOptions({ openidClient }),
     publicOrigin,
-    nodeEnv: 'development',
-    terminalWorkdir: process.cwd(),
-    terminalHome: process.cwd(),
     sessionManager,
-    clipboardImageStore: { initialize: async () => {} },
-    hashPassword: async (password) => password,
-    verifyPassword: async (hash, password) => hash === password,
   });
   await service.start({ port: 0, host: '127.0.0.1' });
   t.after(() => service.stop());
@@ -159,7 +142,7 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
     },
   }), 403);
 
-  const { cookies, csrfToken } = await authenticate(baseUrl);
+  const { cookies, csrfToken } = await authenticate(baseUrl, openidClient);
   const headers = { Cookie: cookieHeader(cookies) };
   assert.equal(await rejectedUpgrade(wsUrl, { origin: 'https://attacker.example', headers }), 403);
 
@@ -184,6 +167,14 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
     },
   });
   assert.equal(logoutResponse.status, 200);
+  const logout = await logoutResponse.json();
+  const logoutUrl = new URL(logout.redirect);
+  assert.equal(logoutUrl.origin + logoutUrl.pathname, 'https://identity.example/logout');
+  assert.equal(logoutUrl.searchParams.get('id_token_hint'), 'logout-id-token');
+  assert.equal(logoutUrl.searchParams.get('post_logout_redirect_uri'), `${publicOrigin}/`);
+  assert.equal((await getStoredSessions(service.sessionStore)).length, 0);
+  assert.ok(logoutResponse.headers.getSetCookie().some((cookie) => cookie.startsWith('terminal.sid=;')));
+  assert.ok(logoutResponse.headers.getSetCookie().some((cookie) => cookie.startsWith('terminal.csrf=;')));
   assert.equal((await logoutClose).code, SOCKET_CLOSE_CODES.LOGGED_OUT);
   assert.equal(sessionManager.sessions.has('main'), true);
 });
@@ -194,6 +185,57 @@ test('PUBLIC_ORIGIN accepts only normalized HTTP(S) origins', () => {
   assert.equal(normalizePublicOrigin('https://terminal.example/path'), null);
   assert.equal(normalizePublicOrigin('https://user@terminal.example'), null);
   assert.equal(normalizePublicOrigin('file:///tmp/terminal'), null);
+});
+
+test('WebSocket input activity is debounced and heartbeat expiry closes only the client', async (t) => {
+  let currentTime = 1_800_000_000_000;
+  const publicOrigin = 'https://terminal.example';
+  const sessionManager = new FakeSessionManager();
+  const openidClient = createFakeOpenidClient();
+  const service = createWebTerminal({
+    ...oidcServiceOptions({ openidClient }),
+    publicOrigin,
+    now: () => currentTime,
+    heartbeatIntervalMs: 20,
+    websocketActivityDebounceMs: 1000,
+    sessionManager,
+  });
+  await service.start({ port: 0, host: '127.0.0.1' });
+  t.after(() => service.stop());
+
+  const port = service.server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const { cookies } = await authenticate(baseUrl, openidClient);
+  const initialSession = (await getStoredSessions(service.sessionStore))[0];
+  const socket = await openSocket(
+    `ws://127.0.0.1:${port}/ws/terminal?session=main`,
+    { origin: publicOrigin, headers: { Cookie: cookieHeader(cookies) } },
+  );
+  socket.send(JSON.stringify({ type: 'attach', cols: 80, rows: 24 }));
+  await waitFor(() => sessionManager.attachedSockets.size === 1, 'socket did not attach');
+  socket.send(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await getStoredSessions(service.sessionStore))[0].lastActivityAt,
+    initialSession.lastActivityAt);
+
+  currentTime += 100;
+  socket.send(JSON.stringify({ type: 'input', data: 'a' }));
+  await waitFor(async () => (
+    (await getStoredSessions(service.sessionStore))[0]?.lastActivityAt === currentTime
+  ), 'first input activity was not persisted');
+  const firstActivityAt = currentTime;
+
+  currentTime += 1;
+  socket.send(JSON.stringify({ type: 'binary', data: Buffer.from('b').toString('base64') }));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await getStoredSessions(service.sessionStore))[0].lastActivityAt, firstActivityAt);
+
+  const closePromise = waitForClose(socket);
+  currentTime += SESSION_IDLE_TTL_MS;
+  const closed = await closePromise;
+  assert.equal(closed.code, SOCKET_CLOSE_CODES.AUTH_EXPIRED);
+  assert.equal(sessionManager.sessions.has('main'), true);
+  assert.equal((await getStoredSessions(service.sessionStore)).length, 0);
 });
 
 test('terminal PATH includes locally installed image commands', () => {
@@ -220,8 +262,10 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     LANG: 'C',
     LC_CTYPE: 'C',
     LC_ALL: 'C',
-    AUTH_EMAIL: 'secret@example.com',
-    AUTH_PASSWORD: 'secret-password',
+    OIDC_ISSUER_URL: 'https://identity.example/application/o/web-terminal/',
+    OIDC_CLIENT_ID: 'client-id',
+    OIDC_CLIENT_SECRET: 'secret-client',
+    OIDC_ALLOWED_SUBJECT: 'subject-uuid',
     SESSION_SECRET: 'secret-session',
     FONTCONFIG_FILE: '/root/.nix-profile/etc/fonts/fonts.conf',
     FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
@@ -245,8 +289,10 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(environment.LANG, 'C.UTF-8');
     assert.equal(environment.LC_CTYPE, 'C.UTF-8');
     assert.equal(Object.hasOwn(environment, 'LC_ALL'), false);
-    assert.equal(Object.hasOwn(environment, 'AUTH_EMAIL'), false);
-    assert.equal(Object.hasOwn(environment, 'AUTH_PASSWORD'), false);
+    assert.equal(Object.hasOwn(environment, 'OIDC_ISSUER_URL'), false);
+    assert.equal(Object.hasOwn(environment, 'OIDC_CLIENT_ID'), false);
+    assert.equal(Object.hasOwn(environment, 'OIDC_CLIENT_SECRET'), false);
+    assert.equal(Object.hasOwn(environment, 'OIDC_ALLOWED_SUBJECT'), false);
     assert.equal(Object.hasOwn(environment, 'SESSION_SECRET'), false);
   } finally {
     for (const [name, value] of Object.entries(originals)) {

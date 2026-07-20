@@ -719,7 +719,8 @@
         },
       });
       if (response.ok) {
-        window.location.href = '/';
+        const data = await response.json();
+        window.location.href = data.redirect;
         return;
       }
       setStatus('Logout failed. Please try again.', true);
