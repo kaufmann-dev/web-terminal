@@ -1,7 +1,7 @@
 # Private Browser Terminal
 
-A private, OIDC-protected development terminal that runs in your browser. One configured OIDC
-subject uses persistent named shells powered by xterm.js and `node-pty`, with Node.js 24, AI coding
+A private, OIDC-protected development terminal that runs in your browser. A provider-authorized
+operator uses persistent named shells powered by xterm.js and `node-pty`, with Node.js 24, AI coding
 tools, GitHub tooling, a Chromium automation CLI, and a persistent workspace.
 
 The browser connects to Express through an authenticated, same-origin WebSocket. Each named shell
@@ -14,9 +14,10 @@ snapshots. Browser disconnects do not own or stop the shell.
 
 ## Authentication Setup
 
-The terminal uses OIDC Authorization Code login for one configured issuer-scoped subject, then
-authorizes requests with a bounded, server-side application session. Access and refresh tokens
-are discarded; only the ID token is retained server-side as the RP-Initiated Logout hint.
+The terminal uses OIDC Authorization Code login and relies on the provider's application access
+policy as its sole admission control. It then authorizes requests with a bounded, server-side
+application session. Access and refresh tokens are discarded; only the ID token is retained
+server-side as the RP-Initiated Logout hint.
 
 - Public Client: Off
 - PKCE: On
@@ -25,7 +26,7 @@ are discarded; only the ID token is retained server-side as the RP-Initiated Log
 - Logout Callback URLs: `<PUBLIC_ORIGIN>/`
 - Scope: `openid` only
 
-All six authentication environment variables are required and documented under
+All five authentication and session environment variables are required and documented under
 [Set environment variables](#2-set-environment-variables).
 
 Create a confidential web client at the identity provider with only the Authorization Code grant
@@ -35,16 +36,17 @@ and PKCE S256. The provider must publish `authorization_endpoint`, `token_endpoi
 
 For Authentik, create application slug `web-terminal` and a confidential OAuth2/OIDC provider.
 Use `default-authentication-flow` and `default-provider-authorization-implicit-consent`, enable
-only Authorization Code, choose a signing key, retain the per-provider issuer mode, and use the
-user UUID as `sub`. Register the two callback URLs above with their respective Authorization and
-Logout types. Typed logout redirects require Authentik 2026.5 or newer. Do not configure an
-Authentik front-channel or back-channel Logout URI. See the
+only Authorization Code, choose a signing key, and retain the per-provider issuer mode. Register
+the two callback URLs above with their respective Authorization and Logout types. Typed logout
+redirects require Authentik 2026.5 or newer. Do not configure an Authentik front-channel or
+back-channel Logout URI. See the
 [Authentik OAuth2 provider configuration](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
 and [Authentik 2026.5 redirect changes](https://docs.goauthentik.io/releases/2026.5/).
 
-Authentik roles and application bindings do not authorize terminal access. Select the intended
-user UUID and set it as `OIDC_ALLOWED_SUBJECT`; the application admits only that exact issuer and
-subject pair.
+Before deploying, bind the intended user, administrator group, or restrictive policy directly to
+the Authentik application. An application without bindings is available to every Authentik user;
+the terminal does not add an identity or claim allowlist after the provider grants access. See
+[Authentik application access](https://docs.goauthentik.io/add-secure-apps/applications/manage_apps/).
 
 ## Coolify Deployment
 
@@ -68,8 +70,6 @@ Required:
 - `OIDC_ISSUER_URL` — exact, non-secret discovery issuer URL.
 - `OIDC_CLIENT_ID` — non-secret confidential-client identifier.
 - `OIDC_CLIENT_SECRET` — confidential-client secret.
-- `OIDC_ALLOWED_SUBJECT` — immutable `sub` for the one admitted identity. This is non-secret but
-  identity-sensitive.
 - `SESSION_SECRET` — unique random string of at least 32 characters.
 - `PUBLIC_ORIGIN` — browser-facing HTTP(S) origin, for example
   `https://terminal.kaufmann.dev`. Include the scheme and any non-default port, with no path.
@@ -83,8 +83,8 @@ Optional:
 Coolify supplies `PORT` automatically. Do not set a fixed application port.
 
 Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. For Authentik, copy the generated client ID,
-client secret, per-provider issuer, and selected user UUID into the corresponding variables
-without exposing their values.
+client secret, and per-provider issuer into the corresponding variables without exposing their
+values. Remove `OIDC_ALLOWED_SUBJECT` from existing deployments; it is no longer supported.
 
 ### 3. Mount persistent storage
 
@@ -199,7 +199,7 @@ the deployment image and available immediately as `codex` and `opencode`.
 - `cd ~` returns to `/code` with the default configuration.
 
 To switch identity providers, create an equivalent standard client registration and replace the
-four `OIDC_*` variables. No application code or terminal-data migration is required.
+three `OIDC_*` variables. No application code or terminal-data migration is required.
 
 ## Run Locally
 
@@ -212,7 +212,7 @@ cp .env.example .env
 ```
 
 Register `http://localhost:3000/auth/callback` and `http://localhost:3000/` with a development OIDC
-client. Set its four `OIDC_*` values in `.env`, choose writable absolute terminal paths, export the
+client. Set its three `OIDC_*` values in `.env`, choose writable absolute terminal paths, export the
 file's values, and start the same entrypoint used by Coolify:
 
 ```bash
@@ -233,8 +233,11 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **OIDC callback is rejected:** Confirm the registered Authorization redirect is exactly
   `<PUBLIC_ORIGIN>/auth/callback`, the client is confidential, Authorization Code and PKCE S256 are
   enabled, and the application requests only `openid`.
-- **Sign-in returns HTTP 403:** Confirm `OIDC_ALLOWED_SUBJECT` exactly matches the selected user's
-  immutable `sub` for the configured issuer. Roles and application bindings are not consulted.
+- **An unexpected identity can sign in:** Bind the intended user, administrator group, or
+  restrictive policy directly to the Authentik application. Without an application binding,
+  Authentik grants every user access.
+- **The provider denies the intended identity:** Check the Authentik application's policy, group,
+  and user bindings and review the provider's policy evaluation result.
 - **Provider logout is rejected:** Register `<PUBLIC_ORIGIN>/` as the post-logout redirect URI. For
   Authentik, use a typed Logout redirect on version 2026.5 or newer.
 - **Sessions cannot be created:** Check application logs for a `node-pty` spawn failure and confirm

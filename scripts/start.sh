@@ -21,12 +21,17 @@ require_absolute_path() {
 }
 
 run_in_terminal_environment() {
+  local -a unset_environment=(-u SESSION_SECRET)
+  local environment_name
+
+  while IFS= read -r environment_name; do
+    if [[ "$environment_name" == OIDC_* ]]; then
+      unset_environment+=(-u "$environment_name")
+    fi
+  done < <(compgen -e)
+
   env \
-    -u OIDC_ISSUER_URL \
-    -u OIDC_CLIENT_ID \
-    -u OIDC_CLIENT_SECRET \
-    -u OIDC_ALLOWED_SUBJECT \
-    -u SESSION_SECRET \
+    "${unset_environment[@]}" \
     "HOME=$TERMINAL_HOME_VALUE" \
     "XDG_CONFIG_HOME=$XDG_CONFIG_HOME_VALUE" \
     "XDG_DATA_HOME=$XDG_DATA_HOME_VALUE" \

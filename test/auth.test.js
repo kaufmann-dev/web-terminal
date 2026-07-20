@@ -13,7 +13,6 @@ const {
 } = require('../app');
 const {
   DEFAULT_ISSUER,
-  DEFAULT_SUBJECT,
   authenticate,
   cookieHeader,
   createFakeOpenidClient,
@@ -81,6 +80,14 @@ test('startup discovers OIDC metadata and requires login and logout endpoints', 
   }
 });
 
+test('startup requires OIDC configuration without an application identity allowlist', () => {
+  assert.doesNotThrow(() => createWebTerminal(oidcServiceOptions()));
+  assert.throws(
+    () => createWebTerminal(oidcServiceOptions({ oidcClientSecret: '' })),
+    /Missing required environment variables/,
+  );
+});
+
 test('authorization uses openid-only PKCE, state, nonce, and one-time transactions', async (t) => {
   let currentTime = 1_800_000_000_000;
   const openidClient = createFakeOpenidClient();
@@ -123,7 +130,7 @@ test('authorization uses openid-only PKCE, state, nonce, and one-time transactio
   assert.equal(expired.status, 400);
 });
 
-test('callback regenerates the session and admits only the exact issuer-scoped subject', async (t) => {
+test('callback regenerates the session and admits provider-authorized subjects', async (t) => {
   const openidClient = createFakeOpenidClient();
   const { service, baseUrl } = await startService(t, { openidClient });
   const cookies = new Map();
@@ -144,8 +151,8 @@ test('callback regenerates the session and admits only the exact issuer-scoped s
   assert.equal(openidClient.calls.grants[0].checks.expectedNonce, 'nonce-1');
 
   const storedSession = await onlyStoredSession(service.sessionStore);
-  assert.equal(storedSession.issuer, DEFAULT_ISSUER);
-  assert.equal(storedSession.subject, DEFAULT_SUBJECT);
+  assert.equal(Object.hasOwn(storedSession, 'issuer'), false);
+  assert.equal(Object.hasOwn(storedSession, 'subject'), false);
   assert.equal(storedSession.idToken, 'logout-id-token');
   assert.equal(Object.hasOwn(storedSession, 'access_token'), false);
   assert.equal(Object.hasOwn(storedSession, 'refresh_token'), false);
@@ -159,18 +166,41 @@ test('callback regenerates the session and admits only the exact issuer-scoped s
     Math.floor(new Date(storedSession.cookie.expires).getTime() / 1000) * 1000,
   );
 
-  const deniedClient = createFakeOpenidClient({ subject: 'different-user' });
-  const denied = await startService(t, { openidClient: deniedClient });
-  const deniedCookies = new Map();
-  const deniedLogin = await fetch(`${denied.baseUrl}/login`, { redirect: 'manual' });
-  updateCookies(deniedCookies, deniedLogin);
-  const deniedAuthorization = new URL(deniedLogin.headers.get('location'));
-  const deniedCallback = await fetch(
-    `${denied.baseUrl}/auth/callback?code=code&state=${deniedAuthorization.searchParams.get('state')}`,
-    { headers: { Cookie: cookieHeader(deniedCookies) }, redirect: 'manual' },
+  const otherSubjectClient = createFakeOpenidClient({ subject: 'different-user' });
+  const otherSubject = await startService(t, { openidClient: otherSubjectClient });
+  const otherSubjectCookies = new Map();
+  const otherSubjectLogin = await fetch(`${otherSubject.baseUrl}/login`, { redirect: 'manual' });
+  updateCookies(otherSubjectCookies, otherSubjectLogin);
+  const otherSubjectAuthorization = new URL(otherSubjectLogin.headers.get('location'));
+  const otherSubjectCallback = await fetch(
+    `${otherSubject.baseUrl}/auth/callback?code=code&state=${otherSubjectAuthorization.searchParams.get('state')}`,
+    { headers: { Cookie: cookieHeader(otherSubjectCookies) }, redirect: 'manual' },
   );
-  assert.equal(deniedCallback.status, 403);
-  assert.equal((await allStoredSessions(denied.service.sessionStore)).length, 0);
+  assert.equal(otherSubjectCallback.status, 302);
+  const otherSubjectSession = await onlyStoredSession(otherSubject.service.sessionStore);
+  assert.equal(Object.hasOwn(otherSubjectSession, 'subject'), false);
+});
+
+test('callback rejects claims from an issuer other than the discovery issuer', async (t) => {
+  const openidClient = createFakeOpenidClient({
+    claims: {
+      iss: 'https://other-identity.example/application/o/web-terminal/',
+      sub: 'provider-authorized-user',
+      nonce: 'nonce-1',
+    },
+  });
+  const { service, baseUrl } = await startService(t, { openidClient });
+  const cookies = new Map();
+  const loginResponse = await fetch(`${baseUrl}/login`, { redirect: 'manual' });
+  updateCookies(cookies, loginResponse);
+  const authorizationUrl = new URL(loginResponse.headers.get('location'));
+  const callbackResponse = await fetch(
+    `${baseUrl}/auth/callback?code=code&state=${authorizationUrl.searchParams.get('state')}`,
+    { headers: { Cookie: cookieHeader(cookies) }, redirect: 'manual' },
+  );
+
+  assert.equal(callbackResponse.status, 400);
+  assert.equal((await allStoredSessions(service.sessionStore)).length, 0);
 });
 
 test('interactive HTTP activity extends idle expiry but passive requests do not', async (t) => {
