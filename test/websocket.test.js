@@ -265,7 +265,7 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     OIDC_ISSUER_URL: 'https://identity.example/application/o/web-terminal/',
     OIDC_CLIENT_ID: 'client-id',
     OIDC_CLIENT_SECRET: 'secret-client',
-    OIDC_ALLOWED_SUBJECT: 'subject-uuid',
+    OIDC_PRIVATE_EXTENSION: 'private-value',
     SESSION_SECRET: 'secret-session',
     FONTCONFIG_FILE: '/root/.nix-profile/etc/fonts/fonts.conf',
     FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
@@ -292,7 +292,7 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(Object.hasOwn(environment, 'OIDC_ISSUER_URL'), false);
     assert.equal(Object.hasOwn(environment, 'OIDC_CLIENT_ID'), false);
     assert.equal(Object.hasOwn(environment, 'OIDC_CLIENT_SECRET'), false);
-    assert.equal(Object.hasOwn(environment, 'OIDC_ALLOWED_SUBJECT'), false);
+    assert.equal(Object.hasOwn(environment, 'OIDC_PRIVATE_EXTENSION'), false);
     assert.equal(Object.hasOwn(environment, 'SESSION_SECRET'), false);
   } finally {
     for (const [name, value] of Object.entries(originals)) {

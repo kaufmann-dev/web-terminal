@@ -106,7 +106,6 @@ function oidcServiceOptions(overrides = {}) {
     oidcIssuerUrl: DEFAULT_ISSUER,
     oidcClientId: 'test-client',
     oidcClientSecret: 'test-client-secret',
-    oidcAllowedSubject: DEFAULT_SUBJECT,
     sessionSecret: 'test-session-secret-at-least-32-characters',
     publicOrigin: 'https://terminal.example',
     nodeEnv: 'development',

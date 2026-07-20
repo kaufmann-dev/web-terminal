@@ -23,7 +23,7 @@ node --check public/js/terminal.js
 node --test test/*.test.js
 ```
 
-- Use `npm start` only when a runtime check is necessary. The app exits unless the four `OIDC_*`
+- Use `npm start` only when a runtime check is necessary. The app exits unless the three `OIDC_*`
   variables, `SESSION_SECRET`, and `PUBLIC_ORIGIN` are set and discovery succeeds.
 - After shell-script changes, run `bash -n` on every file under `scripts/`.
 
@@ -33,7 +33,8 @@ node --test test/*.test.js
   static assets, health checks, and authenticated terminal WebSockets.
 - Use `openid-client` 6.8.4 discovery and Authorization Code with PKCE S256, state, and nonce.
   Require authorization, token, and RP-Initiated Logout endpoints before listening, request only
-  `openid`, and admit only the exact issuer-scoped `OIDC_ALLOWED_SUBJECT`.
+  `openid`, and use the OIDC provider's application access policy as the sole admission control.
+  Do not add application-level identity or claim allowlists.
 - Keep OIDC tokens out of authorization after callback. Discard access and refresh tokens, retain
   the ID token only for `id_token_hint`, and regenerate a bounded local application session.
 - Enforce the 24-hour interactive idle and seven-day absolute local-session deadlines on protected

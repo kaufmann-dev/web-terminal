@@ -79,10 +79,11 @@ function createTerminalEnvironment({
     delete terminalEnvironment.FONTCONFIG_PATH;
   }
 
-  delete terminalEnvironment.OIDC_ISSUER_URL;
-  delete terminalEnvironment.OIDC_CLIENT_ID;
-  delete terminalEnvironment.OIDC_CLIENT_SECRET;
-  delete terminalEnvironment.OIDC_ALLOWED_SUBJECT;
+  for (const name of Object.keys(terminalEnvironment)) {
+    if (name.startsWith('OIDC_')) {
+      delete terminalEnvironment[name];
+    }
+  }
   delete terminalEnvironment.SESSION_SECRET;
   delete terminalEnvironment.LC_ALL;
   return terminalEnvironment;
@@ -196,7 +197,6 @@ function createWebTerminal(options = {}) {
     oidcIssuerUrl: normalizeIssuerUrl(configuredIssuerUrl),
     oidcClientId: options.oidcClientId ?? process.env.OIDC_CLIENT_ID,
     oidcClientSecret: options.oidcClientSecret ?? process.env.OIDC_CLIENT_SECRET,
-    oidcAllowedSubject: options.oidcAllowedSubject ?? process.env.OIDC_ALLOWED_SUBJECT,
     sessionSecret: options.sessionSecret ?? process.env.SESSION_SECRET,
     publicOrigin: normalizePublicOrigin(configuredPublicOrigin),
     terminalWorkdir: options.terminalWorkdir ?? process.env.TERMINAL_WORKDIR ?? '/code',
@@ -222,10 +222,10 @@ function createWebTerminal(options = {}) {
   };
 
   if (!configuredIssuerUrl || !config.oidcClientId || !config.oidcClientSecret
-    || !config.oidcAllowedSubject || !config.sessionSecret || !configuredPublicOrigin) {
+    || !config.sessionSecret || !configuredPublicOrigin) {
     throw new Error(
       'Missing required environment variables: OIDC_ISSUER_URL, OIDC_CLIENT_ID, '
-      + 'OIDC_CLIENT_SECRET, OIDC_ALLOWED_SUBJECT, SESSION_SECRET, PUBLIC_ORIGIN',
+      + 'OIDC_CLIENT_SECRET, SESSION_SECRET, PUBLIC_ORIGIN',
     );
   }
   if (!config.oidcIssuerUrl) {
@@ -510,9 +510,9 @@ function createWebTerminal(options = {}) {
     if (!claims || typeof tokens.id_token !== 'string') {
       return res.status(400).send('The identity provider did not return a valid ID token.');
     }
-    if (claims.iss !== metadata.issuer || claims.sub !== config.oidcAllowedSubject) {
+    if (claims.iss !== metadata.issuer) {
       await new Promise((resolve) => req.session.destroy(() => resolve()));
-      return res.status(403).send('This identity is not allowed to access the terminal.');
+      return res.status(400).send('Invalid sign-in response.');
     }
 
     try {
@@ -520,8 +520,6 @@ function createWebTerminal(options = {}) {
       req.session.touch = () => req.session;
       const loginAt = now();
       req.session.authenticated = true;
-      req.session.issuer = claims.iss;
-      req.session.subject = claims.sub;
       req.session.loginAt = loginAt;
       req.session.lastActivityAt = loginAt;
       req.session.idToken = tokens.id_token;
