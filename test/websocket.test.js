@@ -139,6 +139,7 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
     terminalWorkdir: process.cwd(),
     terminalHome: process.cwd(),
     sessionManager,
+    clipboardImageStore: { initialize: async () => {} },
     hashPassword: async (password) => password,
     verifyPassword: async (hash, password) => hash === password,
   });

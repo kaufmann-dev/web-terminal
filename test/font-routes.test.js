@@ -22,6 +22,7 @@ test('pinned fonts are public and unspecified font paths return 404', async (t) 
     terminalWorkdir: process.cwd(),
     terminalHome: process.cwd(),
     sessionManager: { shutdown: async () => {} },
+    clipboardImageStore: { initialize: async () => {} },
     hashPassword: async (password) => password,
   });
   await service.start({ port: 0, host: '127.0.0.1' });

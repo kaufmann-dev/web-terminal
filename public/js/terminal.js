@@ -21,6 +21,7 @@
   const activeSessionLabel = document.getElementById('active-session-label');
   const terminalHost = document.getElementById('terminal-host');
   const connectionStatus = document.getElementById('connection-status');
+  const clipboardStatus = document.getElementById('clipboard-status');
   const terminalPlaceholder = document.getElementById('terminal-placeholder');
   const terminalPlaceholderMessage = document.getElementById('terminal-placeholder-message');
 
@@ -33,6 +34,7 @@
   let activeSessionName = null;
   let activeController = null;
   let mutationInProgress = false;
+  let clipboardStatusTimer = null;
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -76,6 +78,17 @@
     connectionStatus.hidden = !message;
   }
 
+  function setClipboardStatus(message, isError = false, clearAfterMs = 0) {
+    window.clearTimeout(clipboardStatusTimer);
+    clipboardStatusTimer = null;
+    clipboardStatus.textContent = message;
+    clipboardStatus.classList.toggle('is-error', isError);
+    clipboardStatus.hidden = !message;
+    if (message && clearAfterMs > 0) {
+      clipboardStatusTimer = window.setTimeout(() => setClipboardStatus(''), clearAfterMs);
+    }
+  }
+
   function setSidebarOpen(open) {
     document.body.classList.toggle('sessions-open', open);
     sidebarToggle.setAttribute('aria-expanded', String(open));
@@ -105,6 +118,10 @@
       this.reconnectRequested = false;
       this.resizeTimer = null;
       this.writeQueue = Promise.resolve();
+      this.selectionPointerId = null;
+      this.selectionChanged = false;
+      this.imageUploadController = null;
+      this.imageUploadQueue = Promise.resolve();
 
       this.terminal = new Terminal({
         cursorBlink: true,
@@ -124,6 +141,7 @@
       this.fitAddon = new FitAddon();
       this.terminal.loadAddon(this.fitAddon);
       this.terminal.open(terminalHost);
+      this.terminalElement = this.terminal.element;
 
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.ready) {
@@ -135,12 +153,19 @@
           this.send({ type: 'binary', data: window.btoa(data) });
         }
       });
+      this.selectionDisposable = this.terminal.onSelectionChange(() => {
+        if (this.selectionPointerId !== null) {
+          this.selectionChanged = true;
+        }
+      });
       this.resizeObserver = new ResizeObserver(() => {
         window.clearTimeout(this.resizeTimer);
         this.resizeTimer = window.setTimeout(() => this.fitAndNotify(), 100);
       });
       this.resizeObserver.observe(terminalHost);
       terminalHost.addEventListener('click', this.focusTerminal);
+      this.terminalElement.addEventListener('pointerdown', this.handleSelectionPointerDown);
+      this.terminalElement.addEventListener('paste', this.handlePaste, true);
 
       this.fitAndNotify();
       this.connect();
@@ -151,6 +176,108 @@
         this.terminal.focus();
       }
     };
+
+    handleSelectionPointerDown = (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      this.selectionPointerId = event.pointerId;
+      this.selectionChanged = false;
+      window.removeEventListener('pointerup', this.handleSelectionPointerUp);
+      window.addEventListener('pointerup', this.handleSelectionPointerUp, { once: true });
+    };
+
+    handleSelectionPointerUp = (event) => {
+      const pointerMatches = event.pointerId === this.selectionPointerId;
+      this.selectionPointerId = null;
+      if (!pointerMatches || !this.selectionChanged || this.disposed) {
+        return;
+      }
+      const selection = this.terminal.getSelection();
+      if (!selection) {
+        return;
+      }
+      const reportCopyFailure = () => {
+        setClipboardStatus(
+          'Unable to copy the selection. Allow clipboard access and try again.',
+          true,
+          5000,
+        );
+      };
+      try {
+        if (!navigator.clipboard) {
+          reportCopyFailure();
+          return;
+        }
+        navigator.clipboard.writeText(selection).catch(reportCopyFailure);
+      } catch (err) {
+        reportCopyFailure();
+      }
+    };
+
+    handlePaste = (event) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find(
+        (item) => item.kind === 'file' && item.type.startsWith('image/'),
+      );
+      if (!imageItem) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const image = imageItem.getAsFile();
+      if (!image) {
+        setClipboardStatus('Unable to read the clipboard image.', true, 5000);
+        return;
+      }
+      this.imageUploadQueue = this.imageUploadQueue.then(() => this.uploadClipboardImage(image));
+    };
+
+    async uploadClipboardImage(image) {
+      if (this.disposed) {
+        return;
+      }
+      if (!this.ready) {
+        setClipboardStatus('The terminal is disconnected. Reconnect and paste again.', true, 5000);
+        return;
+      }
+
+      const controller = new AbortController();
+      this.imageUploadController = controller;
+      setClipboardStatus('Uploading clipboard image…');
+      try {
+        const data = await apiRequest('/api/clipboard-images', {
+          method: 'POST',
+          headers: {
+            'Content-Type': image.type,
+            'CSRF-Token': csrfToken,
+          },
+          body: image,
+          signal: controller.signal,
+        });
+        if (this.disposed || controller.signal.aborted) {
+          return;
+        }
+        if (!this.ready) {
+          setClipboardStatus(
+            'The image was uploaded, but the terminal disconnected. Paste again.',
+            true,
+            5000,
+          );
+          return;
+        }
+        this.terminal.paste(data.path);
+        setClipboardStatus('Image path pasted into the terminal.', false, 3000);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setClipboardStatus(err.message || 'Unable to upload the clipboard image.', true, 5000);
+        }
+      } finally {
+        if (this.imageUploadController === controller) {
+          this.imageUploadController = null;
+        }
+      }
+    }
 
     dimensions() {
       this.fitAddon.fit();
@@ -364,8 +491,16 @@
       window.clearTimeout(this.resizeTimer);
       this.resizeObserver.disconnect();
       terminalHost.removeEventListener('click', this.focusTerminal);
+      this.terminalElement.removeEventListener('pointerdown', this.handleSelectionPointerDown);
+      this.terminalElement.removeEventListener('paste', this.handlePaste, true);
+      window.removeEventListener('pointerup', this.handleSelectionPointerUp);
+      if (this.imageUploadController) {
+        this.imageUploadController.abort();
+        this.imageUploadController = null;
+      }
       this.inputDisposable.dispose();
       this.binaryDisposable.dispose();
+      this.selectionDisposable.dispose();
       if (this.socket && (this.socket.readyState === WebSocket.CONNECTING
         || this.socket.readyState === WebSocket.OPEN)) {
         this.socket.close(1000, 'Terminal changed.');
@@ -388,6 +523,7 @@
     activeSessionLabel.textContent = '';
     terminalHost.hidden = true;
     setConnectionStatus('');
+    setClipboardStatus('');
     terminalPlaceholderMessage.textContent = message;
     terminalPlaceholder.hidden = false;
     updateTerminalUrl(null);

@@ -16,6 +16,12 @@ const compression = require('compression');
 const argon2 = require('argon2');
 const { WebSocketServer } = require('ws');
 const {
+  IMAGE_TYPES,
+  MAX_CLIPBOARD_IMAGE_BYTES,
+  ClipboardImageStore,
+  ClipboardImageValidationError,
+} = require('./clipboard-image-store');
+const {
   DuplicateTerminalSessionError,
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
@@ -135,6 +141,16 @@ function createWebTerminal(options = {}) {
       ?? '/code',
     nodeEnv: options.nodeEnv ?? process.env.NODE_ENV ?? 'production',
     port: options.port ?? Number(process.env.PORT || 3000),
+    clipboardImageDirectory: options.clipboardImageDirectory
+      ?? path.join(
+        options.terminalHome
+          ?? process.env.TERMINAL_HOME
+          ?? process.env.TERMINAL_WORKDIR
+          ?? '/code',
+        '.cache',
+        'web-terminal',
+        'clipboard-images',
+      ),
   };
 
   if (!config.authEmail || !config.authPassword || !config.sessionSecret || !configuredPublicOrigin) {
@@ -150,6 +166,9 @@ function createWebTerminal(options = {}) {
   }
 
   const terminalEnvironment = createTerminalEnvironment(config);
+  const clipboardImageStore = options.clipboardImageStore || new ClipboardImageStore({
+    directory: config.clipboardImageDirectory,
+  });
   const sessionManager = options.sessionManager || new TerminalSessionManager({
     terminalEnvironment,
     terminalWorkdir: config.terminalWorkdir,
@@ -361,6 +380,33 @@ function createWebTerminal(options = {}) {
     }
   });
 
+  app.post(
+    '/api/clipboard-images',
+    requireApiAuth,
+    doubleCsrfProtection,
+    express.raw({
+      type: Object.keys(IMAGE_TYPES),
+      limit: MAX_CLIPBOARD_IMAGE_BYTES,
+    }),
+    async (req, res) => {
+      const contentType = (req.get('content-type') || '').split(';', 1)[0].toLowerCase();
+      if (!IMAGE_TYPES[contentType]) {
+        return res.status(415).json({ error: 'Use a PNG, JPEG, or WebP clipboard image.' });
+      }
+      try {
+        const imagePath = await clipboardImageStore.save(req.body, contentType);
+        return res.status(201).json({ path: imagePath });
+      } catch (err) {
+        if (err instanceof ClipboardImageValidationError
+          || err.code === 'INVALID_CLIPBOARD_IMAGE') {
+          return res.status(415).json({ error: err.message });
+        }
+        console.error('Clipboard image storage error:', err.message);
+        return res.status(503).json({ error: 'Clipboard image storage unavailable.' });
+      }
+    },
+  );
+
   app.delete(
     '/api/terminal-sessions/:name',
     requireApiAuth,
@@ -432,6 +478,9 @@ function createWebTerminal(options = {}) {
   app.use((err, req, res, next) => {
     if (err === invalidCsrfTokenError) {
       return res.status(403).json({ error: 'Invalid CSRF token.' });
+    }
+    if (err && err.type === 'entity.too.large' && req.path === '/api/clipboard-images') {
+      return res.status(413).json({ error: 'Clipboard image exceeds the 10 MiB limit.' });
     }
     return next(err);
   });
@@ -555,6 +604,7 @@ function createWebTerminal(options = {}) {
       return server;
     }
 
+    await clipboardImageStore.initialize();
     authPasswordHash = await hashPassword(config.authPassword);
     server = http.createServer(app);
     webSocketServer = new WebSocketServer({
