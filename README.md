@@ -198,7 +198,3 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   pkg-config, then rerun `npm ci` under Node.js 24.
 - **Health check fails:** Verify all required environment variables are set, including
   `PUBLIC_ORIGIN`.
-
-## License
-
-Private project. Not licensed for redistribution.
