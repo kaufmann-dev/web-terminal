@@ -118,8 +118,6 @@
       this.reconnectRequested = false;
       this.resizeTimer = null;
       this.writeQueue = Promise.resolve();
-      this.selectionPointerId = null;
-      this.selectionChanged = false;
       this.imageUploadController = null;
       this.imageUploadQueue = Promise.resolve();
 
@@ -153,18 +151,14 @@
           this.send({ type: 'binary', data: window.btoa(data) });
         }
       });
-      this.selectionDisposable = this.terminal.onSelectionChange(() => {
-        if (this.selectionPointerId !== null) {
-          this.selectionChanged = true;
-        }
-      });
+      this.selectionDisposable = this.terminal.onSelectionChange(this.copySelection);
       this.resizeObserver = new ResizeObserver(() => {
         window.clearTimeout(this.resizeTimer);
         this.resizeTimer = window.setTimeout(() => this.fitAndNotify(), 100);
       });
       this.resizeObserver.observe(terminalHost);
       terminalHost.addEventListener('click', this.focusTerminal);
-      this.terminalElement.addEventListener('pointerdown', this.handleSelectionPointerDown);
+      this.terminalElement.addEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.addEventListener('paste', this.handlePaste, true);
 
       this.fitAndNotify();
@@ -177,20 +171,19 @@
       }
     };
 
-    handleSelectionPointerDown = (event) => {
-      if (event.button !== 0) {
+    handleBrowserPasteKeyDown = (event) => {
+      if (!event.ctrlKey
+        || event.shiftKey
+        || event.altKey
+        || event.metaKey
+        || event.key.toLowerCase() !== 'v') {
         return;
       }
-      this.selectionPointerId = event.pointerId;
-      this.selectionChanged = false;
-      window.removeEventListener('pointerup', this.handleSelectionPointerUp);
-      window.addEventListener('pointerup', this.handleSelectionPointerUp, { once: true });
+      event.stopPropagation();
     };
 
-    handleSelectionPointerUp = (event) => {
-      const pointerMatches = event.pointerId === this.selectionPointerId;
-      this.selectionPointerId = null;
-      if (!pointerMatches || !this.selectionChanged || this.disposed) {
+    copySelection = () => {
+      if (this.disposed) {
         return;
       }
       const selection = this.terminal.getSelection();
@@ -491,9 +484,8 @@
       window.clearTimeout(this.resizeTimer);
       this.resizeObserver.disconnect();
       terminalHost.removeEventListener('click', this.focusTerminal);
-      this.terminalElement.removeEventListener('pointerdown', this.handleSelectionPointerDown);
+      this.terminalElement.removeEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.removeEventListener('paste', this.handlePaste, true);
-      window.removeEventListener('pointerup', this.handleSelectionPointerUp);
       if (this.imageUploadController) {
         this.imageUploadController.abort();
         this.imageUploadController = null;

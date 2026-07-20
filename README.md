@@ -127,10 +127,13 @@ the deployment image and available immediately as `codex` and `opencode`.
   tab or regaining browser connectivity immediately retries any pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. There is no tmux copy mode, Codex-specific wheel
   routing, or synthetic keyboard input.
-- Selecting terminal text copies it to the browser clipboard automatically. Pasting a PNG, JPEG,
-  or WebP image up to 10 MiB uploads it to
+- Selecting terminal text copies it to the browser clipboard automatically. Use `Ctrl+V` to paste
+  text or an image; `Ctrl+Shift+V` remains text-only. Pasting a PNG, JPEG, or WebP image up to
+  10 MiB uploads it to
   `$TERMINAL_HOME/.cache/web-terminal/clipboard-images` and inserts its absolute path into the
-  terminal; images older than 24 hours are pruned at startup and on later image uploads.
+  terminal; images older than 24 hours are pruned at startup and on later image uploads. Because
+  `Ctrl+V` is reserved for browser paste, it is not sent to the terminal as the `^V` control
+  character.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
   locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab
