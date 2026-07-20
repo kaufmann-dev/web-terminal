@@ -34,19 +34,9 @@ and PKCE S256. The provider must publish `authorization_endpoint`, `token_endpoi
 `end_session_endpoint` through OIDC discovery. Do not enable refresh tokens or configure
 `offline_access`, front-channel logout, or back-channel logout.
 
-For Authentik, create application slug `web-terminal` and a confidential OAuth2/OIDC provider.
-Use `default-authentication-flow` and `default-provider-authorization-implicit-consent`, enable
-only Authorization Code, choose a signing key, and retain the per-provider issuer mode. Register
-the two callback URLs above with their respective Authorization and Logout types. Typed logout
-redirects require Authentik 2026.5 or newer. Do not configure an Authentik front-channel or
-back-channel Logout URI. See the
-[Authentik OAuth2 provider configuration](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
-and [Authentik 2026.5 redirect changes](https://docs.goauthentik.io/releases/2026.5/).
-
 Before deploying, bind the intended user, administrator group, or restrictive policy directly to
-the Authentik application. An application without bindings is available to every Authentik user;
-the terminal does not add an identity or claim allowlist after the provider grants access. See
-[Authentik application access](https://docs.goauthentik.io/add-secure-apps/applications/manage_apps/).
+the OIDC application. The terminal does not add an identity or claim allowlist after the provider
+grants access, so the provider's application access policy must enforce admission.
 
 ## Coolify Deployment
 
@@ -82,9 +72,9 @@ Optional:
 
 Coolify supplies `PORT` automatically. Do not set a fixed application port.
 
-Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. For Authentik, copy the generated client ID,
-client secret, and per-provider issuer into the corresponding variables without exposing their
-values. Remove `OIDC_ALLOWED_SUBJECT` from existing deployments; it is no longer supported.
+Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. Copy the generated client ID, client secret,
+and exact discovery issuer into the corresponding variables without exposing their values. Remove
+`OIDC_ALLOWED_SUBJECT` from existing deployments; it is no longer supported.
 
 ### 3. Mount persistent storage
 
@@ -233,13 +223,11 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **OIDC callback is rejected:** Confirm the registered Authorization redirect is exactly
   `<PUBLIC_ORIGIN>/auth/callback`, the client is confidential, Authorization Code and PKCE S256 are
   enabled, and the application requests only `openid`.
-- **An unexpected identity can sign in:** Bind the intended user, administrator group, or
-  restrictive policy directly to the Authentik application. Without an application binding,
-  Authentik grants every user access.
-- **The provider denies the intended identity:** Check the Authentik application's policy, group,
-  and user bindings and review the provider's policy evaluation result.
-- **Provider logout is rejected:** Register `<PUBLIC_ORIGIN>/` as the post-logout redirect URI. For
-  Authentik, use a typed Logout redirect on version 2026.5 or newer.
+- **An unexpected identity can sign in:** Restrict the OIDC application's access policy to the
+  intended user, administrator group, or equivalent provider-managed rule.
+- **The provider denies the intended identity:** Review the OIDC application's access policy and
+  the provider's policy evaluation result.
+- **Provider logout is rejected:** Register `<PUBLIC_ORIGIN>/` as the post-logout redirect URI.
 - **Sessions cannot be created:** Check application logs for a `node-pty` spawn failure and confirm
   `TERMINAL_WORKDIR` and `TERMINAL_HOME` are absolute, writable directories.
 - **Sessions disappeared after deployment:** This is expected when the application process or
