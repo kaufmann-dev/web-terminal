@@ -66,8 +66,12 @@ node --test test/*.test.js
 - Keep Git Wrangler pinned to v0.12.0. Its build script must support Linux AMD64 and ARM64,
   verify the official checksum manifest, install the bundled Bash completion, and fail on unknown
   architectures or ambiguous checksums.
-- Nixpacks installs Chromium for `agent-browser`; do not use agent-browser's runtime browser
-  installer. Keep `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment.
+- Nixpacks installs Chromium and the `fontconfig.out` configuration for `agent-browser`; do not use
+  agent-browser's runtime browser installer. Keep `FONTCONFIG_FILE`, `FONTCONFIG_PATH`, and
+  `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment, and point Fontconfig at the
+  stable `/root/.nix-profile/etc/fonts` profile path rather than a hashed Nix store path.
+- Install Nixpacks and uv as Nix system packages for terminal use. Do not install Podman in the
+  application image unless the deployment is explicitly redesigned as a nested container runtime.
 - Keep the compiler, make, Python, and pkg-config system packages required to build `node-pty`.
   Do not add ttyd or tmux back to the image.
 - `scripts/start.sh` validates and creates terminal paths, applies chezmoi, and then replaces itself

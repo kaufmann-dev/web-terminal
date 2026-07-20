@@ -76,7 +76,8 @@ The terminal includes:
 
 - Node.js 24, npm, and npx
 - `codex` 0.144.5 and `opencode` 1.18.3
-- `agent-browser` 0.32.1 with Chromium
+- `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
+- Nixpacks for plan/build-context inspection and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
@@ -84,6 +85,10 @@ The terminal includes:
 The browser terminal PATH starts with `/app/node_modules/.bin` and `~/.local/bin`, explicitly
 includes `/usr/local/bin` for Git Wrangler, and then preserves the Nixpacks image PATH. Pinned npm
 commands, user scripts stored on `/code`, Git Wrangler, and Nix packages are all callable.
+
+Nixpacks can validate this repository's deployment plan and emit its OCI build context. Podman is
+not bundled because the Coolify application container is not configured as a nested container
+runtime; build and run generated images with Podman on a suitable development or CI host.
 
 ## First Use
 
@@ -103,8 +108,10 @@ git-wrangler init
 ```
 
 These logins persist below `/code` with the default volume. Git Wrangler Bash completion is
-available automatically. Agent-browser runs headlessly by default; use its persistent profile or
-state options only when a task needs browser login state to survive.
+available automatically. Agent-browser runs headlessly by default, and every managed terminal
+receives the Nix-provided Fontconfig configuration automatically, so ordinary unprefixed
+`agent-browser open`, `snapshot`, and `close` commands work. Use persistent profile or state
+options only when a task needs browser login state to survive.
 
 Do not reinstall Codex or OpenCode with a runtime installer. Their exact versions are already in
 the deployment image and available immediately as `codex` and `opencode`.
@@ -173,6 +180,9 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   container restarts; only files stored on a persistent volume survive redeployment.
 - **`codex: command not found`:** Redeploy the latest image and run `command -v codex`. Do not use
   the standalone installer; the bundled command comes from `/app/node_modules/.bin`.
+- **Agent-browser reports a Fontconfig error or loses Chromium:** Redeploy the latest image and
+  verify `FONTCONFIG_FILE` and `FONTCONFIG_PATH` point below `/root/.nix-profile/etc/fonts`. Do not
+  run agent-browser's browser installer or prefix individual commands with store paths.
 - **Terminal starts in the wrong place:** Ensure `TERMINAL_WORKDIR` is an absolute path matching
   the persistent-volume destination.
 - **`cd ~` opens the wrong directory:** Check `TERMINAL_HOME`; it defaults to `TERMINAL_WORKDIR`.

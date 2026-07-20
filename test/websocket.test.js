@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const WebSocket = require('ws');
@@ -214,7 +215,7 @@ test('terminal PATH includes locally installed image commands', () => {
   }
 });
 
-test('terminal environment pins a UTF-8 locale and removes server credentials', () => {
+test('terminal environment retains Fontconfig, pins UTF-8, and removes server credentials', () => {
   const overrides = {
     LANG: 'C',
     LC_CTYPE: 'C',
@@ -222,6 +223,8 @@ test('terminal environment pins a UTF-8 locale and removes server credentials', 
     AUTH_EMAIL: 'secret@example.com',
     AUTH_PASSWORD: 'secret-password',
     SESSION_SECRET: 'secret-session',
+    FONTCONFIG_FILE: '/root/.nix-profile/etc/fonts/fonts.conf',
+    FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
   };
   const originals = Object.fromEntries(
     Object.keys(overrides).map((name) => [name, process.env[name]]),
@@ -234,6 +237,11 @@ test('terminal environment pins a UTF-8 locale and removes server credentials', 
       terminalWorkdir: '/terminal-workdir',
     });
 
+    assert.equal(
+      environment.FONTCONFIG_FILE,
+      '/root/.nix-profile/etc/fonts/fonts.conf',
+    );
+    assert.equal(environment.FONTCONFIG_PATH, '/root/.nix-profile/etc/fonts');
     assert.equal(environment.LANG, 'C.UTF-8');
     assert.equal(environment.LC_CTYPE, 'C.UTF-8');
     assert.equal(Object.hasOwn(environment, 'LC_ALL'), false);
@@ -249,4 +257,19 @@ test('terminal environment pins a UTF-8 locale and removes server credentials', 
       }
     }
   }
+});
+
+test('Nixpacks image provides stable Fontconfig paths and terminal development tools', () => {
+  const config = fs.readFileSync(path.join(__dirname, '..', 'nixpacks.toml'), 'utf8');
+
+  assert.match(
+    config,
+    /^FONTCONFIG_FILE = "\/root\/\.nix-profile\/etc\/fonts\/fonts\.conf"$/m,
+  );
+  assert.match(config, /^FONTCONFIG_PATH = "\/root\/\.nix-profile\/etc\/fonts"$/m);
+  assert.match(config, /^\s*"fontconfig\.out",$/m);
+  assert.match(config, /^\s*"nixpacks",$/m);
+  assert.match(config, /^\s*"uv",$/m);
+  assert.doesNotMatch(config, /^\s*"podman",$/m);
+  assert.doesNotMatch(config, /\/nix\/store\//);
 });

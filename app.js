@@ -51,7 +51,12 @@ function timingSafeEqualString(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
+function createTerminalEnvironment({
+  terminalHome,
+  terminalWorkdir,
+  fontconfigFile = process.env.FONTCONFIG_FILE,
+  fontconfigPath = process.env.FONTCONFIG_PATH,
+}) {
   const terminalEnvironment = {
     ...process.env,
     HOME: terminalHome,
@@ -75,6 +80,17 @@ function createTerminalEnvironment({ terminalHome, terminalWorkdir }) {
     TERMINAL_WORKDIR: terminalWorkdir,
     TERMINAL_HOME: terminalHome,
   };
+
+  if (fontconfigFile) {
+    terminalEnvironment.FONTCONFIG_FILE = fontconfigFile;
+  } else {
+    delete terminalEnvironment.FONTCONFIG_FILE;
+  }
+  if (fontconfigPath) {
+    terminalEnvironment.FONTCONFIG_PATH = fontconfigPath;
+  } else {
+    delete terminalEnvironment.FONTCONFIG_PATH;
+  }
 
   delete terminalEnvironment.AUTH_EMAIL;
   delete terminalEnvironment.AUTH_PASSWORD;

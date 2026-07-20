@@ -1,3 +1,7 @@
+[variables]
+FONTCONFIG_FILE = "/root/.nix-profile/etc/fonts/fonts.conf"
+FONTCONFIG_PATH = "/root/.nix-profile/etc/fonts"
+
 [phases.setup]
 nixPkgs = [
   "...",
@@ -5,6 +9,7 @@ nixPkgs = [
   "chezmoi",
   "curl",
   "fd",
+  "fontconfig.out",
   "fzf",
   "gcc",
   "gh",
@@ -14,12 +19,14 @@ nixPkgs = [
   "jq",
   "less",
   "micro",
+  "nixpacks",
   "pkg-config",
   "python3",
   "ripgrep",
   "rsync",
   "tree",
   "unzip",
+  "uv",
   "yq-go",
   "zip",
 ]
