@@ -12,6 +12,40 @@ snapshots. Browser disconnects do not own or stop the shell.
 > Protect it with HTTPS, a securely configured identity provider, and restricted network access. It does not provide a
 > shell on the Coolify host.
 
+## Authentication Setup
+
+The terminal uses OIDC Authorization Code login for one configured issuer-scoped subject, then
+authorizes requests with a bounded, server-side application session. Access and refresh tokens
+are discarded; only the ID token is retained server-side as the RP-Initiated Logout hint.
+
+- Public Client: Off
+- PKCE: On
+- Requires Re-Authentication: Off
+- Callback URLs: `<PUBLIC_ORIGIN>/auth/callback`
+- Logout Callback URLs: `<PUBLIC_ORIGIN>/`
+- Scope: `openid` only
+
+All six authentication environment variables are required and documented under
+[Set environment variables](#2-set-environment-variables).
+
+Create a confidential web client at the identity provider with only the Authorization Code grant
+and PKCE S256. The provider must publish `authorization_endpoint`, `token_endpoint`, and
+`end_session_endpoint` through OIDC discovery. Do not enable refresh tokens or configure
+`offline_access`, front-channel logout, or back-channel logout.
+
+For Authentik, create application slug `web-terminal` and a confidential OAuth2/OIDC provider.
+Use `default-authentication-flow` and `default-provider-authorization-implicit-consent`, enable
+only Authorization Code, choose a signing key, retain the per-provider issuer mode, and use the
+user UUID as `sub`. Register the two callback URLs above with their respective Authorization and
+Logout types. Typed logout redirects require Authentik 2026.5 or newer. Do not configure an
+Authentik front-channel or back-channel Logout URI. See the
+[Authentik OAuth2 provider configuration](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
+and [Authentik 2026.5 redirect changes](https://docs.goauthentik.io/releases/2026.5/).
+
+Authentik roles and application bindings do not authorize terminal access. Select the intended
+user UUID and set it as `OIDC_ALLOWED_SUBJECT`; the application admits only that exact issuer and
+subject pair.
+
 ## Coolify Deployment
 
 ### 1. Create the application
@@ -27,34 +61,7 @@ dependencies for `node-pty`, then starts the combined web and PTY service. The d
 pre- or post-deployment command. Do not set `NIXPACKS_NODE_VERSION`; `package.json` selects Node.js
 24.
 
-### 2. Register the OIDC client
-
-Create a confidential web client at the identity provider with only the Authorization Code grant
-and PKCE S256. Register these exact URIs, replacing the example origin with `PUBLIC_ORIGIN`:
-
-- Authorization redirect URI: `<PUBLIC_ORIGIN>/auth/callback`
-- Post-logout redirect URI: `<PUBLIC_ORIGIN>/`
-- Scope: `openid` only
-
-The provider must publish `authorization_endpoint`, `token_endpoint`, and
-`end_session_endpoint` through OIDC discovery. Do not enable refresh tokens or configure
-`offline_access`, front-channel logout, or back-channel logout. The application discards access
-and refresh tokens; its bounded local session is the only authorization state after sign-in.
-
-For Authentik, create application slug `web-terminal` and a confidential OAuth2/OIDC provider.
-Use `default-authentication-flow` and `default-provider-authorization-implicit-consent`, enable
-only Authorization Code, choose a signing key, retain the per-provider issuer mode, and use the
-user UUID as `sub`. Register the two redirect URIs above with their respective Authorization and
-Logout types. Typed logout redirects require Authentik 2026.5 or newer. Do not configure an
-Authentik front-channel or back-channel Logout URI. See the
-[Authentik OAuth2 provider configuration](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
-and [Authentik 2026.5 redirect changes](https://docs.goauthentik.io/releases/2026.5/).
-
-Authentik roles and application bindings do not authorize terminal access. Select the intended
-user UUID and set it as `OIDC_ALLOWED_SUBJECT`; the application admits only that exact issuer and
-subject pair.
-
-### 3. Set environment variables
+### 2. Set environment variables
 
 Required:
 
@@ -79,7 +86,7 @@ Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. For Authentik, copy the g
 client secret, per-provider issuer, and selected user UUID into the corresponding variables
 without exposing their values.
 
-### 4. Mount persistent storage
+### 3. Mount persistent storage
 
 Add one Coolify persistent volume:
 
@@ -94,7 +101,7 @@ agent-browser profiles survive redeploys in this volume.
 If you use different terminal paths, mount persistent storage over all of them and set
 `TERMINAL_WORKDIR` and `TERMINAL_HOME` to absolute paths.
 
-### 5. Deploy
+### 4. Deploy
 
 Deploy, open the assigned domain, and follow the OIDC sign-in link. The image build installs all
 included programs again on every deployment; tool credentials and personal state remain on
