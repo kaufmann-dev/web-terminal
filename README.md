@@ -1,15 +1,15 @@
 # Private Browser Terminal
 
-A private, password-protected development terminal that runs in your browser. One admin account
-uses persistent named shells powered by xterm.js and `node-pty`, with Node.js 24, AI coding tools,
-GitHub tooling, a Chromium automation CLI, and a persistent workspace.
+A private, OIDC-protected development terminal that runs in your browser. One configured OIDC
+subject uses persistent named shells powered by xterm.js and `node-pty`, with Node.js 24, AI coding
+tools, GitHub tooling, a Chromium automation CLI, and a persistent workspace.
 
 The browser connects to Express through an authenticated, same-origin WebSocket. Each named shell
 is a process-local PTY whose output is also retained in a bounded headless xterm for reconnect
 snapshots. Browser disconnects do not own or stop the shell.
 
 > **Security warning:** This terminal can run arbitrary commands inside its application container.
-> Protect it with HTTPS, strong credentials, and restricted network access. It does not provide a
+> Protect it with HTTPS, a securely configured identity provider, and restricted network access. It does not provide a
 > shell on the Coolify host.
 
 ## Coolify Deployment
@@ -27,12 +27,42 @@ dependencies for `node-pty`, then starts the combined web and PTY service. The d
 pre- or post-deployment command. Do not set `NIXPACKS_NODE_VERSION`; `package.json` selects Node.js
 24.
 
-### 2. Set environment variables
+### 2. Register the OIDC client
+
+Create a confidential web client at the identity provider with only the Authorization Code grant
+and PKCE S256. Register these exact URIs, replacing the example origin with `PUBLIC_ORIGIN`:
+
+- Authorization redirect URI: `<PUBLIC_ORIGIN>/auth/callback`
+- Post-logout redirect URI: `<PUBLIC_ORIGIN>/`
+- Scope: `openid` only
+
+The provider must publish `authorization_endpoint`, `token_endpoint`, and
+`end_session_endpoint` through OIDC discovery. Do not enable refresh tokens or configure
+`offline_access`, front-channel logout, or back-channel logout. The application discards access
+and refresh tokens; its bounded local session is the only authorization state after sign-in.
+
+For Authentik, create application slug `web-terminal` and a confidential OAuth2/OIDC provider.
+Use `default-authentication-flow` and `default-provider-authorization-implicit-consent`, enable
+only Authorization Code, choose a signing key, retain the per-provider issuer mode, and use the
+user UUID as `sub`. Register the two redirect URIs above with their respective Authorization and
+Logout types. Typed logout redirects require Authentik 2026.5 or newer. Do not configure an
+Authentik front-channel or back-channel Logout URI. See the
+[Authentik OAuth2 provider configuration](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
+and [Authentik 2026.5 redirect changes](https://docs.goauthentik.io/releases/2026.5/).
+
+Authentik roles and application bindings do not authorize terminal access. Select the intended
+user UUID and set it as `OIDC_ALLOWED_SUBJECT`; the application admits only that exact issuer and
+subject pair.
+
+### 3. Set environment variables
 
 Required:
 
-- `AUTH_EMAIL` — email address used to sign in.
-- `AUTH_PASSWORD` — long, unique password used to sign in.
+- `OIDC_ISSUER_URL` — exact, non-secret discovery issuer URL.
+- `OIDC_CLIENT_ID` — non-secret confidential-client identifier.
+- `OIDC_CLIENT_SECRET` — confidential-client secret.
+- `OIDC_ALLOWED_SUBJECT` — immutable `sub` for the one admitted identity. This is non-secret but
+  identity-sensitive.
 - `SESSION_SECRET` — unique random string of at least 32 characters.
 - `PUBLIC_ORIGIN` — browser-facing HTTP(S) origin, for example
   `https://terminal.kaufmann.dev`. Include the scheme and any non-default port, with no path.
@@ -45,7 +75,11 @@ Optional:
 
 Coolify supplies `PORT` automatically. Do not set a fixed application port.
 
-### 3. Mount persistent storage
+Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. For Authentik, copy the generated client ID,
+client secret, per-provider issuer, and selected user UUID into the corresponding variables
+without exposing their values.
+
+### 4. Mount persistent storage
 
 Add one Coolify persistent volume:
 
@@ -60,11 +94,11 @@ agent-browser profiles survive redeploys in this volume.
 If you use different terminal paths, mount persistent storage over all of them and set
 `TERMINAL_WORKDIR` and `TERMINAL_HOME` to absolute paths.
 
-### 4. Deploy
+### 5. Deploy
 
-Deploy, open the assigned domain, and sign in with `AUTH_EMAIL` and `AUTH_PASSWORD`. The image
-build installs all included programs again on every deployment; credentials and personal state
-remain on `/code`.
+Deploy, open the assigned domain, and follow the OIDC sign-in link. The image build installs all
+included programs again on every deployment; tool credentials and personal state remain on
+`/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
 proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
@@ -122,6 +156,15 @@ the deployment image and available immediately as `codex` and `opencode`.
   named sessions.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
+- Login sessions expire after 24 hours without accepted interactive activity and always expire
+  seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
+  clipboard-image uploads, and accepted terminal input or paste extend the idle deadline. Polling,
+  CSRF retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health
+  checks, pushed updates, and merely leaving a tab open do not.
+- **Logout** destroys the local session and its retained ID token before navigating to the
+  provider's RP-Initiated Logout endpoint. It may end provider-wide SSO when that is the provider's
+  policy. Idle or absolute expiry destroys only the local session; the next access starts a new
+  OIDC authorization flow.
 - Reconnecting restores up to 10,000 retained scrollback lines plus the current screen. Output
   produced while disconnected appears in order before live output resumes. Returning to a visible
   tab or regaining browser connectivity immediately retries any pending reconnect backoff.
@@ -148,7 +191,8 @@ the deployment image and available immediately as `codex` and `opencode`.
   redeployments only when Coolify mounts persistent storage at that path.
 - `cd ~` returns to `/code` with the default configuration.
 
-To change the password, replace `AUTH_PASSWORD` in Coolify and redeploy the application.
+To switch identity providers, create an equivalent standard client registration and replace the
+four `OIDC_*` variables. No application code or terminal-data migration is required.
 
 ## Run Locally
 
@@ -160,8 +204,9 @@ npm ci
 cp .env.example .env
 ```
 
-Set the required authentication values in `.env`, choose writable absolute terminal paths, export
-the file's values, and start the same entrypoint used by Coolify:
+Register `http://localhost:3000/auth/callback` and `http://localhost:3000/` with a development OIDC
+client. Set its four `OIDC_*` values in `.env`, choose writable absolute terminal paths, export the
+file's values, and start the same entrypoint used by Coolify:
 
 ```bash
 set -a
@@ -175,8 +220,16 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 
 ## Troubleshooting
 
-- **Login returns to the sign-in page:** Confirm the deployment uses HTTPS and redeploy the latest
-  application version.
+- **Application exits before listening:** Confirm the issuer discovery document is reachable and
+  publishes authorization, token, and RP-Initiated Logout endpoints. A provider without
+  `end_session_endpoint` is incompatible.
+- **OIDC callback is rejected:** Confirm the registered Authorization redirect is exactly
+  `<PUBLIC_ORIGIN>/auth/callback`, the client is confidential, Authorization Code and PKCE S256 are
+  enabled, and the application requests only `openid`.
+- **Sign-in returns HTTP 403:** Confirm `OIDC_ALLOWED_SUBJECT` exactly matches the selected user's
+  immutable `sub` for the configured issuer. Roles and application bindings are not consulted.
+- **Provider logout is rejected:** Register `<PUBLIC_ORIGIN>/` as the post-logout redirect URI. For
+  Authentik, use a typed Logout redirect on version 2026.5 or newer.
 - **Sessions cannot be created:** Check application logs for a `node-pty` spawn failure and confirm
   `TERMINAL_WORKDIR` and `TERMINAL_HOME` are absolute, writable directories.
 - **Sessions disappeared after deployment:** This is expected when the application process or
@@ -196,5 +249,5 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   non-default port. Do not include a path.
 - **Native dependency installation fails locally:** Install a C/C++ compiler, make, Python, and
   pkg-config, then rerun `npm ci` under Node.js 24.
-- **Health check fails:** Verify all required environment variables are set, including
-  `PUBLIC_ORIGIN`.
+- **Health check fails:** Verify all required `OIDC_*`, `SESSION_SECRET`, and `PUBLIC_ORIGIN`
+  variables are set and discovery succeeds.

@@ -10,37 +10,12 @@ const {
   MAX_CLIPBOARD_IMAGE_BYTES,
   detectImageContentType,
 } = require('../clipboard-image-store');
-
-function updateCookies(cookieJar, response) {
-  for (const value of response.headers.getSetCookie()) {
-    const [pair] = value.split(';');
-    const separator = pair.indexOf('=');
-    cookieJar.set(pair.slice(0, separator), pair.slice(separator + 1));
-  }
-}
-
-function cookieHeader(cookieJar) {
-  return [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; ');
-}
-
-async function authenticate(baseUrl) {
-  const cookies = new Map();
-  const tokenResponse = await fetch(`${baseUrl}/csrf-token`);
-  updateCookies(cookies, tokenResponse);
-  const { csrfToken } = await tokenResponse.json();
-  const loginResponse = await fetch(`${baseUrl}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'CSRF-Token': csrfToken,
-      Cookie: cookieHeader(cookies),
-    },
-    body: JSON.stringify({ email: 'test@example.com', password: 'test-password' }),
-  });
-  updateCookies(cookies, loginResponse);
-  assert.equal(loginResponse.status, 200);
-  return { cookies, csrfToken };
-}
+const {
+  authenticate,
+  cookieHeader,
+  createFakeOpenidClient,
+  oidcServiceOptions,
+} = require('./oidc-test-helpers');
 
 test('clipboard image signatures identify supported browser formats', () => {
   assert.equal(detectImageContentType(Buffer.from([
@@ -52,6 +27,7 @@ test('clipboard image signatures identify supported browser formats', () => {
 });
 
 test('clipboard image uploads are protected, validated, stored, and pruned', async (t) => {
+  let currentTime = 1_800_000_000_000;
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'web-terminal-clipboard-test-'));
   const imageDirectory = path.join(temporaryRoot, 'images');
   await fs.mkdir(imageDirectory);
@@ -60,18 +36,16 @@ test('clipboard image uploads are protected, validated, stored, and pruned', asy
   const staleTime = new Date(Date.now() - (25 * 60 * 60 * 1000));
   await fs.utimes(stalePath, staleTime, staleTime);
 
+  const openidClient = createFakeOpenidClient();
   const service = createWebTerminal({
-    authEmail: 'test@example.com',
-    authPassword: 'test-password',
-    sessionSecret: 'test-session-secret-at-least-32-characters',
+    ...oidcServiceOptions({ openidClient }),
     publicOrigin: 'http://127.0.0.1',
-    nodeEnv: 'development',
     terminalWorkdir: temporaryRoot,
     terminalHome: temporaryRoot,
     clipboardImageDirectory: imageDirectory,
+    clipboardImageStore: undefined,
     sessionManager: { shutdown: async () => {} },
-    hashPassword: async (password) => password,
-    verifyPassword: async (hash, password) => hash === password,
+    now: () => currentTime,
   });
   await service.start({ port: 0, host: '127.0.0.1' });
   t.after(async () => {
@@ -94,11 +68,17 @@ test('clipboard image uploads are protected, validated, stored, and pruned', asy
   });
   assert.equal(unauthenticatedResponse.status, 401);
 
-  const { cookies, csrfToken } = await authenticate(baseUrl);
+  const { cookies, csrfToken } = await authenticate(baseUrl, openidClient);
   const authenticatedHeaders = {
     Cookie: cookieHeader(cookies),
     'CSRF-Token': csrfToken,
   };
+  const sessionsBeforeUpload = await new Promise((resolve, reject) => {
+    service.sessionStore.all((err, sessions) => (
+      err ? reject(err) : resolve(Object.values(sessions))
+    ));
+  });
+  const loginActivityAt = sessionsBeforeUpload[0].lastActivityAt;
 
   const missingCsrfResponse = await fetch(`${baseUrl}/api/clipboard-images`, {
     method: 'POST',
@@ -124,12 +104,20 @@ test('clipboard image uploads are protected, validated, stored, and pruned', asy
   });
   assert.equal(mismatchedResponse.status, 415);
 
+  currentTime += 1000;
   const uploadResponse = await fetch(`${baseUrl}/api/clipboard-images`, {
     method: 'POST',
     headers: { ...authenticatedHeaders, 'Content-Type': 'image/png' },
     body: png,
   });
   assert.equal(uploadResponse.status, 201);
+  const sessionsAfterUpload = await new Promise((resolve, reject) => {
+    service.sessionStore.all((err, sessions) => (
+      err ? reject(err) : resolve(Object.values(sessions))
+    ));
+  });
+  assert.equal(loginActivityAt, currentTime - 1000);
+  assert.equal(sessionsAfterUpload[0].lastActivityAt, currentTime);
   const upload = await uploadResponse.json();
   assert.equal(path.dirname(upload.path), imageDirectory);
   assert.match(path.basename(upload.path), /^clipboard-[a-f0-9]{32}\.png$/);

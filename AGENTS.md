@@ -19,20 +19,25 @@ npm ci
 ```bash
 node --check app.js
 node --check terminal-session-manager.js
-node --check public/js/login.js
 node --check public/js/terminal.js
 node --test test/*.test.js
 ```
 
-- Use `npm start` only when a runtime check is necessary. The app exits unless `AUTH_EMAIL`,
-  `AUTH_PASSWORD`, `SESSION_SECRET`, and `PUBLIC_ORIGIN` are set.
+- Use `npm start` only when a runtime check is necessary. The app exits unless the four `OIDC_*`
+  variables, `SESSION_SECRET`, and `PUBLIC_ORIGIN` are set and discovery succeeds.
 - After shell-script changes, run `bash -n` on every file under `scripts/`.
 
 ## Security and Architecture
 
-- Keep `app.js` as the Express entrypoint for login, sessions, CSRF protection, rate limiting,
+- Keep `app.js` as the Express entrypoint for OIDC login, local sessions, CSRF protection,
   static assets, health checks, and authenticated terminal WebSockets.
-- Hash `AUTH_PASSWORD` once with Argon2id before opening the HTTP listener; never log the password or compare it directly during login.
+- Use `openid-client` 6.8.4 discovery and Authorization Code with PKCE S256, state, and nonce.
+  Require authorization, token, and RP-Initiated Logout endpoints before listening, request only
+  `openid`, and admit only the exact issuer-scoped `OIDC_ALLOWED_SUBJECT`.
+- Keep OIDC tokens out of authorization after callback. Discard access and refresh tokens, retain
+  the ID token only for `id_token_hint`, and regenerate a bounded local application session.
+- Enforce the 24-hour interactive idle and seven-day absolute local-session deadlines on protected
+  HTTP, WebSocket upgrade, and heartbeat paths. Passive traffic must not extend either deadline.
 - Keep terminal WebSockets in `ws` no-server mode at `/ws/terminal`. Authenticate upgrades with
   the Express session middleware, require `Origin` to exactly match the normalized
   `PUBLIC_ORIGIN`, validate session names, and never create a session during an upgrade. Do not
@@ -47,10 +52,10 @@ node --test test/*.test.js
 - Treat terminal-session deletion as the only UI operation that intentionally stops processes.
   Signal every process in the PTY's Linux session with SIGHUP, then SIGKILL survivors after two
   seconds. Natural shell exit removes the session.
-- Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy` because client-controlled forwarding headers could bypass IP-based rate limits.
+- Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
-- Keep `AUTH_EMAIL`, `AUTH_PASSWORD`, and `SESSION_SECRET` out of terminal and chezmoi
-  environments. Express must retain them.
+- Keep all `OIDC_*` variables and `SESSION_SECRET` out of terminal and chezmoi environments.
+  Express must retain them.
 - Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also
   process-local. Do not configure multiple application replicas without replacing both designs.
 - Serve only the pinned xterm browser module, fit addon, stylesheet, and self-hosted font files
