@@ -20,8 +20,6 @@ application session. Access and refresh tokens are discarded; only the ID token 
 server-side as the RP-Initiated Logout hint.
 
 - Public Client: Off
-- PKCE: On
-- Requires Re-Authentication: Off
 - Callback URLs: `<PUBLIC_ORIGIN>/auth/callback`
 - Logout Callback URLs: `<PUBLIC_ORIGIN>/`
 - Scope: `openid` only
