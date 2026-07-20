@@ -1,22 +1,23 @@
 # Xterm Children Overflow Terminal
 
-- Fixed: 2026-07-20 08:19:14 UTC (+0000)
-- Pre-fix commit: `b36116c15c44ae9a78d8ecc4bbbd1ec55ee42eae`
+- Fixed: 2026-07-20 08:28:34 UTC (+0000)
+- Pre-fix commit: `ca51a3e292c1e2dd07bf425c6cbe6219d7e75b2a`
 
 ## Symptom
 
-At some browser heights, xterm's generated screen and scrollable elements extended below the
-terminal element. Terminal content reached the browser edge and an additional scrollbar or edge
-appeared.
+Xterm's viewport was taller than its generated screen and scrollable elements, leaving mismatched
+terminal layers and unwanted space at the bottom.
 
 ## Confirmed Root Cause
 
-The terminal host used border-box sizing with 8px vertical padding. Xterm's FitAddon calculated
-rows from the host's full computed height, while the terminal element occupied only the host's
-smaller content box. Row rounding hid the mismatch at some heights, but at a 1209x849 viewport the
-798px generated elements overflowed the 785px terminal element by 13px.
+FitAddon sizes the terminal grid to a whole number of rows, so the generated screen and scrollable
+elements can legitimately be shorter than the available host by a fraction of a row. The
+stylesheet forced xterm to occupy the host's full height, which also stretched its absolutely
+positioned viewport while the screen and scrollable element retained the grid's exact height.
 
 ## Changes
 
-- Replaced padding on the terminal host with equivalent workspace-relative insets.
-- Kept the terminal host and xterm element the same size so generated children fit within both.
+- Kept the terminal host inset from the workspace so FitAddon measures the intended available
+  area.
+- Removed the forced xterm height so xterm, its viewport, the scrollable element, and the screen all
+  use the rendered grid height.

@@ -525,10 +525,6 @@ body.dark {
   overflow: hidden;
 }
 
-.terminal-host .xterm {
-  height: 100%;
-}
-
 .terminal-host .xterm-viewport {
   overscroll-behavior: contain;
 }
