@@ -20,8 +20,8 @@ After a successful callback, it creates a bounded server-side session and keeps 
 token for logout.
 
 - Public Client: Off
-- Callback URL: `<PUBLIC_ORIGIN>/auth/callback`
-- Logout Callback URL: `<PUBLIC_ORIGIN>/`
+- Callback URL: `/auth/callback`
+- Logout Callback URL: `/`
 
 Authentication variables are required and documented under
 [Set environment variables](#2-set-environment-variables).
