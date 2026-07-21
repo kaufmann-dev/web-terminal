@@ -14,27 +14,17 @@ snapshots. Browser disconnects do not own or stop the shell.
 
 ## Authentication Setup
 
-The terminal uses OIDC Authorization Code login and relies on the provider's application access
-policy as its sole admission control. It then authorizes requests with a bounded, server-side
-application session. Access and refresh tokens are discarded; only the ID token is retained
-server-side as the RP-Initiated Logout hint.
+The terminal uses OIDC Authorization Code with PKCE for interactive login; provider policy is
+the sole admission control.
+After a successful callback, it creates a bounded server-side session and keeps only the ID
+token for logout.
 
 - Public Client: Off
-- Callback URLs: `<PUBLIC_ORIGIN>/auth/callback`
-- Logout Callback URLs: `<PUBLIC_ORIGIN>/`
-- Scope: `openid` only
+- Callback URL(s): `<PUBLIC_ORIGIN>/auth/callback`
+- Logout Callback URL(s): `<PUBLIC_ORIGIN>/`
 
-All five authentication and session environment variables are required and documented under
+Authentication variables are required and documented under
 [Set environment variables](#2-set-environment-variables).
-
-Create a confidential web client at the identity provider with only the Authorization Code grant
-and PKCE S256. The provider must publish `authorization_endpoint`, `token_endpoint`, and
-`end_session_endpoint` through OIDC discovery. Do not enable refresh tokens or configure
-`offline_access`, front-channel logout, or back-channel logout.
-
-Before deploying, bind the intended user, administrator group, or restrictive policy directly to
-the OIDC application. The terminal does not add an identity or claim allowlist after the provider
-grants access, so the provider's application access policy must enforce admission.
 
 ## Coolify Deployment
 
