@@ -10,7 +10,7 @@ npm ci
 ```
 
 - Keep these terminal CLIs as exact production dependencies so Nixpacks installs them into the
-  immutable image: `@openai/codex@0.144.5`, `opencode-ai@1.18.3`, and
+  immutable image: `@openai/codex@0.145.0`, `opencode-ai@1.18.3`, and
   `agent-browser@0.32.1`. Do not replace them with runtime installers or global npm installs.
 
 - The repository has no lint, type-check, or build script. After JavaScript changes, run the
@@ -76,6 +76,9 @@ node --test test/*.test.js
   agent-browser's runtime browser installer. Keep `FONTCONFIG_FILE`, `FONTCONFIG_PATH`, and
   `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment, and point Fontconfig at the
   stable `/root/.nix-profile/etc/fonts` profile path rather than a hashed Nix store path.
+- Keep `xvfb` and `xdotool` as Apt packages, and keep the X11, Vulkan, and Mesa runtime used by
+  Nix-linked GUI builds in `nixLibs`. Expose Mesa's drivers and data through stable
+  `/root/.nix-profile` paths; never embed hashed Nix store paths in terminal configuration.
 - Install Nixpacks and uv as Nix system packages for terminal use. Do not install Podman in the
   application image unless the deployment is explicitly redesigned as a nested container runtime.
 - Keep the compiler, make, Python, and pkg-config system packages required to build `node-pty`.

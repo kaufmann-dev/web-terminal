@@ -269,6 +269,8 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     SESSION_SECRET: 'secret-session',
     FONTCONFIG_FILE: '/root/.nix-profile/etc/fonts/fonts.conf',
     FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
+    LIBGL_DRIVERS_PATH: '/root/.nix-profile/lib/dri',
+    XDG_DATA_DIRS: '/root/.nix-profile/share:/usr/local/share:/usr/share',
   };
   const originals = Object.fromEntries(
     Object.keys(overrides).map((name) => [name, process.env[name]]),
@@ -286,6 +288,11 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
       '/root/.nix-profile/etc/fonts/fonts.conf',
     );
     assert.equal(environment.FONTCONFIG_PATH, '/root/.nix-profile/etc/fonts');
+    assert.equal(environment.LIBGL_DRIVERS_PATH, '/root/.nix-profile/lib/dri');
+    assert.equal(
+      environment.XDG_DATA_DIRS,
+      '/root/.nix-profile/share:/usr/local/share:/usr/share',
+    );
     assert.equal(environment.LANG, 'C.UTF-8');
     assert.equal(environment.LC_CTYPE, 'C.UTF-8');
     assert.equal(Object.hasOwn(environment, 'LC_ALL'), false);
@@ -305,17 +312,38 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
   }
 });
 
-test('Nixpacks image provides stable Fontconfig paths and terminal development tools', () => {
+test('Nixpacks image provides stable GUI runtime paths and terminal development tools', () => {
   const config = fs.readFileSync(path.join(__dirname, '..', 'nixpacks.toml'), 'utf8');
+  const nixPackages = config.match(/nixPkgs = \[([\s\S]*?)\n\]/)?.[1];
+  const nixLibraries = config.match(/nixLibs = \[([\s\S]*?)\n\]/)?.[1];
 
+  assert.ok(nixPackages);
+  assert.ok(nixLibraries);
   assert.match(
     config,
     /^FONTCONFIG_FILE = "\/root\/\.nix-profile\/etc\/fonts\/fonts\.conf"$/m,
   );
   assert.match(config, /^FONTCONFIG_PATH = "\/root\/\.nix-profile\/etc\/fonts"$/m);
-  assert.match(config, /^\s*"fontconfig\.out",$/m);
-  assert.match(config, /^\s*"nixpacks",$/m);
-  assert.match(config, /^\s*"uv",$/m);
+  assert.match(config, /^LIBGL_DRIVERS_PATH = "\/root\/\.nix-profile\/lib\/dri"$/m);
+  assert.match(
+    config,
+    /^XDG_DATA_DIRS = "\/root\/\.nix-profile\/share:\/usr\/local\/share:\/usr\/share"$/m,
+  );
+  assert.match(nixPackages, /^\s*"fontconfig\.out",$/m);
+  assert.match(nixPackages, /^\s*"mesa\.drivers",$/m);
+  assert.match(nixPackages, /^\s*"nixpacks",$/m);
+  assert.match(nixPackages, /^\s*"uv",$/m);
+  for (const library of [
+    'libxkbcommon',
+    'mesa.drivers',
+    'vulkan-loader',
+    'xorg.libX11',
+    'xorg.libXcursor',
+    'xorg.libXi',
+    'xorg.libXrandr',
+  ]) {
+    assert.match(nixLibraries, new RegExp(`^\\s*"${library.replace('.', '\\.')}"[,]$`, 'm'));
+  }
   assert.doesNotMatch(config, /^\s*"podman",$/m);
   assert.doesNotMatch(config, /\/nix\/store\//);
 });

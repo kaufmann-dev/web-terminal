@@ -1,6 +1,8 @@
 [variables]
 FONTCONFIG_FILE = "/root/.nix-profile/etc/fonts/fonts.conf"
 FONTCONFIG_PATH = "/root/.nix-profile/etc/fonts"
+LIBGL_DRIVERS_PATH = "/root/.nix-profile/lib/dri"
+XDG_DATA_DIRS = "/root/.nix-profile/share:/usr/local/share:/usr/share"
 
 [phases.setup]
 nixPkgs = [
@@ -19,6 +21,7 @@ nixPkgs = [
   "jq",
   "less",
   "micro",
+  "mesa.drivers",
   "nixpacks",
   "pkg-config",
   "python3",
@@ -30,6 +33,16 @@ nixPkgs = [
   "yq-go",
   "zip",
 ]
+nixLibs = [
+  "...",
+  "libxkbcommon",
+  "mesa.drivers",
+  "vulkan-loader",
+  "xorg.libX11",
+  "xorg.libXcursor",
+  "xorg.libXi",
+  "xorg.libXrandr",
+]
 aptPkgs = [
   "bash-completion",
   "ca-certificates",
@@ -39,6 +52,8 @@ aptPkgs = [
   "lsof",
   "openssh-client",
   "procps",
+  "xdotool",
+  "xvfb",
 ]
 
 [phases.build]

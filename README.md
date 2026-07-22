@@ -94,8 +94,10 @@ browser address bar.
 The terminal includes:
 
 - Node.js 24, npm, and npx
-- `codex` 0.144.5 and `opencode` 1.18.3
+- `codex` 0.145.0 and `opencode` 1.18.3
 - `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
+- `xvfb-run` for virtual X displays and `xdotool` for X11 input/window automation, backed by the
+  matching Nix X11, Vulkan, and Mesa runtime needed by GUI programs built in the terminal
 - Nixpacks for plan/build-context inspection and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
@@ -225,6 +227,10 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **Agent-browser reports a Fontconfig error or loses Chromium:** Redeploy the latest image and
   verify `FONTCONFIG_FILE` and `FONTCONFIG_PATH` point below `/root/.nix-profile/etc/fonts`. Do not
   run agent-browser's browser installer or prefix individual commands with store paths.
+- **A locally built GUI cannot load X11 or Vulkan libraries:** Redeploy the latest image and verify
+  `LD_LIBRARY_PATH` contains Nix store library directories while `XDG_DATA_DIRS` and
+  `LIBGL_DRIVERS_PATH` point below `/root/.nix-profile`. Do not force an Ubuntu dynamic loader into
+  an executable produced by the Nix compiler.
 - **Terminal starts in the wrong place:** Ensure `TERMINAL_WORKDIR` is an absolute path matching
   the persistent-volume destination.
 - **`cd ~` opens the wrong directory:** Check `TERMINAL_HOME`; it defaults to `TERMINAL_WORKDIR`.
