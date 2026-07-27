@@ -93,7 +93,8 @@ browser address bar.
 
 The terminal includes:
 
-- Node.js 24, npm, and npx
+- Node.js 24, npm, npx, and pnpm 11.17.0
+- Vitest 4.1.10
 - `codex` 0.145.0 and `opencode` 1.18.3
 - `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
 - `xvfb-run` for virtual X displays and `xdotool` for X11 input/window automation, backed by the
