@@ -112,6 +112,7 @@
       this.socket = null;
       this.disposed = false;
       this.ready = false;
+      this.suspended = document.hidden;
       this.reconnectDelay = 250;
       this.reconnectTimer = null;
       this.reconnectInProgress = false;
@@ -162,7 +163,9 @@
       this.terminalElement.addEventListener('paste', this.handlePaste, true);
 
       this.fitAndNotify();
-      this.connect();
+      if (!this.suspended) {
+        this.connect();
+      }
     }
 
     focusTerminal = () => {
@@ -298,7 +301,7 @@
     }
 
     connect() {
-      if (this.disposed) {
+      if (this.disposed || this.suspended) {
         return;
       }
 
@@ -326,6 +329,10 @@
         if (typeof event.data !== 'string') {
           const bytes = new Uint8Array(event.data);
           this.writeQueue = this.writeQueue.then(() => new Promise((resolve) => {
+            if (this.socket !== socket || this.disposed) {
+              resolve();
+              return;
+            }
             this.terminal.write(bytes, resolve);
           }));
           return;
@@ -342,6 +349,9 @@
         if (message.type === 'snapshot') {
           this.ready = false;
           this.writeQueue = this.writeQueue.then(() => {
+            if (this.socket !== socket || this.disposed) {
+              return;
+            }
             this.terminal.reset();
           });
           return;
@@ -407,6 +417,9 @@
     }
 
     scheduleReconnect() {
+      if (this.suspended) {
+        return;
+      }
       window.clearTimeout(this.reconnectTimer);
       const delay = this.reconnectDelay;
       this.reconnectDelay = Math.min(5000, this.reconnectDelay * 2);
@@ -417,7 +430,7 @@
     }
 
     async attemptReconnect() {
-      if (this.disposed || this.socket || this.reconnectInProgress) {
+      if (this.disposed || this.suspended || this.socket || this.reconnectInProgress) {
         return;
       }
 
@@ -451,7 +464,7 @@
     }
 
     reconnectNow() {
-      if (this.disposed || this.socket) {
+      if (this.disposed || this.suspended || this.socket) {
         return;
       }
       if (this.reconnectInProgress) {
@@ -464,6 +477,32 @@
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
       this.attemptReconnect();
+    }
+
+    setPageHidden(hidden) {
+      if (this.disposed || hidden === this.suspended) {
+        if (!hidden) {
+          this.reconnectNow();
+        }
+        return;
+      }
+
+      this.suspended = hidden;
+      if (!hidden) {
+        this.connect();
+        return;
+      }
+
+      this.ready = false;
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.reconnectRequested = false;
+      const socket = this.socket;
+      this.socket = null;
+      if (socket && (socket.readyState === WebSocket.CONNECTING
+        || socket.readyState === WebSocket.OPEN)) {
+        socket.close(1000, 'Page hidden.');
+      }
     }
 
     send(message) {
@@ -764,8 +803,8 @@
 
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      reconnectActiveSessionNow();
+    if (activeController) {
+      activeController.setPageHidden(document.hidden);
     }
   });
 
