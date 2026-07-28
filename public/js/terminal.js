@@ -20,6 +20,9 @@
   const sessionStatus = document.getElementById('session-status');
   const activeSessionLabel = document.getElementById('active-session-label');
   const terminalHost = document.getElementById('terminal-host');
+  const terminalBackground = getComputedStyle(terminalHost)
+    .getPropertyValue('--terminal-bg')
+    .trim();
   const connectionStatus = document.getElementById('connection-status');
   const clipboardStatus = document.getElementById('clipboard-status');
   const terminalPlaceholder = document.getElementById('terminal-placeholder');
@@ -131,7 +134,7 @@
         lineHeight: 1,
         scrollback: 10000,
         theme: {
-          background: '#0b0c10',
+          background: terminalBackground,
           foreground: '#d5d9df',
           cursor: '#66fcf1',
           selectionBackground: '#285f5c',
