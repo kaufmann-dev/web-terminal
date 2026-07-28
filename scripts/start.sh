@@ -153,7 +153,7 @@ migrate_terminal_ownership() {
 }
 
 validate_rootless_podman() {
-  local command_name podman_info_output
+  local command_name pasta_executable
 
   for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare; do
     if ! command -v "$command_name" >/dev/null; then
@@ -170,19 +170,37 @@ validate_rootless_podman() {
     printf '/dev/fuse is unavailable; configure the Coolify /dev/fuse device mapping.\n' >&2
     exit 1
   fi
+  if [[ ! -c /dev/net/tun ]]; then
+    printf '/dev/net/tun is unavailable; configure the Coolify /dev/net/tun device mapping.\n' >&2
+    exit 1
+  fi
   if ! run_as_terminal test -r /dev/fuse || ! run_as_terminal test -w /dev/fuse; then
     printf '/dev/fuse is not readable and writable by the terminal user.\n' >&2
+    exit 1
+  fi
+  if ! run_as_terminal test -r /dev/net/tun || ! run_as_terminal test -w /dev/net/tun; then
+    printf '/dev/net/tun is not readable and writable by the terminal user.\n' >&2
     exit 1
   fi
   if ! run_in_terminal_environment unshare --user --map-root-user true; then
     printf 'Rootless user namespaces are blocked; configure the Coolify seccomp and AppArmor options.\n' >&2
     exit 1
   fi
-  if ! podman_info_output="$(run_in_terminal_environment podman info 2>&1)"; then
-    if [[ -n "$podman_info_output" ]]; then
-      printf '%s\n' "$podman_info_output" >&2
-    fi
+  if ! grep -Eq \
+    '^[[:space:]]*default_rootless_network_cmd[[:space:]]*=[[:space:]]*"pasta"[[:space:]]*$' \
+    "$PODMAN_CONTAINERS_CONF"; then
+    printf 'Rootless Podman must configure pasta as its default network command.\n' >&2
+    exit 1
+  fi
+  if ! pasta_executable="$(
+    run_in_terminal_environment \
+      podman info --format '{{.Host.Pasta.Executable}}' 2>/dev/null
+  )"; then
     printf 'Rootless Podman failed its startup self-check.\n' >&2
+    exit 1
+  fi
+  if [[ -z "$pasta_executable" || ! -x "$pasta_executable" ]]; then
+    printf 'Rootless Podman did not detect an executable pasta network helper.\n' >&2
     exit 1
   fi
 }

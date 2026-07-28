@@ -322,6 +322,14 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
     path.join(__dirname, '..', 'config', 'containers', 'storage.conf'),
     'utf8',
   );
+  const podmanContainers = fs.readFileSync(
+    path.join(__dirname, '..', 'config', 'containers', 'containers.conf'),
+    'utf8',
+  );
+  const startupScript = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'start.sh'),
+    'utf8',
+  );
   const terminalBashRc = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'terminal.bashrc'),
     'utf8',
@@ -382,6 +390,24 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
   assert.match(podmanInstaller, /^\s*usermod --groups "" "\$TERMINAL_USER"$/m);
   assert.doesNotMatch(podmanInstaller, /SUBID_(?:START|COUNT)/);
   assert.match(podmanStorage, /^ignore_chown_errors = "true"$/m);
+  assert.match(podmanContainers, /^\[network\]$/m);
+  assert.match(
+    podmanContainers,
+    /^default_rootless_network_cmd = "pasta"$/m,
+  );
+  assert.match(
+    startupScript,
+    /podman info --format '\{\{\.Host\.Pasta\.Executable\}\}'/,
+  );
+  assert.match(
+    startupScript,
+    /Rootless Podman must configure pasta as its default network command\./,
+  );
+  assert.match(startupScript, /\[\[ ! -c \/dev\/net\/tun \]\]/);
+  assert.match(
+    startupScript,
+    /Rootless Podman did not detect an executable pasta network helper\./,
+  );
   assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);
   assert.match(terminalBashRc, /^\s*source "\$HOME\/\.bashrc"$/m);
   assert.doesNotMatch(config, /\/nix\/store\//);

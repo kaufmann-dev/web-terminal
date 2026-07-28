@@ -104,8 +104,8 @@ node --test test/*.test.js
 - Keep nested Podman rootless in single-UID mode, with no subordinate UID/GID ranges and
   `ignore_chown_errors` enabled for fuse-overlayfs storage under `TERMINAL_HOME`. Keep Buildah
   chroot isolation, file events, and inner cgroups disabled. Never add `--privileged`, `SYS_ADMIN`,
-  or a host Docker/Podman socket. Coolify must pass `/dev/fuse` and use unconfined seccomp and
-  AppArmor through Custom Docker Options.
+  or a host Docker/Podman socket. Coolify must pass `/dev/fuse` and `/dev/net/tun`, and use
+  unconfined seccomp and AppArmor through Custom Docker Options.
 - On first startup, initialize and apply `https://github.com/kaufmann-dev/dotfiles.git`. On later
   starts, update it; if the remote update fails, apply the existing local source. Do not continue
   after first-time initialization or local apply failures.
