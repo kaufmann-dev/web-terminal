@@ -1,8 +1,7 @@
 (async () => {
-  const [{ Terminal }, { FitAddon }, { WebglAddon }] = await Promise.all([
+  const [{ Terminal }, { FitAddon }] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
-    import('/vendor/xterm/addon-webgl.mjs'),
   ]);
   await Promise.all([
     document.fonts.load('400 14px "JetBrains Mono"'),
@@ -142,23 +141,6 @@
       this.terminal.loadAddon(this.fitAddon);
       this.terminal.open(terminalHost);
       this.terminalElement = this.terminal.element;
-      this.webglAddon = null;
-      let webglAddon = null;
-      try {
-        webglAddon = new WebglAddon();
-        webglAddon.onContextLoss(() => {
-          if (this.webglAddon !== webglAddon) {
-            return;
-          }
-          this.webglAddon = null;
-          webglAddon.dispose();
-        });
-        this.terminal.loadAddon(webglAddon);
-        this.webglAddon = webglAddon;
-      } catch (err) {
-        webglAddon?.dispose();
-        console.warn('WebGL terminal renderer unavailable; using the DOM renderer.', err);
-      }
 
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.ready) {

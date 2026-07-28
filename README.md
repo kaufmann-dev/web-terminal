@@ -187,9 +187,8 @@ the deployment image and available immediately as `codex` and `opencode`.
   pages detach from live output so returning to the page restores the latest snapshot instead of
   replaying backgrounded terminal frames. Regaining browser connectivity immediately retries any
   pending reconnect backoff.
-- xterm.js handles wheel scrolling directly. Its WebGL renderer draws continuous block and Braille
-  glyphs used by terminal applications and falls back to the DOM renderer if WebGL is unavailable
-  or its context is lost. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
+- xterm.js handles wheel scrolling directly. Its compact line height keeps adjacent rows of block
+  glyphs continuous. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
   keyboard input.
 - Selecting terminal text copies it to the browser clipboard automatically. Use `Ctrl+V` to paste
   text or an image; `Ctrl+Shift+V` remains text-only. Pasting a PNG, JPEG, or WebP image up to
