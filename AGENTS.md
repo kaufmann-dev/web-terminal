@@ -10,8 +10,9 @@ npm ci
 ```
 
 - Keep these terminal CLIs as exact production dependencies so Nixpacks installs them into the
-  immutable image: `@openai/codex@0.145.0`, `opencode-ai@1.18.3`, and
-  `agent-browser@0.32.1`. Do not replace them with runtime installers or global npm installs.
+  immutable image: `@openai/codex@0.145.0`, `opencode-ai@1.18.3`,
+  `agent-browser@0.32.1`, `pnpm@11.17.0`, and `vitest@4.1.10`. Do not replace them with runtime
+  installers or global npm installs.
 
 - The repository has no lint, type-check, or build script. After JavaScript changes, run the
   applicable syntax checks and targeted Node tests:
