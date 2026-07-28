@@ -406,6 +406,14 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
   assert.match(startupScript, /\[\[ ! -c \/dev\/net\/tun \]\]/);
   assert.match(
     startupScript,
+    /unshare --mount --pid --fork/,
+  );
+  assert.match(
+    startupScript,
+    /Nested proc mounts are blocked; add --security-opt systempaths=unconfined to Coolify Custom Docker Options\./,
+  );
+  assert.match(
+    startupScript,
     /Rootless Podman did not detect an executable pasta network helper\./,
   );
   assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);

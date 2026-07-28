@@ -153,9 +153,9 @@ migrate_terminal_ownership() {
 }
 
 validate_rootless_podman() {
-  local command_name pasta_executable
+  local command_name pasta_executable proc_mount_check_path
 
-  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare; do
+  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare mount umount; do
     if ! command -v "$command_name" >/dev/null; then
       printf 'Required rootless Podman command is missing: %s\n' "$command_name" >&2
       exit 1
@@ -186,6 +186,17 @@ validate_rootless_podman() {
     printf 'Rootless user namespaces are blocked; configure the Coolify seccomp and AppArmor options.\n' >&2
     exit 1
   fi
+  proc_mount_check_path="$XDG_RUNTIME_DIR_VALUE/podman-proc-mount-check"
+  run_as_terminal mkdir -p -- "$proc_mount_check_path"
+  if ! run_in_terminal_environment \
+    unshare --user --map-root-user \
+    unshare --mount --pid --fork \
+    bash -c 'mount -t proc proc "$1" && umount "$1"' \
+    bash "$proc_mount_check_path"; then
+    printf 'Nested proc mounts are blocked; add --security-opt systempaths=unconfined to Coolify Custom Docker Options.\n' >&2
+    exit 1
+  fi
+  run_as_terminal rmdir -- "$proc_mount_check_path"
   if ! grep -Eq \
     '^[[:space:]]*default_rootless_network_cmd[[:space:]]*=[[:space:]]*"pasta"[[:space:]]*$' \
     "$PODMAN_CONTAINERS_CONF"; then

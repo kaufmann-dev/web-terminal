@@ -10,8 +10,8 @@ snapshots. Browser disconnects do not own or stop the shell.
 
 > **Security warning:** This terminal can run arbitrary commands inside its application container.
 > Protect it with HTTPS, a securely configured identity provider, and restricted network access.
-> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`
-> and `/dev/net/tun`.
+> Nested rootless Podman requires relaxed seccomp, AppArmor, and system-path policies plus access
+> to `/dev/fuse` and `/dev/net/tun`.
 > It uses a single host UID and does not provide a shell or container socket on the Coolify host.
 
 ## Authentication Setup
@@ -38,7 +38,7 @@ Connect this repository to a Coolify application with:
 - **Base Directory:** `/`
 - **Replicas:** `1`
 - **Custom Docker Options:**
-  `--device /dev/fuse --device /dev/net/tun --security-opt seccomp=unconfined --security-opt apparmor=unconfined`
+  `--device /dev/fuse --device /dev/net/tun --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined`
 
 The included Nixpacks configuration installs the development toolchain and the native build
 dependencies for `node-pty`, establishes the fixed non-root terminal identity, and configures nested
@@ -278,6 +278,8 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   `/dev/net/tun` exists, and copy the documented Custom Docker Options into Coolify exactly.
 - **Startup reports that user namespaces are blocked:** Confirm both `seccomp=unconfined` and
   `apparmor=unconfined` are present in Coolify's Custom Docker Options, then redeploy.
+- **Startup reports that nested proc mounts are blocked:** Add
+  `--security-opt systempaths=unconfined` to Coolify's Custom Docker Options, then redeploy.
 - **Podman warns that no subordinate UID or GID ranges are configured:** This deployment
   intentionally uses a single UID mapping so it can remain rootless without `SYS_ADMIN`. Different
   owners inside nested images are flattened to UID/GID 1000 in persistent Podman storage.
