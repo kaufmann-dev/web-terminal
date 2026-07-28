@@ -75,6 +75,7 @@ input {
 
 .dark {
   --bg: #0b0c10;
+  --terminal-bg: #08090c;
   --panel: #11151b;
   --panel-raised: #171c24;
   --border: #28313d;
@@ -503,13 +504,13 @@ body.dark {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
+  background: var(--terminal-bg);
 }
 
 .terminal-host {
   position: absolute;
   inset: 8px 10px;
-  background: var(--bg);
+  background: var(--terminal-bg);
   overflow: hidden;
 }
 
