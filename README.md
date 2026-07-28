@@ -40,7 +40,7 @@ Connect this repository to a Coolify application with:
   `--device /dev/fuse --security-opt seccomp=unconfined --security-opt apparmor=unconfined`
 
 The included Nixpacks configuration installs the development toolchain and the native build
-dependencies for `node-pty`, creates the fixed non-root terminal user, and configures nested
+dependencies for `node-pty`, establishes the fixed non-root terminal identity, and configures nested
 rootless Podman. The deployment needs no pre- or post-deployment command. The Coolify builder must
 use Nixpacks 1.41.0 or newer so the native `package.json` declaration resolves Node.js 24; do not
 set `NIXPACKS_NODE_VERSION`.

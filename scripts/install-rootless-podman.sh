@@ -10,29 +10,39 @@ readonly TERMINAL_GID="1000"
 readonly SUBID_START="100000"
 readonly SUBID_COUNT="65536"
 
+ADOPTED_USER=""
+
 ensure_terminal_group() {
-  local group_by_name group_by_id
+  local group_by_name group_by_id user_by_id
   group_by_name="$(getent group "$TERMINAL_GROUP" || true)"
   group_by_id="$(getent group "$TERMINAL_GID" || true)"
+  user_by_id="$(getent passwd "$TERMINAL_UID" || true)"
 
-  if [[ -n "$group_by_name" && "${group_by_name%%:*}" != "$TERMINAL_GROUP" ]]; then
-    printf 'Unexpected group entry for %s: %s\n' "$TERMINAL_GROUP" "$group_by_name" >&2
+  if [[ -n "$group_by_name" \
+    && "$(cut -d: -f3 <<< "$group_by_name")" != "$TERMINAL_GID" ]]; then
+    printf 'Group %s has GID %s; expected %s.\n' \
+      "$TERMINAL_GROUP" "$(cut -d: -f3 <<< "$group_by_name")" \
+      "$TERMINAL_GID" >&2
     exit 1
   fi
-  if [[ -n "$group_by_id" && "${group_by_id%%:*}" != "$TERMINAL_GROUP" ]]; then
-    printf 'GID %s is already assigned to another group: %s\n' \
-      "$TERMINAL_GID" "$group_by_id" >&2
-    exit 1
-  fi
 
-  if [[ -z "$group_by_name" ]]; then
+  if [[ -z "$group_by_id" ]]; then
     groupadd --gid "$TERMINAL_GID" "$TERMINAL_GROUP"
     return
   fi
 
-  if [[ "$(cut -d: -f3 <<< "$group_by_name")" != "$TERMINAL_GID" ]]; then
-    groupmod --gid "$TERMINAL_GID" "$TERMINAL_GROUP"
+  if [[ "${group_by_id%%:*}" == "$TERMINAL_GROUP" ]]; then
+    return
   fi
+
+  if [[ -n "$group_by_name" || -z "$user_by_id" \
+    || "$(cut -d: -f4 <<< "$user_by_id")" != "$TERMINAL_GID" ]]; then
+    printf 'GID %s is assigned to a group that cannot be adopted safely: %s\n' \
+      "$TERMINAL_GID" "$group_by_id" >&2
+    exit 1
+  fi
+
+  groupmod --new-name "$TERMINAL_GROUP" "${group_by_id%%:*}"
 }
 
 ensure_terminal_user() {
@@ -40,13 +50,15 @@ ensure_terminal_user() {
   user_by_name="$(getent passwd "$TERMINAL_USER" || true)"
   user_by_id="$(getent passwd "$TERMINAL_UID" || true)"
 
-  if [[ -n "$user_by_id" && "${user_by_id%%:*}" != "$TERMINAL_USER" ]]; then
-    printf 'UID %s is already assigned to another user: %s\n' \
-      "$TERMINAL_UID" "$user_by_id" >&2
+  if [[ -n "$user_by_name" \
+    && "$(cut -d: -f3 <<< "$user_by_name")" != "$TERMINAL_UID" ]]; then
+    printf 'User %s has UID %s; expected %s.\n' \
+      "$TERMINAL_USER" "$(cut -d: -f3 <<< "$user_by_name")" \
+      "$TERMINAL_UID" >&2
     exit 1
   fi
 
-  if [[ -z "$user_by_name" ]]; then
+  if [[ -z "$user_by_id" ]]; then
     useradd \
       --uid "$TERMINAL_UID" \
       --gid "$TERMINAL_GID" \
@@ -57,13 +69,30 @@ ensure_terminal_user() {
     return
   fi
 
-  if [[ "$(id -u "$TERMINAL_USER")" != "$TERMINAL_UID" ]]; then
-    printf 'User %s has UID %s; expected %s.\n' \
-      "$TERMINAL_USER" "$(id -u "$TERMINAL_USER")" "$TERMINAL_UID" >&2
-    exit 1
+  if [[ "${user_by_id%%:*}" != "$TERMINAL_USER" ]]; then
+    if [[ -n "$user_by_name" \
+      || "$(cut -d: -f4 <<< "$user_by_id")" != "$TERMINAL_GID" ]]; then
+      printf 'UID %s is assigned to a user that cannot be adopted safely: %s\n' \
+        "$TERMINAL_UID" "$user_by_id" >&2
+      exit 1
+    fi
+
+    ADOPTED_USER="${user_by_id%%:*}"
+    usermod \
+      --login "$TERMINAL_USER" \
+      --gid "$TERMINAL_GID" \
+      --home /code \
+      --shell /bin/bash \
+      "$ADOPTED_USER"
+    return
   fi
+
   if [[ "$(id -g "$TERMINAL_USER")" != "$TERMINAL_GID" ]]; then
     usermod --gid "$TERMINAL_GID" "$TERMINAL_USER"
+  fi
+  if [[ "$(getent passwd "$TERMINAL_USER" | cut -d: -f6)" != "/code" \
+    || "$(getent passwd "$TERMINAL_USER" | cut -d: -f7)" != "/bin/bash" ]]; then
+    usermod --home /code --shell /bin/bash "$TERMINAL_USER"
   fi
 }
 
@@ -75,7 +104,11 @@ set_subid_range() (
   trap 'rm -rf -- "$work_dir"' EXIT
 
   if [[ -f "$file" ]]; then
-    awk -F: -v user="$TERMINAL_USER" '$1 != user' "$file" > "$filtered_file"
+    awk -F: \
+      -v user="$TERMINAL_USER" \
+      -v adopted_user="$ADOPTED_USER" \
+      '$1 != user && (adopted_user == "" || $1 != adopted_user)' \
+      "$file" > "$filtered_file"
   else
     : > "$filtered_file"
   fi
