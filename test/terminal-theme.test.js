@@ -15,7 +15,7 @@ test('workspace, host, and xterm use the shared terminal background', () => {
     'utf8',
   );
 
-  assert.match(stylesheet, /--terminal-bg:\s*#08090c;/);
+  assert.match(stylesheet, /--terminal-bg:\s*#0b0c10;/);
   assert.match(
     stylesheet,
     /\.terminal-workspace\s*\{[^}]*background:\s*var\(--terminal-bg\);[^}]*\}/s,
