@@ -153,7 +153,7 @@ migrate_terminal_ownership() {
 }
 
 validate_rootless_podman() {
-  local command_name
+  local command_name podman_info_output
 
   for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare; do
     if ! command -v "$command_name" >/dev/null; then
@@ -178,7 +178,10 @@ validate_rootless_podman() {
     printf 'Rootless user namespaces are blocked; configure the Coolify seccomp and AppArmor options.\n' >&2
     exit 1
   fi
-  if ! run_in_terminal_environment podman info >/dev/null; then
+  if ! podman_info_output="$(run_in_terminal_environment podman info 2>&1)"; then
+    if [[ -n "$podman_info_output" ]]; then
+      printf '%s\n' "$podman_info_output" >&2
+    fi
     printf 'Rootless Podman failed its startup self-check.\n' >&2
     exit 1
   fi

@@ -314,6 +314,14 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
 
 test('Nixpacks image provides stable GUI, rootless Podman, and terminal development tools', () => {
   const config = fs.readFileSync(path.join(__dirname, '..', 'nixpacks.toml'), 'utf8');
+  const podmanInstaller = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'install-rootless-podman.sh'),
+    'utf8',
+  );
+  const podmanStorage = fs.readFileSync(
+    path.join(__dirname, '..', 'config', 'containers', 'storage.conf'),
+    'utf8',
+  );
   const nixPackages = config.match(/nixPkgs = \[([\s\S]*?)\n\]/)?.[1];
   const nixLibraries = config.match(/nixLibs = \[([\s\S]*?)\n\]/)?.[1];
   const aptPackages = config.match(/aptPkgs = \[([\s\S]*?)\n\]/)?.[1];
@@ -365,5 +373,9 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
     config,
     /^\s*"bash scripts\/install-nixpacks\.sh",$/m,
   );
+  assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subuid$/m);
+  assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subgid$/m);
+  assert.doesNotMatch(podmanInstaller, /SUBID_(?:START|COUNT)/);
+  assert.match(podmanStorage, /^ignore_chown_errors = "true"$/m);
   assert.doesNotMatch(config, /\/nix\/store\//);
 });
