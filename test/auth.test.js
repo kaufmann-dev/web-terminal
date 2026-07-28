@@ -88,6 +88,31 @@ test('startup requires OIDC configuration without an application identity allowl
   );
 });
 
+test('xterm browser modules require authentication and include the WebGL renderer', async (t) => {
+  const openidClient = createFakeOpenidClient();
+  const { baseUrl } = await startService(t, { openidClient });
+  const webglPath = '/vendor/xterm/addon-webgl.mjs';
+  const unauthenticatedResponse = await fetch(`${baseUrl}${webglPath}`, {
+    redirect: 'manual',
+  });
+  assert.equal(unauthenticatedResponse.status, 302);
+  assert.equal(unauthenticatedResponse.headers.get('location'), '/');
+
+  const { cookies } = await authenticate(baseUrl, openidClient);
+  for (const modulePath of [
+    '/vendor/xterm/xterm.mjs',
+    '/vendor/xterm/addon-fit.mjs',
+    webglPath,
+  ]) {
+    const response = await fetch(`${baseUrl}${modulePath}`, {
+      headers: { Cookie: cookieHeader(cookies) },
+    });
+    assert.equal(response.status, 200, modulePath);
+    assert.match(response.headers.get('content-type'), /javascript/, modulePath);
+    assert.ok((await response.arrayBuffer()).byteLength > 0, modulePath);
+  }
+});
+
 test('authorization uses openid-only PKCE, state, nonce, and one-time transactions', async (t) => {
   let currentTime = 1_800_000_000_000;
   const openidClient = createFakeOpenidClient();
