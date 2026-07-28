@@ -401,10 +401,12 @@ function createWebTerminal(options = {}) {
 
   const xtermEntry = require.resolve('@xterm/xterm');
   const fitEntry = require.resolve('@xterm/addon-fit');
+  const webglEntry = require.resolve('@xterm/addon-webgl');
   const interEntry = require.resolve('@fontsource/inter');
   const jetBrainsMonoEntry = require.resolve('@fontsource/jetbrains-mono');
   const xtermModule = path.join(path.dirname(xtermEntry), 'xterm.mjs');
   const fitModule = path.join(path.dirname(fitEntry), 'addon-fit.mjs');
+  const webglModule = path.join(path.dirname(webglEntry), 'addon-webgl.mjs');
   const xtermStylesheet = path.join(path.dirname(path.dirname(xtermEntry)), 'css', 'xterm.css');
   const fontFiles = new Map([
     ['inter-400.woff2', path.join(path.dirname(interEntry), 'files', 'inter-latin-400-normal.woff2')],
@@ -428,6 +430,7 @@ function createWebTerminal(options = {}) {
 
   app.get('/vendor/xterm/xterm.mjs', requireAuth, (req, res) => res.sendFile(xtermModule));
   app.get('/vendor/xterm/addon-fit.mjs', requireAuth, (req, res) => res.sendFile(fitModule));
+  app.get('/vendor/xterm/addon-webgl.mjs', requireAuth, (req, res) => res.sendFile(webglModule));
   app.get('/vendor/xterm/xterm.css', requireAuth, (req, res) => res.sendFile(xtermStylesheet));
 
   app.get('/health', (req, res) => {
