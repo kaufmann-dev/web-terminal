@@ -113,6 +113,10 @@ remove_subid_ranges() (
   install -o root -g root -m 0644 "$filtered_file" "$file"
 )
 
+remove_terminal_supplementary_groups() {
+  usermod --groups "" "$TERMINAL_USER"
+}
+
 main() {
   if [[ "$(id -u)" != "0" ]]; then
     printf 'Rootless Podman image setup must run as root.\n' >&2
@@ -121,6 +125,7 @@ main() {
 
   ensure_terminal_group
   ensure_terminal_user
+  remove_terminal_supplementary_groups
   remove_subid_ranges /etc/subuid
   remove_subid_ranges /etc/subgid
 

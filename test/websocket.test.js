@@ -322,6 +322,10 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
     path.join(__dirname, '..', 'config', 'containers', 'storage.conf'),
     'utf8',
   );
+  const terminalBashRc = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'terminal.bashrc'),
+    'utf8',
+  );
   const nixPackages = config.match(/nixPkgs = \[([\s\S]*?)\n\]/)?.[1];
   const nixLibraries = config.match(/nixLibs = \[([\s\S]*?)\n\]/)?.[1];
   const aptPackages = config.match(/aptPkgs = \[([\s\S]*?)\n\]/)?.[1];
@@ -375,7 +379,10 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
   );
   assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subuid$/m);
   assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subgid$/m);
+  assert.match(podmanInstaller, /^\s*usermod --groups "" "\$TERMINAL_USER"$/m);
   assert.doesNotMatch(podmanInstaller, /SUBID_(?:START|COUNT)/);
   assert.match(podmanStorage, /^ignore_chown_errors = "true"$/m);
+  assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);
+  assert.match(terminalBashRc, /^\s*source "\$HOME\/\.bashrc"$/m);
   assert.doesNotMatch(config, /\/nix\/store\//);
 });
