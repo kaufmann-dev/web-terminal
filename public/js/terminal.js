@@ -205,7 +205,9 @@
           reportCopyFailure();
           return;
         }
-        navigator.clipboard.writeText(selection).catch(reportCopyFailure);
+        navigator.clipboard.writeText(selection)
+          .then(() => setClipboardStatus('Selection copied to clipboard.', false, 3000))
+          .catch(reportCopyFailure);
       } catch (err) {
         reportCopyFailure();
       }
