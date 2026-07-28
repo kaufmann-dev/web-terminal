@@ -75,7 +75,7 @@ input {
 
 .dark {
   --bg: #0b0c10;
-  --terminal-bg: #08090c;
+  --terminal-bg: #0b0c10;
   --panel: #11151b;
   --panel-raised: #171c24;
   --border: #28313d;
