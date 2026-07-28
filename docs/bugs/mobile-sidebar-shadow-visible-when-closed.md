@@ -1,7 +1,7 @@
 # Mobile Sidebar Shadow Visible While Closed
 
-- Fixed: 2026-07-28 11:59:21 CEST (+0200)
-- Pre-fix commit: `feb4e638ed086ff949fa850e0580fda05b0ebb6b`
+- Fixed: 2026-07-28 12:01:42 CEST (+0200)
+- Pre-fix commit: `752816eb34ff98b14b3dd7b45f7d364bad97b2fd`
 
 ## Symptom
 
@@ -22,9 +22,7 @@ unrelated.
 
 ## Changes
 
-- Removed the box shadow from the closed mobile sidebar state and apply it only while
-  `.sessions-open` is active.
+- Removed the mobile sidebar box shadow completely, in both its closed and open states.
 - Reverted the unrelated shared terminal-background property and restored the original workspace,
   host, and xterm background configuration.
-- Added regression coverage requiring the closed mobile sidebar to have no shadow and the open
-  sidebar to retain it.
+- Added regression coverage requiring both mobile sidebar states to remain shadow-free.

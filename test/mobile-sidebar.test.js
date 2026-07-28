@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const projectRoot = path.join(__dirname, '..');
 
-test('mobile sidebar shadow is rendered only while the sidebar is open', () => {
+test('mobile sidebar has no shadow while closed or open', () => {
   const stylesheet = fs.readFileSync(
     path.join(projectRoot, 'public', 'css', 'style.css'),
     'utf8',
@@ -20,6 +20,6 @@ test('mobile sidebar shadow is rendered only while the sidebar is open', () => {
   );
   assert.match(
     mobileStyles[1],
-    /\.sessions-open \.session-sidebar\s*\{[^}]*transform:\s*translateX\(0\);[^}]*box-shadow:\s*12px 0 0 rgb\(0 0 0 \/ 22%\);[^}]*\}/s,
+    /\.sessions-open \.session-sidebar\s*\{[^}]*transform:\s*translateX\(0\);(?![^}]*box-shadow)[^}]*\}/s,
   );
 });

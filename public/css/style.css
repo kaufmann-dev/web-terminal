@@ -603,7 +603,6 @@ body.dark {
 
   .sessions-open .session-sidebar {
     transform: translateX(0);
-    box-shadow: 12px 0 0 rgb(0 0 0 / 22%);
   }
 
   .sidebar-backdrop {
