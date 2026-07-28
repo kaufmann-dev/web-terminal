@@ -10,7 +10,8 @@ snapshots. Browser disconnects do not own or stop the shell.
 
 > **Security warning:** This terminal can run arbitrary commands inside its application container.
 > Protect it with HTTPS, a securely configured identity provider, and restricted network access.
-> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`.
+> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`
+> and `/dev/net/tun`.
 > It uses a single host UID and does not provide a shell or container socket on the Coolify host.
 
 ## Authentication Setup
@@ -37,7 +38,7 @@ Connect this repository to a Coolify application with:
 - **Base Directory:** `/`
 - **Replicas:** `1`
 - **Custom Docker Options:**
-  `--device /dev/fuse --security-opt seccomp=unconfined --security-opt apparmor=unconfined`
+  `--device /dev/fuse --device /dev/net/tun --security-opt seccomp=unconfined --security-opt apparmor=unconfined`
 
 The included Nixpacks configuration installs the development toolchain and the native build
 dependencies for `node-pty`, establishes the fixed non-root terminal identity, and configures nested
@@ -49,12 +50,14 @@ Before deploying, prepare the Coolify host:
 
 ```bash
 sudo modprobe fuse
+sudo modprobe tun
 test -c /dev/fuse
+test -c /dev/net/tun
 ```
 
-Persist the `fuse` module through the host's module-loading configuration if it is not loaded after
-reboots. Do not replace the listed Custom Docker Options with `--privileged`, add `SYS_ADMIN`, or
-mount the host Docker or Podman socket into this application.
+Persist the `fuse` and `tun` modules through the host's module-loading configuration if either is
+not loaded after reboots. Do not replace the listed Custom Docker Options with `--privileged`, add
+`SYS_ADMIN`, or mount the host Docker or Podman socket into this application.
 
 ### 2. Set environment variables
 
@@ -108,8 +111,8 @@ included programs again on every deployment; tool credentials and personal state
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
 proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
-browser address bar. Startup deliberately fails before listening if `/dev/fuse`, user namespaces,
-or the rootless Podman configuration is unavailable.
+browser address bar. Startup deliberately fails before listening if `/dev/fuse`, `/dev/net/tun`,
+user namespaces, or the rootless Podman configuration is unavailable.
 
 ## Included Commands
 
@@ -271,6 +274,8 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   fall back to the existing local checkout.
 - **Startup reports that `/dev/fuse` is unavailable:** Load the host `fuse` module, confirm
   `/dev/fuse` exists, and copy the documented Custom Docker Options into Coolify exactly.
+- **Startup reports that `/dev/net/tun` is unavailable:** Load the host `tun` module, confirm
+  `/dev/net/tun` exists, and copy the documented Custom Docker Options into Coolify exactly.
 - **Startup reports that user namespaces are blocked:** Confirm both `seccomp=unconfined` and
   `apparmor=unconfined` are present in Coolify's Custom Docker Options, then redeploy.
 - **Podman warns that no subordinate UID or GID ranges are configured:** This deployment
