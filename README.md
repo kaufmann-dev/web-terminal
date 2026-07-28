@@ -10,8 +10,8 @@ snapshots. Browser disconnects do not own or stop the shell.
 
 > **Security warning:** This terminal can run arbitrary commands inside its application container.
 > Protect it with HTTPS, a securely configured identity provider, and restricted network access.
-> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`,
-> but it does not provide a shell or container socket on the Coolify host.
+> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`.
+> It uses a single host UID and does not provide a shell or container socket on the Coolify host.
 
 ## Authentication Setup
 
@@ -41,9 +41,9 @@ Connect this repository to a Coolify application with:
 
 The included Nixpacks configuration installs the development toolchain and the native build
 dependencies for `node-pty`, establishes the fixed non-root terminal identity, and configures nested
-rootless Podman. The deployment needs no pre- or post-deployment command. The Coolify builder must
-use Nixpacks 1.41.0 or newer so the native `package.json` declaration resolves Node.js 24; do not
-set `NIXPACKS_NODE_VERSION`.
+rootless Podman in single-UID mode. The deployment needs no pre- or post-deployment command. The
+Coolify builder must use Nixpacks 1.41.0 or newer so the native `package.json` declaration resolves
+Node.js 24; do not set `NIXPACKS_NODE_VERSION`.
 
 Before deploying, prepare the Coolify host:
 
@@ -133,9 +133,12 @@ commands, user scripts stored on `/code`, Git Wrangler, and Nix packages are all
 
 Nixpacks can validate a deployment plan and emit its OCI build context, and the bundled Podman can
 build and run that context directly. Podman uses `fuse-overlayfs`, persistent storage below
-`TERMINAL_HOME`, and Buildah chroot isolation. Inner cgroups are disabled because Coolify does not
-delegate a writable cgroup tree, so nested `--memory`, `--cpus`, cgroup-parent options, privileged
-containers, and host port mappings below 1024 are unsupported.
+`TERMINAL_HOME`, Buildah chroot isolation, and a single UID mapping. Files owned by different users
+inside a nested image are stored as UID 1000 outside its user namespace. This avoids `SYS_ADMIN`
+and subordinate-ID mappings, but images that require distinct persisted owners may not work.
+Inner cgroups are disabled because Coolify does not delegate a writable cgroup tree, so nested
+`--memory`, `--cpus`, cgroup-parent options, privileged containers, and host port mappings below
+1024 are unsupported.
 
 ## First Use
 
@@ -269,6 +272,9 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
   `/dev/fuse` exists, and copy the documented Custom Docker Options into Coolify exactly.
 - **Startup reports that user namespaces are blocked:** Confirm both `seccomp=unconfined` and
   `apparmor=unconfined` are present in Coolify's Custom Docker Options, then redeploy.
+- **Podman warns that no subordinate UID or GID ranges are configured:** This deployment
+  intentionally uses a single UID mapping so it can remain rootless without `SYS_ADMIN`. Different
+  owners inside nested images are flattened to UID/GID 1000 in persistent Podman storage.
 - **Podman rejects CPU, memory, or cgroup flags:** Nested cgroups are intentionally disabled.
   Run the container without those flags or use a separate container host when resource delegation
   is required.

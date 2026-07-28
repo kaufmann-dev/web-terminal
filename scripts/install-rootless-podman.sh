@@ -7,8 +7,6 @@ readonly TERMINAL_USER="terminal"
 readonly TERMINAL_GROUP="terminal"
 readonly TERMINAL_UID="1000"
 readonly TERMINAL_GID="1000"
-readonly SUBID_START="100000"
-readonly SUBID_COUNT="65536"
 
 ADOPTED_USER=""
 
@@ -96,7 +94,7 @@ ensure_terminal_user() {
   fi
 }
 
-set_subid_range() (
+remove_subid_ranges() (
   local file="$1"
   local work_dir filtered_file
   work_dir="$(mktemp -d)"
@@ -112,8 +110,6 @@ set_subid_range() (
   else
     : > "$filtered_file"
   fi
-  printf '%s:%s:%s\n' "$TERMINAL_USER" "$SUBID_START" "$SUBID_COUNT" \
-    >> "$filtered_file"
   install -o root -g root -m 0644 "$filtered_file" "$file"
 )
 
@@ -125,8 +121,8 @@ main() {
 
   ensure_terminal_group
   ensure_terminal_user
-  set_subid_range /etc/subuid
-  set_subid_range /etc/subgid
+  remove_subid_ranges /etc/subuid
+  remove_subid_ranges /etc/subgid
 
   install -D -o root -g root -m 0644 \
     "$APP_ROOT/config/containers/containers.conf" \

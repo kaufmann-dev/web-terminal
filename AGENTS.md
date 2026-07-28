@@ -100,10 +100,11 @@ node --test test/*.test.js
 - The terminal PATH must prioritize `/app/node_modules/.bin`, include `$TERMINAL_HOME/.local/bin`
   and `/usr/local/bin`, and preserve the image PATH so pinned CLIs, user scripts, locally installed
   image commands, and Nix packages are callable.
-- Keep nested Podman rootless with fuse-overlayfs storage under `TERMINAL_HOME`, Buildah chroot
-  isolation, file events, and inner cgroups disabled. Never add `--privileged`, `SYS_ADMIN`, or a
-  host Docker/Podman socket. Coolify must pass `/dev/fuse` and use unconfined seccomp and AppArmor
-  through Custom Docker Options.
+- Keep nested Podman rootless in single-UID mode, with no subordinate UID/GID ranges and
+  `ignore_chown_errors` enabled for fuse-overlayfs storage under `TERMINAL_HOME`. Keep Buildah
+  chroot isolation, file events, and inner cgroups disabled. Never add `--privileged`, `SYS_ADMIN`,
+  or a host Docker/Podman socket. Coolify must pass `/dev/fuse` and use unconfined seccomp and
+  AppArmor through Custom Docker Options.
 - On first startup, initialize and apply `https://github.com/kaufmann-dev/dotfiles.git`. On later
   starts, update it; if the remote update fails, apply the existing local source. Do not continue
   after first-time initialization or local apply failures.
