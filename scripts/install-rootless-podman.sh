@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+readonly APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly TERMINAL_USER="terminal"
+readonly TERMINAL_GROUP="terminal"
+readonly TERMINAL_UID="1000"
+readonly TERMINAL_GID="1000"
+readonly SUBID_START="100000"
+readonly SUBID_COUNT="65536"
+
+ensure_terminal_group() {
+  local group_by_name group_by_id
+  group_by_name="$(getent group "$TERMINAL_GROUP" || true)"
+  group_by_id="$(getent group "$TERMINAL_GID" || true)"
+
+  if [[ -n "$group_by_name" && "${group_by_name%%:*}" != "$TERMINAL_GROUP" ]]; then
+    printf 'Unexpected group entry for %s: %s\n' "$TERMINAL_GROUP" "$group_by_name" >&2
+    exit 1
+  fi
+  if [[ -n "$group_by_id" && "${group_by_id%%:*}" != "$TERMINAL_GROUP" ]]; then
+    printf 'GID %s is already assigned to another group: %s\n' \
+      "$TERMINAL_GID" "$group_by_id" >&2
+    exit 1
+  fi
+
+  if [[ -z "$group_by_name" ]]; then
+    groupadd --gid "$TERMINAL_GID" "$TERMINAL_GROUP"
+    return
+  fi
+
+  if [[ "$(cut -d: -f3 <<< "$group_by_name")" != "$TERMINAL_GID" ]]; then
+    groupmod --gid "$TERMINAL_GID" "$TERMINAL_GROUP"
+  fi
+}
+
+ensure_terminal_user() {
+  local user_by_name user_by_id
+  user_by_name="$(getent passwd "$TERMINAL_USER" || true)"
+  user_by_id="$(getent passwd "$TERMINAL_UID" || true)"
+
+  if [[ -n "$user_by_id" && "${user_by_id%%:*}" != "$TERMINAL_USER" ]]; then
+    printf 'UID %s is already assigned to another user: %s\n' \
+      "$TERMINAL_UID" "$user_by_id" >&2
+    exit 1
+  fi
+
+  if [[ -z "$user_by_name" ]]; then
+    useradd \
+      --uid "$TERMINAL_UID" \
+      --gid "$TERMINAL_GID" \
+      --home-dir /code \
+      --no-create-home \
+      --shell /bin/bash \
+      "$TERMINAL_USER"
+    return
+  fi
+
+  if [[ "$(id -u "$TERMINAL_USER")" != "$TERMINAL_UID" ]]; then
+    printf 'User %s has UID %s; expected %s.\n' \
+      "$TERMINAL_USER" "$(id -u "$TERMINAL_USER")" "$TERMINAL_UID" >&2
+    exit 1
+  fi
+  if [[ "$(id -g "$TERMINAL_USER")" != "$TERMINAL_GID" ]]; then
+    usermod --gid "$TERMINAL_GID" "$TERMINAL_USER"
+  fi
+}
+
+set_subid_range() (
+  local file="$1"
+  local work_dir filtered_file
+  work_dir="$(mktemp -d)"
+  filtered_file="$work_dir/$(basename "$file")"
+  trap 'rm -rf -- "$work_dir"' EXIT
+
+  if [[ -f "$file" ]]; then
+    awk -F: -v user="$TERMINAL_USER" '$1 != user' "$file" > "$filtered_file"
+  else
+    : > "$filtered_file"
+  fi
+  printf '%s:%s:%s\n' "$TERMINAL_USER" "$SUBID_START" "$SUBID_COUNT" \
+    >> "$filtered_file"
+  install -o root -g root -m 0644 "$filtered_file" "$file"
+)
+
+main() {
+  if [[ "$(id -u)" != "0" ]]; then
+    printf 'Rootless Podman image setup must run as root.\n' >&2
+    exit 1
+  fi
+
+  ensure_terminal_group
+  ensure_terminal_user
+  set_subid_range /etc/subuid
+  set_subid_range /etc/subgid
+
+  install -D -o root -g root -m 0644 \
+    "$APP_ROOT/config/containers/containers.conf" \
+    /etc/containers/web-terminal-containers.conf
+  install -D -o root -g root -m 0644 \
+    "$APP_ROOT/config/containers/storage.conf" \
+    /etc/containers/web-terminal-storage.conf
+
+  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta setpriv unshare; do
+    if ! command -v "$command_name" >/dev/null; then
+      printf 'Required rootless Podman command is missing: %s\n' "$command_name" >&2
+      exit 1
+    fi
+  done
+}
+
+main "$@"

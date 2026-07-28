@@ -8,7 +8,17 @@ readonly TERMINAL_HOME_VALUE="${TERMINAL_HOME:-$TERMINAL_WORKDIR_VALUE}"
 readonly XDG_CONFIG_HOME_VALUE="$TERMINAL_HOME_VALUE/.config"
 readonly XDG_DATA_HOME_VALUE="$TERMINAL_HOME_VALUE/.local/share"
 readonly XDG_CACHE_HOME_VALUE="$TERMINAL_HOME_VALUE/.cache"
+readonly TERMINAL_USER="terminal"
+readonly TERMINAL_GROUP="terminal"
+readonly TERMINAL_UID="1000"
+readonly TERMINAL_GID="1000"
+readonly RUNTIME_UID="$([[ "$(id -u)" == "0" ]] && printf '%s' "$TERMINAL_UID" || id -u)"
+readonly XDG_RUNTIME_DIR_VALUE="/tmp/web-terminal-runtime-$RUNTIME_UID"
+readonly REGISTRY_AUTH_FILE_VALUE="$XDG_CONFIG_HOME_VALUE/containers/auth.json"
 readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+readonly OWNERSHIP_MIGRATION_MARKER="$TERMINAL_HOME_VALUE/.local/state/web-terminal/uid-1000-v1"
+readonly PODMAN_CONTAINERS_CONF="/etc/containers/web-terminal-containers.conf"
+readonly PODMAN_STORAGE_CONF="/etc/containers/web-terminal-storage.conf"
 
 require_absolute_path() {
   local name="$1"
@@ -22,6 +32,8 @@ require_absolute_path() {
 
 run_in_terminal_environment() {
   local -a unset_environment=(-u SESSION_SECRET)
+  local -a podman_environment=()
+  local -a terminal_identity_environment=()
   local environment_name
 
   while IFS= read -r environment_name; do
@@ -30,17 +42,52 @@ run_in_terminal_environment() {
     fi
   done < <(compgen -e)
 
-  env \
+  if is_container_environment; then
+    terminal_identity_environment=(
+      "USER=$TERMINAL_USER"
+      "LOGNAME=$TERMINAL_USER"
+      "SHELL=/bin/bash"
+    )
+    podman_environment=(
+      "BUILDAH_ISOLATION=chroot"
+      "_CONTAINERS_USERNS_CONFIGURED="
+      "CONTAINERS_CONF=$PODMAN_CONTAINERS_CONF"
+      "CONTAINERS_STORAGE_CONF=$PODMAN_STORAGE_CONF"
+    )
+  fi
+
+  run_as_terminal env \
     "${unset_environment[@]}" \
     "HOME=$TERMINAL_HOME_VALUE" \
     "XDG_CONFIG_HOME=$XDG_CONFIG_HOME_VALUE" \
     "XDG_DATA_HOME=$XDG_DATA_HOME_VALUE" \
     "XDG_CACHE_HOME=$XDG_CACHE_HOME_VALUE" \
+    "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR_VALUE" \
+    "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE_VALUE" \
     "PATH=$TERMINAL_PATH" \
+    "${terminal_identity_environment[@]}" \
     "EDITOR=${EDITOR:-micro}" \
     "VISUAL=${VISUAL:-micro}" \
     "OPENCODE_DISABLE_AUTOUPDATE=1" \
     "AGENT_BROWSER_CONTENT_BOUNDARIES=1" \
+    "${podman_environment[@]}" \
+    "$@"
+}
+
+is_container_environment() {
+  [[ -f /.dockerenv || -f /run/.containerenv ]]
+}
+
+run_as_terminal() {
+  if ! is_container_environment || [[ "$(id -u)" != "0" ]]; then
+    "$@"
+    return
+  fi
+
+  setpriv \
+    --reuid="$TERMINAL_UID" \
+    --regid="$TERMINAL_GID" \
+    --init-groups \
     "$@"
 }
 
@@ -72,6 +119,71 @@ sync_dotfiles() {
     https://github.com/kaufmann-dev/dotfiles.git
 }
 
+ownership_migration_is_current() {
+  local -a migrated_paths=()
+
+  [[ -f "$OWNERSHIP_MIGRATION_MARKER" ]] || return 1
+  mapfile -t migrated_paths < "$OWNERSHIP_MIGRATION_MARKER"
+  [[ "${#migrated_paths[@]}" == "2" \
+    && "${migrated_paths[0]}" == "$TERMINAL_WORKDIR_VALUE" \
+    && "${migrated_paths[1]}" == "$TERMINAL_HOME_VALUE" ]]
+}
+
+migrate_terminal_ownership() {
+  if ! is_container_environment || [[ "$(id -u)" != "0" ]] \
+    || ownership_migration_is_current; then
+    return
+  fi
+
+  printf 'Migrating terminal paths to UID/GID %s:%s.\n' "$TERMINAL_UID" "$TERMINAL_GID"
+  chown --recursive --no-dereference \
+    "$TERMINAL_USER:$TERMINAL_GROUP" \
+    -- "$TERMINAL_WORKDIR_VALUE"
+  if [[ "$TERMINAL_HOME_VALUE" != "$TERMINAL_WORKDIR_VALUE" ]]; then
+    chown --recursive --no-dereference \
+      "$TERMINAL_USER:$TERMINAL_GROUP" \
+      -- "$TERMINAL_HOME_VALUE"
+  fi
+
+  install -d -o "$TERMINAL_USER" -g "$TERMINAL_GROUP" -m 0755 \
+    "$(dirname -- "$OWNERSHIP_MIGRATION_MARKER")"
+  printf '%s\n%s\n' "$TERMINAL_WORKDIR_VALUE" "$TERMINAL_HOME_VALUE" \
+    > "$OWNERSHIP_MIGRATION_MARKER"
+  chown "$TERMINAL_USER:$TERMINAL_GROUP" "$OWNERSHIP_MIGRATION_MARKER"
+}
+
+validate_rootless_podman() {
+  local command_name
+
+  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare; do
+    if ! command -v "$command_name" >/dev/null; then
+      printf 'Required rootless Podman command is missing: %s\n' "$command_name" >&2
+      exit 1
+    fi
+  done
+
+  if [[ ! -f "$PODMAN_CONTAINERS_CONF" || ! -f "$PODMAN_STORAGE_CONF" ]]; then
+    printf 'Rootless Podman configuration is missing from /etc/containers.\n' >&2
+    exit 1
+  fi
+  if [[ ! -c /dev/fuse ]]; then
+    printf '/dev/fuse is unavailable; configure the Coolify /dev/fuse device mapping.\n' >&2
+    exit 1
+  fi
+  if ! run_as_terminal test -r /dev/fuse || ! run_as_terminal test -w /dev/fuse; then
+    printf '/dev/fuse is not readable and writable by the terminal user.\n' >&2
+    exit 1
+  fi
+  if ! run_in_terminal_environment unshare --user --map-root-user true; then
+    printf 'Rootless user namespaces are blocked; configure the Coolify seccomp and AppArmor options.\n' >&2
+    exit 1
+  fi
+  if ! run_in_terminal_environment podman info >/dev/null; then
+    printf 'Rootless Podman failed its startup self-check.\n' >&2
+    exit 1
+  fi
+}
+
 require_absolute_path TERMINAL_WORKDIR "$TERMINAL_WORKDIR_VALUE"
 require_absolute_path TERMINAL_HOME "$TERMINAL_HOME_VALUE"
 mkdir -p \
@@ -79,9 +191,46 @@ mkdir -p \
   "$TERMINAL_HOME_VALUE" \
   "$XDG_CONFIG_HOME_VALUE" \
   "$XDG_DATA_HOME_VALUE" \
-  "$XDG_CACHE_HOME_VALUE"
+  "$XDG_CACHE_HOME_VALUE" \
+  "$(dirname -- "$REGISTRY_AUTH_FILE_VALUE")" \
+  "$XDG_RUNTIME_DIR_VALUE"
 
+if is_container_environment && [[ "$(id -u)" == "0" ]]; then
+  if [[ "$(id -u "$TERMINAL_USER" 2>/dev/null || true)" != "$TERMINAL_UID" \
+    || "$(id -g "$TERMINAL_USER" 2>/dev/null || true)" != "$TERMINAL_GID" ]]; then
+    printf 'The terminal user must exist with UID/GID %s:%s.\n' \
+      "$TERMINAL_UID" "$TERMINAL_GID" >&2
+    exit 1
+  fi
+  chown "$TERMINAL_USER:$TERMINAL_GROUP" "$XDG_RUNTIME_DIR_VALUE"
+  chmod 0700 "$XDG_RUNTIME_DIR_VALUE"
+fi
+
+migrate_terminal_ownership
+if is_container_environment; then
+  validate_rootless_podman
+fi
 sync_dotfiles
 
 cd "$APP_ROOT"
+if is_container_environment && [[ "$(id -u)" == "0" ]]; then
+  exec setpriv \
+    --reuid="$TERMINAL_UID" \
+    --regid="$TERMINAL_GID" \
+    --init-groups \
+    env \
+    "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR_VALUE" \
+    "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE_VALUE" \
+    "USER=$TERMINAL_USER" \
+    "LOGNAME=$TERMINAL_USER" \
+    "SHELL=/bin/bash" \
+    "BUILDAH_ISOLATION=chroot" \
+    "_CONTAINERS_USERNS_CONFIGURED=" \
+    "CONTAINERS_CONF=$PODMAN_CONTAINERS_CONF" \
+    "CONTAINERS_STORAGE_CONF=$PODMAN_STORAGE_CONF" \
+    node app.js
+fi
+
+export XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR_VALUE"
+export REGISTRY_AUTH_FILE="$REGISTRY_AUTH_FILE_VALUE"
 exec node app.js

@@ -312,13 +312,15 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
   }
 });
 
-test('Nixpacks image provides stable GUI runtime paths and terminal development tools', () => {
+test('Nixpacks image provides stable GUI, rootless Podman, and terminal development tools', () => {
   const config = fs.readFileSync(path.join(__dirname, '..', 'nixpacks.toml'), 'utf8');
   const nixPackages = config.match(/nixPkgs = \[([\s\S]*?)\n\]/)?.[1];
   const nixLibraries = config.match(/nixLibs = \[([\s\S]*?)\n\]/)?.[1];
+  const aptPackages = config.match(/aptPkgs = \[([\s\S]*?)\n\]/)?.[1];
 
   assert.ok(nixPackages);
   assert.ok(nixLibraries);
+  assert.ok(aptPackages);
   assert.match(
     config,
     /^FONTCONFIG_FILE = "\/root\/\.nix-profile\/etc\/fonts\/fonts\.conf"$/m,
@@ -331,8 +333,8 @@ test('Nixpacks image provides stable GUI runtime paths and terminal development 
   );
   assert.match(nixPackages, /^\s*"fontconfig\.out",$/m);
   assert.match(nixPackages, /^\s*"mesa\.drivers",$/m);
-  assert.match(nixPackages, /^\s*"nixpacks",$/m);
   assert.match(nixPackages, /^\s*"uv",$/m);
+  assert.doesNotMatch(nixPackages, /^\s*"nixpacks",$/m);
   for (const library of [
     'libxkbcommon',
     'mesa.drivers',
@@ -344,6 +346,24 @@ test('Nixpacks image provides stable GUI runtime paths and terminal development 
   ]) {
     assert.match(nixLibraries, new RegExp(`^\\s*"${library.replace('.', '\\.')}"[,]$`, 'm'));
   }
-  assert.doesNotMatch(config, /^\s*"podman",$/m);
+  for (const rootlessPodmanPackage of [
+    'fuse-overlayfs',
+    'passt',
+    'podman',
+    'uidmap',
+  ]) {
+    assert.match(
+      aptPackages,
+      new RegExp(`^\\s*"${rootlessPodmanPackage}",$`, 'm'),
+    );
+  }
+  assert.match(
+    config,
+    /^\s*"bash scripts\/install-rootless-podman\.sh",$/m,
+  );
+  assert.match(
+    config,
+    /^\s*"bash scripts\/install-nixpacks\.sh",$/m,
+  );
   assert.doesNotMatch(config, /\/nix\/store\//);
 });
