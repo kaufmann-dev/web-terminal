@@ -22,7 +22,6 @@ nixPkgs = [
   "less",
   "micro",
   "mesa.drivers",
-  "nixpacks",
   "pkg-config",
   "python3",
   "ripgrep",
@@ -47,17 +46,25 @@ aptPkgs = [
   "bash-completion",
   "ca-certificates",
   "dnsutils",
+  "fuse-overlayfs",
   "iproute2",
   "iputils-ping",
   "lsof",
   "openssh-client",
+  "passt",
+  "podman",
   "procps",
+  "uidmap",
   "xdotool",
   "xvfb",
 ]
 
 [phases.build]
-cmds = ["bash scripts/install-git-wrangler.sh"]
+cmds = [
+  "bash scripts/install-git-wrangler.sh",
+  "bash scripts/install-nixpacks.sh",
+  "bash scripts/install-rootless-podman.sh",
+]
 
 [start]
 cmd = "bash scripts/start.sh"

@@ -9,8 +9,9 @@ is a process-local PTY whose output is also retained in a bounded headless xterm
 snapshots. Browser disconnects do not own or stop the shell.
 
 > **Security warning:** This terminal can run arbitrary commands inside its application container.
-> Protect it with HTTPS, a securely configured identity provider, and restricted network access. It does not provide a
-> shell on the Coolify host.
+> Protect it with HTTPS, a securely configured identity provider, and restricted network access.
+> Nested rootless Podman requires relaxed seccomp and AppArmor policies plus access to `/dev/fuse`,
+> but it does not provide a shell or container socket on the Coolify host.
 
 ## Authentication Setup
 
@@ -35,11 +36,25 @@ Connect this repository to a Coolify application with:
 - **Build Pack:** Nixpacks
 - **Base Directory:** `/`
 - **Replicas:** `1`
+- **Custom Docker Options:**
+  `--device /dev/fuse --security-opt seccomp=unconfined --security-opt apparmor=unconfined`
 
 The included Nixpacks configuration installs the development toolchain and the native build
-dependencies for `node-pty`, then starts the combined web and PTY service. The deployment needs no
-pre- or post-deployment command. Do not set `NIXPACKS_NODE_VERSION`; `package.json` selects Node.js
-24.
+dependencies for `node-pty`, creates the fixed non-root terminal user, and configures nested
+rootless Podman. The deployment needs no pre- or post-deployment command. The Coolify builder must
+use Nixpacks 1.41.0 or newer so the native `package.json` declaration resolves Node.js 24; do not
+set `NIXPACKS_NODE_VERSION`.
+
+Before deploying, prepare the Coolify host:
+
+```bash
+sudo modprobe fuse
+test -c /dev/fuse
+```
+
+Persist the `fuse` module through the host's module-loading configuration if it is not loaded after
+reboots. Do not replace the listed Custom Docker Options with `--privileged`, add `SYS_ADMIN`, or
+mount the host Docker or Podman socket into this application.
 
 ### 2. Set environment variables
 
@@ -59,6 +74,8 @@ Optional:
 - `TERMINAL_HOME` — defaults to `TERMINAL_WORKDIR`; controls `~` and persisted tool state.
 
 Coolify supplies `PORT` automatically. Do not set a fixed application port.
+If you override it outside Coolify, use port 1024 or higher because the application runs as a
+non-root user.
 
 Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. Copy the generated client ID, client secret,
 and exact discovery issuer into the corresponding variables without exposing their values. Remove
@@ -74,10 +91,14 @@ Add one Coolify persistent volume:
 
 With the default settings, `/code` is both the workspace and terminal home. Projects, dotfiles,
 Git and SSH configuration, `gh` login, Codex/OpenCode state, chezmoi state, and optional
-agent-browser profiles survive redeploys in this volume.
+agent-browser profiles survive redeploys in this volume. Rootless Podman images, volumes, and
+registry credentials are also stored there.
 
 If you use different terminal paths, mount persistent storage over all of them and set
 `TERMINAL_WORKDIR` and `TERMINAL_HOME` to absolute paths.
+
+On the first deployment of this version, startup recursively changes the configured terminal paths
+to UID/GID 1000 and writes a migration marker. Later starts do not repeat that ownership walk.
 
 ### 4. Deploy
 
@@ -87,7 +108,8 @@ included programs again on every deployment; tool credentials and personal state
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
 proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
-browser address bar.
+browser address bar. Startup deliberately fails before listening if `/dev/fuse`, user namespaces,
+or the rootless Podman configuration is unavailable.
 
 ## Included Commands
 
@@ -98,7 +120,8 @@ The terminal includes:
 - `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
 - `xvfb-run` for virtual X displays and `xdotool` for X11 input/window automation, backed by the
   matching Nix X11, Vulkan, and Mesa runtime needed by GUI programs built in the terminal
-- Nixpacks for plan/build-context inspection and uv for Python projects
+- rootless Podman for image builds and ordinary container runs
+- Nixpacks 1.41.0 for plan/build-context inspection and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
@@ -107,9 +130,11 @@ The browser terminal PATH starts with `/app/node_modules/.bin` and `~/.local/bin
 includes `/usr/local/bin` for Git Wrangler, and then preserves the Nixpacks image PATH. Pinned npm
 commands, user scripts stored on `/code`, Git Wrangler, and Nix packages are all callable.
 
-Nixpacks can validate this repository's deployment plan and emit its OCI build context. Podman is
-not bundled because the Coolify application container is not configured as a nested container
-runtime; build and run generated images with Podman on a suitable development or CI host.
+Nixpacks can validate a deployment plan and emit its OCI build context, and the bundled Podman can
+build and run that context directly. Podman uses `fuse-overlayfs`, persistent storage below
+`TERMINAL_HOME`, and Buildah chroot isolation. Inner cgroups are disabled because Coolify does not
+delegate a writable cgroup tree, so nested `--memory`, `--cpus`, cgroup-parent options, privileged
+containers, and host port mappings below 1024 are unsupported.
 
 ## First Use
 
@@ -141,6 +166,8 @@ the deployment image and available immediately as `codex` and `opencode`.
 
 - The first visit creates a session named `main`. Use the sidebar to create and switch between
   named sessions.
+- The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
+  Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
@@ -236,6 +263,17 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **`cd ~` opens the wrong directory:** Check `TERMINAL_HOME`; it defaults to `TERMINAL_WORKDIR`.
 - **Dotfiles fail on first startup:** Confirm the container can reach GitHub. Later update failures
   fall back to the existing local checkout.
+- **Startup reports that `/dev/fuse` is unavailable:** Load the host `fuse` module, confirm
+  `/dev/fuse` exists, and copy the documented Custom Docker Options into Coolify exactly.
+- **Startup reports that user namespaces are blocked:** Confirm both `seccomp=unconfined` and
+  `apparmor=unconfined` are present in Coolify's Custom Docker Options, then redeploy.
+- **Podman rejects CPU, memory, or cgroup flags:** Nested cgroups are intentionally disabled.
+  Run the container without those flags or use a separate container host when resource delegation
+  is required.
+- **Podman storage consumes too much space:** Inspect it with `podman system df` and remove unused
+  data with `podman system prune`; Podman storage persists below `TERMINAL_HOME`.
+- **Build logs select `nodejs_18`:** Update Coolify to a release that uses Nixpacks 1.41.0 or
+  newer. Nixpacks 1.40 does not recognize Node.js 24 and must not build this application.
 - **Terminal stays on “Connecting” or repeatedly reconnects:** Confirm the reverse proxy preserves
   WebSocket upgrades and `PUBLIC_ORIGIN` exactly matches the browser-facing scheme, host, and
   non-default port. Do not include a path.
