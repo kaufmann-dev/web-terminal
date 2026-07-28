@@ -88,11 +88,11 @@ test('startup requires OIDC configuration without an application identity allowl
   );
 });
 
-test('xterm browser modules require authentication and include the WebGL renderer', async (t) => {
+test('xterm browser modules require authentication', async (t) => {
   const openidClient = createFakeOpenidClient();
   const { baseUrl } = await startService(t, { openidClient });
-  const webglPath = '/vendor/xterm/addon-webgl.mjs';
-  const unauthenticatedResponse = await fetch(`${baseUrl}${webglPath}`, {
+  const xtermPath = '/vendor/xterm/xterm.mjs';
+  const unauthenticatedResponse = await fetch(`${baseUrl}${xtermPath}`, {
     redirect: 'manual',
   });
   assert.equal(unauthenticatedResponse.status, 302);
@@ -100,9 +100,8 @@ test('xterm browser modules require authentication and include the WebGL rendere
 
   const { cookies } = await authenticate(baseUrl, openidClient);
   for (const modulePath of [
-    '/vendor/xterm/xterm.mjs',
+    xtermPath,
     '/vendor/xterm/addon-fit.mjs',
-    webglPath,
   ]) {
     const response = await fetch(`${baseUrl}${modulePath}`, {
       headers: { Cookie: cookieHeader(cookies) },
