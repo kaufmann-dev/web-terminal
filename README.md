@@ -115,7 +115,8 @@ or the rootless Podman configuration is unavailable.
 
 The terminal includes:
 
-- Node.js 24, npm, and npx
+- Node.js 24, npm, npx, and pnpm 11.17.0
+- Vitest 4.1.10
 - `codex` 0.145.0 and `opencode` 1.18.3
 - `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
 - `xvfb-run` for virtual X displays and `xdotool` for X11 input/window automation, backed by the
@@ -179,9 +180,10 @@ the deployment image and available immediately as `codex` and `opencode`.
   provider's RP-Initiated Logout endpoint. It may end provider-wide SSO when that is the provider's
   policy. Idle or absolute expiry destroys only the local session; the next access starts a new
   OIDC authorization flow.
-- Reconnecting restores up to 10,000 retained scrollback lines plus the current screen. Output
-  produced while disconnected appears in order before live output resumes. Returning to a visible
-  tab or regaining browser connectivity immediately retries any pending reconnect backoff.
+- Reconnecting restores up to 10,000 retained scrollback lines plus the current screen. Hidden
+  pages detach from live output so returning to the page restores the latest snapshot instead of
+  replaying backgrounded terminal frames. Regaining browser connectivity immediately retries any
+  pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. There is no tmux copy mode, Codex-specific wheel
   routing, or synthetic keyboard input.
 - Selecting terminal text copies it to the browser clipboard automatically. Use `Ctrl+V` to paste
