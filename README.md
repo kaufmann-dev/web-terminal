@@ -234,7 +234,9 @@ or control unrelated native Wayland windows.
   `Tab`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Activating a modifier opens
   the software keyboard; consuming it with a character closes the keyboard, and tapping the active
   modifier again deactivates it without reopening the keyboard. The other controls can be tapped
-  repeatedly without summoning it.
+  repeatedly without summoning it. A one-finger vertical drag scrolls xterm's retained normal-screen
+  history directly, without momentum or sending mouse or key input to alternate-screen programs;
+  pinch-to-zoom remains available.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to

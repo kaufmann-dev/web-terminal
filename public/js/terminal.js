@@ -2,7 +2,11 @@
   const [
     { Terminal },
     { FitAddon },
-    { encodeMobileTerminalKey, transformMobileTerminalInput },
+    {
+      TouchScrollGesture,
+      encodeMobileTerminalKey,
+      transformMobileTerminalInput,
+    },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
@@ -148,6 +152,9 @@
       this.imageUploadController = null;
       this.imageUploadQueue = Promise.resolve();
       this.mobileModifiers = { ctrl: false, alt: false };
+      this.touchScrollGesture = new TouchScrollGesture();
+      this.suppressTouchScrollClick = false;
+      this.touchScrollClickTimer = null;
 
       this.terminal = new Terminal({
         cursorBlink: true,
@@ -193,6 +200,17 @@
       terminalHost.addEventListener('click', this.focusTerminal);
       this.terminalElement.addEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.addEventListener('paste', this.handlePaste, true);
+      this.terminalElement.addEventListener(
+        'pointerdown',
+        this.handleTouchScrollPointerDown,
+      );
+      this.terminalElement.addEventListener(
+        'pointermove',
+        this.handleTouchScrollPointerMove,
+        { passive: false },
+      );
+      this.terminalElement.addEventListener('pointerup', this.handleTouchScrollPointerUp);
+      this.terminalElement.addEventListener('pointercancel', this.handleTouchScrollPointerCancel);
 
       this.fitAndNotify();
       if (!this.suspended) {
@@ -200,10 +218,109 @@
       }
     }
 
-    focusTerminal = () => {
+    focusTerminal = (event) => {
+      if (this.suppressTouchScrollClick) {
+        this.clearTouchScrollClickSuppression();
+        event.preventDefault();
+        return;
+      }
       if (this.ready) {
         this.terminal.focus();
       }
+    };
+
+    clearTouchScrollClickSuppression = () => {
+      window.clearTimeout(this.touchScrollClickTimer);
+      this.touchScrollClickTimer = null;
+      this.suppressTouchScrollClick = false;
+    };
+
+    armTouchScrollClickSuppression = () => {
+      this.clearTouchScrollClickSuppression();
+      this.suppressTouchScrollClick = true;
+      this.touchScrollClickTimer = window.setTimeout(() => {
+        this.touchScrollClickTimer = null;
+        this.suppressTouchScrollClick = false;
+      }, 400);
+    };
+
+    releaseTouchScrollPointer = (pointerId) => {
+      if (pointerId === null
+        || typeof this.terminalElement.hasPointerCapture !== 'function'
+        || typeof this.terminalElement.releasePointerCapture !== 'function') {
+        return;
+      }
+      try {
+        if (this.terminalElement.hasPointerCapture(pointerId)) {
+          this.terminalElement.releasePointerCapture(pointerId);
+        }
+      } catch (err) {
+        // Pointer capture can already be gone after browser gesture cancellation.
+      }
+    };
+
+    cancelTouchScroll = () => {
+      const pointerId = this.touchScrollGesture.activePointerId;
+      this.releaseTouchScrollPointer(pointerId);
+      this.touchScrollGesture.cancel();
+      this.clearTouchScrollClickSuppression();
+    };
+
+    handleTouchScrollPointerDown = (event) => {
+      if (!mobileLayoutQuery.matches
+        || event.pointerType !== 'touch'
+        || !event.isPrimary) {
+        return;
+      }
+
+      this.clearTouchScrollClickSuppression();
+      if (!this.touchScrollGesture.start(event.pointerId, event.clientX, event.clientY)) {
+        return;
+      }
+      if (typeof this.terminalElement.setPointerCapture === 'function') {
+        try {
+          this.terminalElement.setPointerCapture(event.pointerId);
+        } catch (err) {
+          // Pointer capture is optional; document-level targeting still continues the gesture.
+        }
+      }
+    };
+
+    handleTouchScrollPointerMove = (event) => {
+      if (event.pointerType !== 'touch') {
+        return;
+      }
+
+      const terminalHeight = this.terminalElement.getBoundingClientRect().height;
+      const pixelsPerLine = terminalHeight / this.terminal.rows;
+      const result = this.touchScrollGesture.move(
+        event.pointerId,
+        event.clientX,
+        event.clientY,
+        pixelsPerLine,
+      );
+      if (!result.recognized) {
+        return;
+      }
+
+      event.preventDefault();
+      const activeBuffer = this.terminal.buffer.active;
+      if (result.lines !== 0 && activeBuffer.type === 'normal' && activeBuffer.baseY > 0) {
+        this.terminal.scrollLines(result.lines);
+      }
+    };
+
+    handleTouchScrollPointerUp = (event) => {
+      this.releaseTouchScrollPointer(event.pointerId);
+      if (this.touchScrollGesture.end(event.pointerId)) {
+        event.preventDefault();
+        this.armTouchScrollClickSuppression();
+      }
+    };
+
+    handleTouchScrollPointerCancel = (event) => {
+      this.releaseTouchScrollPointer(event.pointerId);
+      this.touchScrollGesture.cancel(event.pointerId);
     };
 
     handleBrowserPasteKeyDown = (event) => {
@@ -439,6 +556,7 @@
         return;
       }
 
+      this.cancelTouchScroll();
       this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
@@ -623,7 +741,13 @@
     }
 
     setPageHidden(hidden) {
-      if (this.disposed || hidden === this.suspended) {
+      if (this.disposed) {
+        return;
+      }
+      if (hidden) {
+        this.cancelTouchScroll();
+      }
+      if (hidden === this.suspended) {
         if (!hidden) {
           this.reconnectNow();
         }
@@ -661,6 +785,7 @@
         return;
       }
       this.disposed = true;
+      this.cancelTouchScroll();
       this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
@@ -672,6 +797,19 @@
       terminalHost.removeEventListener('click', this.focusTerminal);
       this.terminalElement.removeEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.removeEventListener('paste', this.handlePaste, true);
+      this.terminalElement.removeEventListener(
+        'pointerdown',
+        this.handleTouchScrollPointerDown,
+      );
+      this.terminalElement.removeEventListener(
+        'pointermove',
+        this.handleTouchScrollPointerMove,
+      );
+      this.terminalElement.removeEventListener('pointerup', this.handleTouchScrollPointerUp);
+      this.terminalElement.removeEventListener(
+        'pointercancel',
+        this.handleTouchScrollPointerCancel,
+      );
       if (this.imageUploadController) {
         this.imageUploadController.abort();
         this.imageUploadController = null;
@@ -953,6 +1091,7 @@
   mobileLayoutQuery.addEventListener('change', (event) => {
     if (!event.matches && activeController) {
       activeController.clearMobileModifiers();
+      activeController.cancelTouchScroll();
     }
   });
 
