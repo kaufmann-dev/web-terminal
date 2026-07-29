@@ -78,6 +78,17 @@ is_container_environment() {
   [[ -f /.dockerenv || -f /run/.containerenv ]]
 }
 
+configure_rootless_podman_environment() {
+  if ! is_container_environment; then
+    return
+  fi
+
+  export BUILDAH_ISOLATION=chroot
+  export _CONTAINERS_USERNS_CONFIGURED=
+  export CONTAINERS_CONF="$PODMAN_CONTAINERS_CONF"
+  export CONTAINERS_STORAGE_CONF="$PODMAN_STORAGE_CONF"
+}
+
 run_as_terminal() {
   if ! is_container_environment || [[ "$(id -u)" != "0" ]]; then
     "$@"
@@ -240,6 +251,7 @@ fi
 
 migrate_terminal_ownership
 if is_container_environment; then
+  configure_rootless_podman_environment
   validate_rootless_podman
 fi
 sync_dotfiles
@@ -256,10 +268,6 @@ if is_container_environment && [[ "$(id -u)" == "0" ]]; then
     "USER=$TERMINAL_USER" \
     "LOGNAME=$TERMINAL_USER" \
     "SHELL=/bin/bash" \
-    "BUILDAH_ISOLATION=chroot" \
-    "_CONTAINERS_USERNS_CONFIGURED=" \
-    "CONTAINERS_CONF=$PODMAN_CONTAINERS_CONF" \
-    "CONTAINERS_STORAGE_CONF=$PODMAN_STORAGE_CONF" \
     node app.js
 fi
 

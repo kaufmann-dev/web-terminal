@@ -271,6 +271,10 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
     LIBGL_DRIVERS_PATH: '/root/.nix-profile/lib/dri',
     XDG_DATA_DIRS: '/root/.nix-profile/share:/usr/local/share:/usr/share',
+    BUILDAH_ISOLATION: 'chroot',
+    _CONTAINERS_USERNS_CONFIGURED: '',
+    CONTAINERS_CONF: '/etc/containers/web-terminal-containers.conf',
+    CONTAINERS_STORAGE_CONF: '/etc/containers/web-terminal-storage.conf',
   };
   const originals = Object.fromEntries(
     Object.keys(overrides).map((name) => [name, process.env[name]]),
@@ -292,6 +296,16 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(
       environment.XDG_DATA_DIRS,
       '/root/.nix-profile/share:/usr/local/share:/usr/share',
+    );
+    assert.equal(environment.BUILDAH_ISOLATION, 'chroot');
+    assert.equal(environment._CONTAINERS_USERNS_CONFIGURED, '');
+    assert.equal(
+      environment.CONTAINERS_CONF,
+      '/etc/containers/web-terminal-containers.conf',
+    );
+    assert.equal(
+      environment.CONTAINERS_STORAGE_CONF,
+      '/etc/containers/web-terminal-storage.conf',
     );
     assert.equal(environment.LANG, 'C.UTF-8');
     assert.equal(environment.LC_CTYPE, 'C.UTF-8');
@@ -415,6 +429,24 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
   assert.match(
     startupScript,
     /Rootless Podman did not detect an executable pasta network helper\./,
+  );
+  assert.match(
+    startupScript,
+    /^configure_rootless_podman_environment\(\) \{[\s\S]*?^}$/m,
+  );
+  assert.match(startupScript, /^\s*export BUILDAH_ISOLATION=chroot$/m);
+  assert.match(startupScript, /^\s*export _CONTAINERS_USERNS_CONFIGURED=$/m);
+  assert.match(
+    startupScript,
+    /^\s*export CONTAINERS_CONF="\$PODMAN_CONTAINERS_CONF"$/m,
+  );
+  assert.match(
+    startupScript,
+    /^\s*export CONTAINERS_STORAGE_CONF="\$PODMAN_STORAGE_CONF"$/m,
+  );
+  assert.match(
+    startupScript,
+    /if is_container_environment; then\s+configure_rootless_podman_environment\s+validate_rootless_podman\s+fi/,
   );
   assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);
   assert.match(terminalBashRc, /^\s*source "\$HOME\/\.bashrc"$/m);

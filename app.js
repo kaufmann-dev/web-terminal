@@ -672,6 +672,7 @@ function createWebTerminal(options = {}) {
     if (!socket.activityPending || socket.skipActivityFlush) {
       return;
     }
+    const activityAt = socket.authSession.lastActivityAt;
     socket.activityPending = false;
     socket.lastActivityPersistedAt = now();
     sessionStore.get(socket.loginSessionId, (getError, storedSession) => {
@@ -683,10 +684,12 @@ function createWebTerminal(options = {}) {
       }
       storedSession.lastActivityAt = Math.max(
         storedSession.lastActivityAt || 0,
-        socket.authSession.lastActivityAt,
+        activityAt,
       );
       applyApplicationSessionDeadline(storedSession);
-      socket.authSession = storedSession;
+      if ((socket.authSession.lastActivityAt || 0) <= activityAt) {
+        socket.authSession = storedSession;
+      }
       sessionStore.set(socket.loginSessionId, storedSession, (setError) => {
         if (setError) {
           console.error('WebSocket activity persistence error:', setError.message);
@@ -943,7 +946,7 @@ function createWebTerminal(options = {}) {
         socket.isAlive = false;
         socket.ping();
         sessionStore.get(socket.loginSessionId, (err, storedSession) => {
-          if (!err && storedSession && socket.activityPending) {
+          if (!err && storedSession) {
             storedSession.lastActivityAt = Math.max(
               storedSession.lastActivityAt || 0,
               socket.authSession.lastActivityAt || 0,
