@@ -51,6 +51,7 @@ RUN dnf --assumeyes update \
       podman \
       procps-ng \
       python3 \
+      python3-pyyaml \
       ripgrep \
       rsync \
       shadow-utils \
@@ -71,6 +72,7 @@ RUN dnf --assumeyes update \
     && ln --symbolic /usr/bin/npm-24 /usr/local/bin/npm \
     && ln --symbolic /usr/bin/npx-24 /usr/local/bin/npx \
     && node --version | grep --extended-regexp --quiet '^v24\.' \
+    && python3 -c 'import yaml' \
     && sed --regexp-extended --in-place \
       's/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/' \
       /usr/share/wlheadless/wlheadless.conf \

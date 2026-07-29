@@ -384,6 +384,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     'nodejs24-npm',
     'passt',
     'podman',
+    'python3-pyyaml',
     'uv',
     'xwayland-run',
   ]) {
@@ -413,6 +414,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     true,
   );
   for (const imageCommand of [
+    "python3 -c 'import yaml'",
     'npm ci --omit=dev',
     `node -e 'require("node-pty")'`,
     './node_modules/.bin/agent-browser --version',
