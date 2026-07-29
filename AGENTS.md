@@ -107,12 +107,13 @@ node --test test/*.test.js
   Do not add ttyd or tmux back to the image.
 - `scripts/start.sh` validates and creates terminal paths, performs the one-time UID/GID 1000
   ownership migration, performs the one-time clean Podman 6 storage initialization, validates
-  nested rootless Podman, applies chezmoi as the terminal user, and then drops to that user before
-  replacing itself with `node app.js`. The storage initializer intentionally removes legacy
-  containers, images, volumes, runtime data, and custom networks while preserving registry
-  credentials and unrelated terminal data. It must validate every deletion target, retry after an
-  interruption, and never reset state again after writing its completion marker. The Node shutdown
-  path must close WebSockets and terminate all child PTYs.
+  nested rootless Podman, applies chezmoi as the terminal user, starts the rootless
+  Docker-compatible Podman API at `$XDG_RUNTIME_DIR/podman/podman.sock`, exports `DOCKER_HOST`, and
+  then drops to that user before replacing itself with `node app.js`. The storage initializer
+  intentionally removes legacy containers, images, volumes, runtime data, and custom networks
+  while preserving registry credentials and unrelated terminal data. It must validate every
+  deletion target, retry after an interruption, and never reset state again after writing its
+  completion marker. The Node shutdown path must close WebSockets and terminate all child PTYs.
 - The PTY environment sets `HOME`, XDG directories, PATH, `TERM=xterm-256color`, and
   `COLORTERM=truecolor`; the Express process keeps the container's original HOME while running as
   UID/GID 1000.
