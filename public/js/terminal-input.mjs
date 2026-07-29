@@ -12,6 +12,90 @@ const pageCodes = Object.freeze({
   'page-up': '5',
 });
 
+export class TouchScrollGesture {
+  constructor(activationDistance = 8) {
+    this.activationDistance = activationDistance;
+    this.reset();
+  }
+
+  get activePointerId() {
+    return this.pointerId;
+  }
+
+  start(pointerId, clientX, clientY) {
+    if (this.pointerId !== null) {
+      return false;
+    }
+
+    this.pointerId = pointerId;
+    this.startX = clientX;
+    this.startY = clientY;
+    this.lastY = clientY;
+    this.axis = 'pending';
+    this.pixelRemainder = 0;
+    return true;
+  }
+
+  move(pointerId, clientX, clientY, pixelsPerLine) {
+    if (pointerId !== this.pointerId) {
+      return { lines: 0, recognized: false };
+    }
+
+    if (this.axis === 'pending') {
+      const horizontalDistance = Math.abs(clientX - this.startX);
+      const verticalDistance = Math.abs(clientY - this.startY);
+      if (Math.max(horizontalDistance, verticalDistance) < this.activationDistance) {
+        return { lines: 0, recognized: false };
+      }
+      this.axis = verticalDistance >= horizontalDistance ? 'vertical' : 'horizontal';
+    }
+
+    if (this.axis !== 'vertical') {
+      return { lines: 0, recognized: true };
+    }
+
+    const verticalMovement = clientY - this.lastY;
+    this.lastY = clientY;
+    if (!Number.isFinite(pixelsPerLine) || pixelsPerLine <= 0) {
+      return { lines: 0, recognized: true };
+    }
+
+    this.pixelRemainder -= verticalMovement;
+    const wholeLines = Math.trunc(this.pixelRemainder / pixelsPerLine);
+    const lines = wholeLines === 0 ? 0 : wholeLines;
+    this.pixelRemainder -= lines * pixelsPerLine;
+    return { lines, recognized: true };
+  }
+
+  end(pointerId) {
+    if (this.pointerId === null || pointerId !== this.pointerId) {
+      return false;
+    }
+
+    const recognized = this.axis !== 'pending';
+    this.reset();
+    return recognized;
+  }
+
+  cancel(pointerId = this.pointerId) {
+    if (this.pointerId === null || pointerId !== this.pointerId) {
+      return false;
+    }
+
+    this.reset();
+    return true;
+  }
+
+  reset() {
+    this.pointerId = null;
+    this.startX = 0;
+    this.startY = 0;
+    this.lastY = 0;
+    this.axis = 'pending';
+    this.pixelRemainder = 0;
+  }
+}
+
 function modifierMask({ ctrl = false, alt = false } = {}) {
   return (alt ? 2 : 0) | (ctrl ? 4 : 0);
 }

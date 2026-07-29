@@ -632,6 +632,10 @@ body.dark {
     display: block;
   }
 
+  .terminal-host .xterm {
+    touch-action: pinch-zoom;
+  }
+
   .mobile-terminal-controls {
     display: flex;
     flex: 0 0 auto;

@@ -59,6 +59,14 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
     mobileStyles,
     /\.mobile-terminal-key-icon\s*\{[^}]*width:\s*20px;[^}]*stroke:\s*currentcolor;/s,
   );
+  assert.match(
+    mobileStyles,
+    /\.terminal-host \.xterm\s*\{[^}]*touch-action:\s*pinch-zoom;/s,
+  );
+  assert.doesNotMatch(
+    desktopStyles,
+    /\.terminal-host \.xterm\s*\{[^}]*touch-action:\s*pinch-zoom;/s,
+  );
 });
 
 test('mobile control group exposes the terminal keys in priority order', () => {
@@ -176,4 +184,51 @@ test('mobile controls use xterm input modes and browser text paste', () => {
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
+});
+
+test('collapsed-sidebar terminal scrolls retained output with touch gestures', () => {
+  const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
+  const touchHandlers = terminalScript.slice(
+    terminalScript.indexOf('handleTouchScrollPointerDown ='),
+    terminalScript.indexOf('handleBrowserPasteKeyDown ='),
+  );
+
+  assert.match(terminalScript, /\bTouchScrollGesture\b/);
+  assert.match(terminalScript, /new TouchScrollGesture\(\)/);
+  for (const eventName of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+    assert.match(
+      terminalScript,
+      new RegExp(`addEventListener\\(\\s*'${eventName}'`),
+    );
+    assert.match(
+      terminalScript,
+      new RegExp(`removeEventListener\\(\\s*'${eventName}'`),
+    );
+  }
+  assert.match(touchHandlers, /!mobileLayoutQuery\.matches/);
+  assert.match(touchHandlers, /event\.pointerType !== 'touch'/);
+  assert.match(touchHandlers, /!event\.isPrimary/);
+  assert.match(
+    touchHandlers,
+    /this\.terminalElement\.getBoundingClientRect\(\)\.height/,
+  );
+  assert.match(touchHandlers, /terminalHeight \/ this\.terminal\.rows/);
+  assert.match(touchHandlers, /activeBuffer\.type === 'normal'/);
+  assert.match(touchHandlers, /activeBuffer\.baseY > 0/);
+  assert.match(touchHandlers, /this\.terminal\.scrollLines\(result\.lines\)/);
+  assert.match(touchHandlers, /this\.armTouchScrollClickSuppression\(\)/);
+  assert.doesNotMatch(touchHandlers, /this\.terminal\.input\(/);
+  assert.doesNotMatch(touchHandlers, /this\.send\(/);
+
+  const focusHandler = terminalScript.slice(
+    terminalScript.indexOf('focusTerminal ='),
+    terminalScript.indexOf('handleBrowserPasteKeyDown ='),
+  );
+  assert.match(focusHandler, /if \(this\.suppressTouchScrollClick\)/);
+  assert.match(focusHandler, /event\.preventDefault\(\)/);
+  assert.match(terminalScript, /setPageHidden\(hidden\)[\s\S]*this\.cancelTouchScroll\(\)/);
+  assert.match(
+    terminalScript,
+    /!event\.matches[\s\S]*activeController\.cancelTouchScroll\(\)/,
+  );
 });

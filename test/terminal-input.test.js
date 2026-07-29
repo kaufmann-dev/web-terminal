@@ -142,3 +142,75 @@ test('terminal protocol reports bypass armed mobile modifiers', async () => {
     { data: '\u001b[200~pasted\u001b[201~', consumed: true },
   );
 });
+
+test('touch scrolling activates after a predominantly vertical eight-pixel drag', async () => {
+  const { TouchScrollGesture } = await terminalInputModule;
+  const gesture = new TouchScrollGesture();
+
+  assert.equal(gesture.start(3, 100, 100), true);
+  assert.equal(gesture.start(4, 100, 100), false);
+  assert.deepEqual(
+    gesture.move(3, 104, 107, 10),
+    { lines: 0, recognized: false },
+  );
+  assert.deepEqual(
+    gesture.move(3, 102, 108, 10),
+    { lines: 0, recognized: true },
+  );
+  assert.deepEqual(
+    gesture.move(3, 102, 118, 10),
+    { lines: -1, recognized: true },
+  );
+  assert.equal(gesture.end(3), true);
+  assert.equal(gesture.activePointerId, null);
+});
+
+test('touch scrolling uses natural direction and retains fractional row travel', async () => {
+  const { TouchScrollGesture } = await terminalInputModule;
+  const gesture = new TouchScrollGesture();
+
+  gesture.start(7, 0, 100);
+  assert.deepEqual(
+    gesture.move(7, 0, 125, 10),
+    { lines: -2, recognized: true },
+  );
+  assert.deepEqual(
+    gesture.move(7, 0, 130, 10),
+    { lines: -1, recognized: true },
+  );
+  assert.equal(gesture.end(7), true);
+
+  gesture.start(8, 0, 100);
+  assert.deepEqual(
+    gesture.move(8, 0, 75, 10),
+    { lines: 2, recognized: true },
+  );
+  assert.deepEqual(
+    gesture.move(8, 0, 70, 10),
+    { lines: 1, recognized: true },
+  );
+});
+
+test('touch scrolling locks horizontal gestures and ignores other pointers', async () => {
+  const { TouchScrollGesture } = await terminalInputModule;
+  const gesture = new TouchScrollGesture();
+
+  gesture.start(11, 20, 20);
+  assert.deepEqual(
+    gesture.move(12, 20, 50, 10),
+    { lines: 0, recognized: false },
+  );
+  assert.equal(gesture.end(12), false);
+  assert.deepEqual(
+    gesture.move(11, 30, 22, 10),
+    { lines: 0, recognized: true },
+  );
+  assert.deepEqual(
+    gesture.move(11, 30, 60, 10),
+    { lines: 0, recognized: true },
+  );
+  assert.equal(gesture.cancel(12), false);
+  assert.equal(gesture.cancel(11), true);
+  assert.equal(gesture.activePointerId, null);
+  assert.equal(gesture.cancel(), false);
+});
