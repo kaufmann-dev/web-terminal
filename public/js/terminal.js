@@ -267,7 +267,8 @@
     };
 
     handleTouchScrollPointerDown = (event) => {
-      if (!mobileLayoutQuery.matches
+      if (event.defaultPrevented
+        || !mobileLayoutQuery.matches
         || event.pointerType !== 'touch'
         || !event.isPrimary) {
         return;
