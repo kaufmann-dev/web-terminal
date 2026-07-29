@@ -51,9 +51,17 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
     mobileStyles,
     /\.mobile-terminal-key\s*\{[^}]*min-width:\s*44px;[^}]*height:\s*44px;/s,
   );
+  assert.match(
+    mobileStyles,
+    /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
+  );
+  assert.match(
+    mobileStyles,
+    /\.mobile-terminal-key-icon\s*\{[^}]*width:\s*20px;[^}]*stroke:\s*currentcolor;/s,
+  );
 });
 
-test('mobile control group exposes the essential terminal keys in priority order', () => {
+test('mobile control group exposes the terminal keys in priority order', () => {
   const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
   const workspaceEnd = terminalView.indexOf(
     '</section>',
@@ -68,10 +76,12 @@ test('mobile control group exposes the essential terminal keys in priority order
   assert.match(controlsMatch[1], /\baria-label="Terminal controls"/);
   assert.match(controlsMatch[1], /\bhidden\b/);
 
-  const buttons = [...controlsMatch[2].matchAll(/<button\b([^>]*)>([^<]+)<\/button>/g)];
+  const buttons = [...controlsMatch[2].matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
   assert.deepEqual(
     buttons.map((button) => button[1].match(/data-terminal-control="([^"]+)"/)?.[1]),
     [
+      'modifier-ctrl',
+      'modifier-alt',
       'interrupt',
       'paste',
       'escape',
@@ -80,6 +90,10 @@ test('mobile control group exposes the essential terminal keys in priority order
       'arrow-up',
       'arrow-down',
       'arrow-right',
+      'home',
+      'end',
+      'page-up',
+      'page-down',
     ],
   );
   for (const [, attributes] of buttons) {
@@ -87,18 +101,57 @@ test('mobile control group exposes the essential terminal keys in priority order
     assert.match(attributes, /\baria-label="[^"]+"/);
     assert.match(attributes, /\bdisabled\b/);
   }
+
+  for (const modifier of ['ctrl', 'alt']) {
+    const modifierButton = buttons.find((button) => (
+      button[1].includes(`data-terminal-modifier="${modifier}"`)
+    ));
+    assert.ok(modifierButton, `expected the ${modifier} modifier button`);
+    assert.match(modifierButton[1], /\baria-pressed="false"/);
+  }
+});
+
+test('mobile arrow controls use one consistent hardcoded SVG path', () => {
+  const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
+  const arrowButtons = [...terminalView.matchAll(
+    /<button\b([^>]*data-terminal-control="arrow-[^"]+"[^>]*)>([\s\S]*?)<\/button>/g,
+  )];
+
+  assert.equal(arrowButtons.length, 4);
+  for (const [, , content] of arrowButtons) {
+    assert.match(
+      content,
+      /<svg\b[^>]*class="mobile-terminal-key-icon"[^>]*aria-hidden="true"[^>]*focusable="false"/,
+    );
+    assert.match(content, /<path d="M15 5 8 12l7 7"/);
+    assert.doesNotMatch(content, /[←↑↓→]/);
+  }
 });
 
 test('mobile controls use xterm input modes and browser text paste', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
 
-  assert.match(terminalScript, /interrupt:\s*'\\u0003'/);
-  assert.match(terminalScript, /escape:\s*'\\u001b'/);
-  assert.match(terminalScript, /tab:\s*'\\t'/);
+  assert.match(terminalScript, /import\('\/static\/js\/terminal-input\.mjs'\)/);
+  assert.match(terminalScript, /encodeMobileTerminalKey\(/);
+  assert.match(terminalScript, /transformMobileTerminalInput\(/);
   assert.match(terminalScript, /this\.terminal\.modes\.applicationCursorKeysMode/);
   assert.match(terminalScript, /this\.terminal\.input\(input\)/);
+  assert.doesNotMatch(
+    terminalScript,
+    /this\.terminal\.input\(input\);\s*this\.terminal\.focus\(\)/,
+  );
   assert.match(terminalScript, /navigator\.clipboard\.readText\(\)/);
   assert.match(terminalScript, /this\.terminal\.paste\(text\)/);
+  const pasteHandler = terminalScript.slice(
+    terminalScript.indexOf('pasteClipboardText = async'),
+    terminalScript.indexOf('copySelection =', terminalScript.indexOf('pasteClipboardText = async')),
+  );
+  assert.doesNotMatch(pasteHandler, /this\.terminal\.focus\(\)/);
+  assert.match(
+    terminalScript,
+    /toggleMobileModifier = \(modifier\) => \{[^}]*this\.terminal\.focus\(\);/s,
+  );
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
+  assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
 });

@@ -671,6 +671,24 @@ body.dark {
     user-select: none;
   }
 
+  .mobile-terminal-key[aria-pressed="true"] {
+    background: var(--border);
+    color: var(--accent-bright);
+    border-color: var(--accent);
+  }
+
+  .mobile-terminal-key-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-width: 2;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    vector-effect: non-scaling-stroke;
+  }
+
   .mobile-terminal-key:active {
     background: var(--border);
     color: var(--accent-bright);

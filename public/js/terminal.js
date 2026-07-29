@@ -1,7 +1,12 @@
 (async () => {
-  const [{ Terminal }, { FitAddon }] = await Promise.all([
+  const [
+    { Terminal },
+    { FitAddon },
+    { encodeMobileTerminalKey, transformMobileTerminalInput },
+  ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
+    import('/static/js/terminal-input.mjs'),
   ]);
   await Promise.all([
     document.fonts.load('400 14px "JetBrains Mono"'),
@@ -28,21 +33,11 @@
   const mobileTerminalButtons = mobileTerminalControls.querySelectorAll(
     '[data-terminal-control]',
   );
+  const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
   const noReconnectCloseCodes = new Set([4000, 4001, 4002, 4003, 4004]);
-  const mobileTerminalInputs = Object.freeze({
-    escape: '\u001b',
-    interrupt: '\u0003',
-    tab: '\t',
-  });
-  const mobileTerminalArrowCodes = Object.freeze({
-    'arrow-down': 'B',
-    'arrow-left': 'D',
-    'arrow-right': 'C',
-    'arrow-up': 'A',
-  });
 
   let csrfToken = '';
   let sessions = [];
@@ -110,6 +105,13 @@
     mobileTerminalControls.hidden = !hasActiveTerminal;
     for (const button of mobileTerminalButtons) {
       button.disabled = !controlsEnabled;
+      const modifier = button.dataset.terminalModifier;
+      if (modifier) {
+        button.setAttribute(
+          'aria-pressed',
+          String(Boolean(hasActiveTerminal && activeController.mobileModifiers[modifier])),
+        );
+      }
     }
   }
 
@@ -145,6 +147,7 @@
       this.writeQueue = Promise.resolve();
       this.imageUploadController = null;
       this.imageUploadQueue = Promise.resolve();
+      this.mobileModifiers = { ctrl: false, alt: false };
 
       this.terminal = new Terminal({
         cursorBlink: true,
@@ -168,7 +171,11 @@
 
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.ready) {
-          this.send({ type: 'input', data });
+          const transformedInput = transformMobileTerminalInput(data, this.mobileModifiers);
+          if (transformedInput.consumed) {
+            this.clearMobileModifiers();
+          }
+          this.send({ type: 'input', data: transformedInput.data });
         }
       });
       this.binaryDisposable = this.terminal.onBinary((data) => {
@@ -213,23 +220,43 @@
       if (this.disposed || !this.ready) {
         return;
       }
+      if (action === 'modifier-ctrl' || action === 'modifier-alt') {
+        this.toggleMobileModifier(action === 'modifier-ctrl' ? 'ctrl' : 'alt');
+        return;
+      }
       if (action === 'paste') {
+        this.clearMobileModifiers();
         this.pasteClipboardText();
         return;
       }
 
-      let input = mobileTerminalInputs[action];
-      const arrowCode = mobileTerminalArrowCodes[action];
-      if (arrowCode) {
-        const prefix = this.terminal.modes.applicationCursorKeysMode ? '\u001bO' : '\u001b[';
-        input = `${prefix}${arrowCode}`;
-      }
+      const input = encodeMobileTerminalKey(
+        action,
+        this.terminal.modes.applicationCursorKeysMode,
+        this.mobileModifiers,
+      );
       if (typeof input !== 'string') {
         return;
       }
 
+      this.clearMobileModifiers();
       this.terminal.input(input);
+    };
+
+    toggleMobileModifier = (modifier) => {
+      const nextValue = !this.mobileModifiers[modifier];
       this.terminal.focus();
+      this.mobileModifiers[modifier] = nextValue;
+      updateMobileTerminalControls();
+    };
+
+    clearMobileModifiers = () => {
+      if (!this.mobileModifiers.ctrl && !this.mobileModifiers.alt) {
+        return;
+      }
+      this.mobileModifiers.ctrl = false;
+      this.mobileModifiers.alt = false;
+      updateMobileTerminalControls();
     };
 
     pasteClipboardText = async () => {
@@ -242,11 +269,9 @@
           true,
           5000,
         );
-        this.terminal.focus();
         return;
       }
 
-      this.terminal.focus();
       setClipboardStatus('Reading clipboard…');
       try {
         const text = await navigator.clipboard.readText();
@@ -274,10 +299,6 @@
             true,
             5000,
           );
-        }
-      } finally {
-        if (!this.disposed && this.ready) {
-          this.terminal.focus();
         }
       }
     };
@@ -311,6 +332,7 @@
     };
 
     handlePaste = (event) => {
+      this.clearMobileModifiers();
       const imageItem = Array.from(event.clipboardData?.items || []).find(
         (item) => item.kind === 'file' && item.type.startsWith('image/'),
       );
@@ -404,6 +426,7 @@
         return;
       }
 
+      this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
       setConnectionStatus('Connecting…');
@@ -447,6 +470,7 @@
         }
 
         if (message.type === 'snapshot') {
+          this.clearMobileModifiers();
           this.ready = false;
           updateMobileTerminalControls();
           this.writeQueue = this.writeQueue.then(() => {
@@ -471,6 +495,7 @@
           return;
         }
         if (message.type === 'exit') {
+          this.clearMobileModifiers();
           this.ready = false;
           updateMobileTerminalControls();
           setConnectionStatus('Terminal process exited.', true);
@@ -487,6 +512,7 @@
           return;
         }
         this.socket = null;
+        this.clearMobileModifiers();
         this.ready = false;
         updateMobileTerminalControls();
 
@@ -597,6 +623,7 @@
         return;
       }
 
+      this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
@@ -621,6 +648,7 @@
         return;
       }
       this.disposed = true;
+      this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
@@ -908,6 +936,11 @@
       return;
     }
     activeController.handleMobileControl(button.dataset.terminalControl);
+  });
+  mobileLayoutQuery.addEventListener('change', (event) => {
+    if (!event.matches && activeController) {
+      activeController.clearMobileModifiers();
+    }
   });
 
   function reconnectActiveSessionNow() {

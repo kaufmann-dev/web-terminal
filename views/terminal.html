@@ -59,14 +59,36 @@
     </section>
 
     <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal controls" hidden>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="modifier-ctrl" data-terminal-modifier="ctrl" aria-label="Toggle Control modifier" aria-pressed="false" disabled>Ctrl</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="modifier-alt" data-terminal-modifier="alt" aria-label="Toggle Alt modifier" aria-pressed="false" disabled>Alt</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="interrupt" aria-label="Send Ctrl+C" disabled>Ctrl+C</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="paste" aria-label="Paste clipboard text (Ctrl+V)" disabled>Paste</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="escape" aria-label="Send Escape" disabled>Esc</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="tab" aria-label="Send Tab" disabled>Tab</button>
-      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-left" aria-label="Send left arrow" disabled>←</button>
-      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-up" aria-label="Send up arrow" disabled>↑</button>
-      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-down" aria-label="Send down arrow" disabled>↓</button>
-      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-right" aria-label="Send right arrow" disabled>→</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-left" aria-label="Send left arrow" disabled>
+        <svg class="mobile-terminal-key-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M15 5 8 12l7 7"></path>
+        </svg>
+      </button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-up" aria-label="Send up arrow" disabled>
+        <svg class="mobile-terminal-key-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M15 5 8 12l7 7" transform="rotate(90 12 12)"></path>
+        </svg>
+      </button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-down" aria-label="Send down arrow" disabled>
+        <svg class="mobile-terminal-key-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M15 5 8 12l7 7" transform="rotate(-90 12 12)"></path>
+        </svg>
+      </button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-right" aria-label="Send right arrow" disabled>
+        <svg class="mobile-terminal-key-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M15 5 8 12l7 7" transform="rotate(180 12 12)"></path>
+        </svg>
+      </button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="home" aria-label="Send Home" disabled>Home</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="end" aria-label="Send End" disabled>End</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="page-up" aria-label="Send Page Up" disabled>PgUp</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="page-down" aria-label="Send Page Down" disabled>PgDn</button>
     </div>
   </main>
   <script src="/static/js/terminal.js"></script>
