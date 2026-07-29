@@ -569,6 +569,10 @@ body.dark {
   margin: 0;
 }
 
+.mobile-terminal-controls {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .login-container {
     padding: 16px;
@@ -577,6 +581,14 @@ body.dark {
   .login-card {
     padding: 28px 24px;
     box-shadow: 8px 8px 0 rgb(0 0 0 / 28%);
+  }
+
+  .terminal-body {
+    height: 100dvh;
+  }
+
+  .terminal-main {
+    flex-direction: column;
   }
 
   .sidebar-toggle,
@@ -618,6 +630,68 @@ body.dark {
 
   .sessions-open .sidebar-backdrop {
     display: block;
+  }
+
+  .mobile-terminal-controls {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: var(--panel-raised);
+    border-top: 1px solid var(--border);
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-terminal-controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-terminal-key {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  .mobile-terminal-key:active {
+    background: var(--border);
+    color: var(--accent-bright);
+    border-color: var(--accent);
+  }
+
+  .mobile-terminal-key:focus-visible {
+    outline: 2px solid var(--accent-bright);
+    outline-offset: -2px;
+  }
+
+  .mobile-terminal-key:disabled {
+    color: var(--muted);
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .mobile-terminal-key:disabled:active {
+    background: var(--panel);
+    color: var(--muted);
+    border-color: var(--border);
   }
 }
 

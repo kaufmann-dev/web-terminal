@@ -24,10 +24,25 @@
   const clipboardStatus = document.getElementById('clipboard-status');
   const terminalPlaceholder = document.getElementById('terminal-placeholder');
   const terminalPlaceholderMessage = document.getElementById('terminal-placeholder-message');
+  const mobileTerminalControls = document.getElementById('mobile-terminal-controls');
+  const mobileTerminalButtons = mobileTerminalControls.querySelectorAll(
+    '[data-terminal-control]',
+  );
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
   const noReconnectCloseCodes = new Set([4000, 4001, 4002, 4003, 4004]);
+  const mobileTerminalInputs = Object.freeze({
+    escape: '\u001b',
+    interrupt: '\u0003',
+    tab: '\t',
+  });
+  const mobileTerminalArrowCodes = Object.freeze({
+    'arrow-down': 'B',
+    'arrow-left': 'D',
+    'arrow-right': 'C',
+    'arrow-up': 'A',
+  });
 
   let csrfToken = '';
   let sessions = [];
@@ -86,6 +101,15 @@
     clipboardStatus.hidden = !message;
     if (message && clearAfterMs > 0) {
       clipboardStatusTimer = window.setTimeout(() => setClipboardStatus(''), clearAfterMs);
+    }
+  }
+
+  function updateMobileTerminalControls() {
+    const hasActiveTerminal = Boolean(activeController && !activeController.disposed);
+    const controlsEnabled = hasActiveTerminal && activeController.ready;
+    mobileTerminalControls.hidden = !hasActiveTerminal;
+    for (const button of mobileTerminalButtons) {
+      button.disabled = !controlsEnabled;
     }
   }
 
@@ -183,6 +207,79 @@
         return;
       }
       event.stopPropagation();
+    };
+
+    handleMobileControl = (action) => {
+      if (this.disposed || !this.ready) {
+        return;
+      }
+      if (action === 'paste') {
+        this.pasteClipboardText();
+        return;
+      }
+
+      let input = mobileTerminalInputs[action];
+      const arrowCode = mobileTerminalArrowCodes[action];
+      if (arrowCode) {
+        const prefix = this.terminal.modes.applicationCursorKeysMode ? '\u001bO' : '\u001b[';
+        input = `${prefix}${arrowCode}`;
+      }
+      if (typeof input !== 'string') {
+        return;
+      }
+
+      this.terminal.input(input);
+      this.terminal.focus();
+    };
+
+    pasteClipboardText = async () => {
+      if (this.disposed || !this.ready) {
+        return;
+      }
+      if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+        setClipboardStatus(
+          'Clipboard text access is unavailable. Use the keyboard paste command.',
+          true,
+          5000,
+        );
+        this.terminal.focus();
+        return;
+      }
+
+      this.terminal.focus();
+      setClipboardStatus('Reading clipboard…');
+      try {
+        const text = await navigator.clipboard.readText();
+        if (this.disposed) {
+          return;
+        }
+        if (!this.ready) {
+          setClipboardStatus(
+            'The terminal disconnected before the clipboard could be pasted.',
+            true,
+            5000,
+          );
+          return;
+        }
+        if (!text) {
+          setClipboardStatus('The clipboard contains no text.', false, 3000);
+          return;
+        }
+        this.terminal.paste(text);
+        setClipboardStatus('Clipboard text pasted.', false, 3000);
+      } catch (err) {
+        if (!this.disposed) {
+          setClipboardStatus(
+            'Unable to read clipboard text. Allow clipboard access and try again.',
+            true,
+            5000,
+          );
+        }
+      } finally {
+        if (!this.disposed && this.ready) {
+          this.terminal.focus();
+        }
+      }
     };
 
     copySelection = () => {
@@ -308,6 +405,7 @@
       }
 
       this.ready = false;
+      updateMobileTerminalControls();
       setConnectionStatus('Connecting…');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${protocol}//${window.location.host}/ws/terminal?session=${encodeURIComponent(this.sessionName)}`;
@@ -350,6 +448,7 @@
 
         if (message.type === 'snapshot') {
           this.ready = false;
+          updateMobileTerminalControls();
           this.writeQueue = this.writeQueue.then(() => {
             if (this.socket !== socket || this.disposed) {
               return;
@@ -365,6 +464,7 @@
             }
             this.ready = true;
             this.reconnectDelay = 250;
+            updateMobileTerminalControls();
             setConnectionStatus('');
             this.terminal.focus();
           });
@@ -372,6 +472,7 @@
         }
         if (message.type === 'exit') {
           this.ready = false;
+          updateMobileTerminalControls();
           setConnectionStatus('Terminal process exited.', true);
           this.onSessionExit();
           return;
@@ -387,6 +488,7 @@
         }
         this.socket = null;
         this.ready = false;
+        updateMobileTerminalControls();
 
         if (event.code === 4001) {
           setConnectionStatus('This session was opened in another tab.', true);
@@ -496,6 +598,7 @@
       }
 
       this.ready = false;
+      updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
       this.reconnectRequested = false;
@@ -519,6 +622,7 @@
       }
       this.disposed = true;
       this.ready = false;
+      updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
       this.reconnectRequested = false;
@@ -548,6 +652,7 @@
       activeController.dispose();
       activeController = null;
     }
+    updateMobileTerminalControls();
   }
 
   function showEmptyTerminal(message) {
@@ -579,6 +684,7 @@
           refreshSessions().catch((err) => setStatus(err.message, true));
         }, 0);
       });
+      updateMobileTerminalControls();
     }
 
     updateTerminalUrl(name);
@@ -796,6 +902,13 @@
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
   logoutBtn.addEventListener('click', logout);
+  mobileTerminalControls.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-terminal-control]');
+    if (!button || button.disabled || !activeController) {
+      return;
+    }
+    activeController.handleMobileControl(button.dataset.terminalControl);
+  });
 
   function reconnectActiveSessionNow() {
     if (activeController) {

@@ -57,6 +57,17 @@
       <div id="connection-status" class="connection-status" role="status" aria-live="polite" hidden></div>
       <div id="clipboard-status" class="clipboard-status" role="status" aria-live="polite" hidden></div>
     </section>
+
+    <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal controls" hidden>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="interrupt" aria-label="Send Ctrl+C" disabled>Ctrl+C</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="paste" aria-label="Paste clipboard text (Ctrl+V)" disabled>Paste</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="escape" aria-label="Send Escape" disabled>Esc</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="tab" aria-label="Send Tab" disabled>Tab</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-left" aria-label="Send left arrow" disabled>←</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-up" aria-label="Send up arrow" disabled>↑</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-down" aria-label="Send down arrow" disabled>↓</button>
+      <button class="mobile-terminal-key" type="button" data-terminal-control="arrow-right" aria-label="Send right arrow" disabled>→</button>
+    </div>
   </main>
   <script src="/static/js/terminal.js"></script>
 </body>
