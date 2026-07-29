@@ -205,6 +205,12 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
       new RegExp(`removeEventListener\\(\\s*'${eventName}'`),
     );
   }
+  assert.match(touchHandlers, /if \(event\.defaultPrevented/);
+  assert.ok(
+    touchHandlers.indexOf('event.defaultPrevented')
+      < touchHandlers.indexOf('this.touchScrollGesture.start'),
+    'xterm-owned pointer events must be rejected before mobile pointer capture',
+  );
   assert.match(touchHandlers, /!mobileLayoutQuery\.matches/);
   assert.match(touchHandlers, /event\.pointerType !== 'touch'/);
   assert.match(touchHandlers, /!event\.isPrimary/);
