@@ -71,10 +71,12 @@ RUN dnf --assumeyes update \
     && ln --symbolic /usr/bin/npm-24 /usr/local/bin/npm \
     && ln --symbolic /usr/bin/npx-24 /usr/local/bin/npx \
     && node --version | grep --extended-regexp --quiet '^v24\.' \
-    && sed --in-place 's/^Compositor = .*/Compositor = cage/' \
+    && sed --regexp-extended --in-place \
+      's/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/' \
       /usr/share/wlheadless/wlheadless.conf \
-    && grep --fixed-strings --line-regexp --quiet \
-      'Compositor = cage' /usr/share/wlheadless/wlheadless.conf \
+    && python3 -c \
+      'from configparser import ConfigParser; import sys; config = ConfigParser(); config.read(sys.argv[1]); sys.exit("wlheadless default compositor is not cage") if config.defaults().get("compositor") != "cage" else None' \
+      /usr/share/wlheadless/wlheadless.conf \
     && dnf clean all \
     && rm -rf -- /var/cache/dnf
 
