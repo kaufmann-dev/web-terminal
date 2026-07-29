@@ -588,4 +588,10 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);
   assert.doesNotMatch(terminalBashRc, /\/etc\/bashrc/);
   assert.match(terminalBashRc, /^\s*source "\$HOME\/\.bashrc"$/m);
+  assert.equal(
+    terminalBashRc.endsWith(
+      "fi\n\nunset PROMPT_DIRTRIM\nPS1='\\u:\\w\\$ '\n",
+    ),
+    true,
+  );
 });
