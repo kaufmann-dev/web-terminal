@@ -172,10 +172,11 @@
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.ready) {
           const transformedInput = transformMobileTerminalInput(data, this.mobileModifiers);
+          this.send({ type: 'input', data: transformedInput.data });
           if (transformedInput.consumed) {
             this.clearMobileModifiers();
+            this.terminal.blur();
           }
-          this.send({ type: 'input', data: transformedInput.data });
         }
       });
       this.binaryDisposable = this.terminal.onBinary((data) => {
@@ -239,24 +240,36 @@
         return;
       }
 
-      this.clearMobileModifiers();
+      const hadModifiers = this.clearMobileModifiers();
       this.terminal.input(input);
+      if (hadModifiers) {
+        this.terminal.blur();
+      }
     };
 
     toggleMobileModifier = (modifier) => {
-      const nextValue = !this.mobileModifiers[modifier];
+      if (this.mobileModifiers[modifier]) {
+        this.mobileModifiers[modifier] = false;
+        updateMobileTerminalControls();
+        if (!this.mobileModifiers.ctrl && !this.mobileModifiers.alt) {
+          this.terminal.blur();
+        }
+        return;
+      }
+
       this.terminal.focus();
-      this.mobileModifiers[modifier] = nextValue;
+      this.mobileModifiers[modifier] = true;
       updateMobileTerminalControls();
     };
 
     clearMobileModifiers = () => {
       if (!this.mobileModifiers.ctrl && !this.mobileModifiers.alt) {
-        return;
+        return false;
       }
       this.mobileModifiers.ctrl = false;
       this.mobileModifiers.alt = false;
       updateMobileTerminalControls();
+      return true;
     };
 
     pasteClipboardText = async () => {

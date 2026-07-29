@@ -230,10 +230,11 @@ or control unrelated native Wayland windows.
   wheel-to-key translation.
 - At widths of 720px or less, the terminal follows the browser's dynamic visible viewport so mobile
   browser chrome does not cover its final rows. The collapsed-sidebar layout reserves a
-  horizontally scrollable touch strip for one-shot `Ctrl`/`Alt` modifiers, `Ctrl+C`, text paste,
-  `Esc`, `Tab`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Only the modifier
-  buttons intentionally open the software keyboard; the other controls can be tapped repeatedly
-  without summoning it.
+  horizontally scrollable touch strip for one-shot `Ctrl`/`Alt` modifiers, text paste, `Esc`,
+  `Tab`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Activating a modifier opens
+  the software keyboard; consuming it with a character closes the keyboard, and tapping the active
+  modifier again deactivates it without reopening the keyboard. The other controls can be tapped
+  repeatedly without summoning it.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to

@@ -12,7 +12,6 @@ test('mobile terminal keys follow normal and application cursor modes', async ()
 
   assert.equal(encodeMobileTerminalKey('escape', false), '\u001b');
   assert.equal(encodeMobileTerminalKey('tab', false), '\t');
-  assert.equal(encodeMobileTerminalKey('interrupt', false), '\u0003');
   assert.equal(encodeMobileTerminalKey('arrow-left', false), '\u001b[D');
   assert.equal(encodeMobileTerminalKey('arrow-up', true), '\u001bOA');
   assert.equal(encodeMobileTerminalKey('arrow-down', false), '\u001b[B');
@@ -52,10 +51,6 @@ test('mobile terminal keys encode Ctrl and Alt like xterm', async () => {
   assert.equal(
     encodeMobileTerminalKey('page-down', false, { alt: true }),
     '\u001b[6~',
-  );
-  assert.equal(
-    encodeMobileTerminalKey('interrupt', false, { alt: true }),
-    '\u001b\u0003',
   );
   assert.equal(
     encodeMobileTerminalKey('escape', false, { alt: true }),
