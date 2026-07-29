@@ -94,6 +94,21 @@ ensure_terminal_user() {
   fi
 }
 
+disable_mail_spool_creation() {
+  local defaults_file="/etc/default/useradd"
+
+  if [[ ! -f "$defaults_file" ]]; then
+    return
+  fi
+
+  if grep -q '^CREATE_MAIL_SPOOL=' "$defaults_file"; then
+    sed -i 's/^CREATE_MAIL_SPOOL=.*/CREATE_MAIL_SPOOL=no/' "$defaults_file"
+    return
+  fi
+
+  printf '\nCREATE_MAIL_SPOOL=no\n' >> "$defaults_file"
+}
+
 remove_subid_ranges() (
   local file="$1"
   local work_dir filtered_file
@@ -110,7 +125,10 @@ remove_subid_ranges() (
   else
     : > "$filtered_file"
   fi
-  install -o root -g root -m 0644 "$filtered_file" "$file"
+  touch "$file"
+  cp -- "$filtered_file" "$file"
+  chown root:root "$file"
+  chmod 0644 "$file"
 )
 
 remove_terminal_supplementary_groups() {
@@ -118,12 +136,15 @@ remove_terminal_supplementary_groups() {
 }
 
 main() {
+  local command_name podman_major podman_version
+
   if [[ "$(id -u)" != "0" ]]; then
     printf 'Rootless Podman image setup must run as root.\n' >&2
     exit 1
   fi
 
   ensure_terminal_group
+  disable_mail_spool_creation
   ensure_terminal_user
   remove_terminal_supplementary_groups
   remove_subid_ranges /etc/subuid
@@ -133,15 +154,40 @@ main() {
     "$APP_ROOT/config/containers/containers.conf" \
     /etc/containers/web-terminal-containers.conf
   install -D -o root -g root -m 0644 \
+    "$APP_ROOT/config/containers/mounts.conf" \
+    /etc/containers/mounts.conf
+  install -D -o root -g root -m 0644 \
     "$APP_ROOT/config/containers/storage.conf" \
     /etc/containers/web-terminal-storage.conf
 
-  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta setpriv unshare; do
+  for command_name in podman pasta conmon crun fuse-overlayfs setpriv unshare; do
     if ! command -v "$command_name" >/dev/null; then
       printf 'Required rootless Podman command is missing: %s\n' "$command_name" >&2
       exit 1
     fi
   done
+  for command_name in \
+    /usr/libexec/podman/netavark \
+    /usr/libexec/podman/aardvark-dns; do
+    if [[ ! -x "$command_name" ]]; then
+      printf 'Required rootless Podman helper is missing: %s\n' "$command_name" >&2
+      exit 1
+    fi
+  done
+  if command -v slirp4netns >/dev/null; then
+    printf 'slirp4netns must not be installed; Podman 6 uses pasta.\n' >&2
+    exit 1
+  fi
+  if ! podman_version="$(podman --version)"; then
+    printf 'Unable to determine the installed Podman version.\n' >&2
+    exit 1
+  fi
+  podman_version="${podman_version#podman version }"
+  podman_major="${podman_version%%.*}"
+  if [[ ! "$podman_major" =~ ^[0-9]+$ || "$podman_major" -lt 6 ]]; then
+    printf 'Podman 6 or newer is required; found %s.\n' "$podman_version" >&2
+    exit 1
+  fi
 }
 
 main "$@"

@@ -16,8 +16,10 @@ readonly RUNTIME_UID="$([[ "$(id -u)" == "0" ]] && printf '%s' "$TERMINAL_UID" |
 readonly XDG_RUNTIME_DIR_VALUE="/tmp/web-terminal-runtime-$RUNTIME_UID"
 readonly REGISTRY_AUTH_FILE_VALUE="$XDG_CONFIG_HOME_VALUE/containers/auth.json"
 readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
-readonly OWNERSHIP_MIGRATION_MARKER="$TERMINAL_HOME_VALUE/.local/state/web-terminal/uid-1000-v1"
+readonly WEB_TERMINAL_STATE_DIR="$TERMINAL_HOME_VALUE/.local/state/web-terminal"
+readonly OWNERSHIP_MIGRATION_MARKER="$WEB_TERMINAL_STATE_DIR/uid-1000-v1"
 readonly PODMAN_CONTAINERS_CONF="/etc/containers/web-terminal-containers.conf"
+readonly PODMAN_MOUNTS_CONF="/etc/containers/mounts.conf"
 readonly PODMAN_STORAGE_CONF="/etc/containers/web-terminal-storage.conf"
 
 require_absolute_path() {
@@ -163,17 +165,35 @@ migrate_terminal_ownership() {
   chown "$TERMINAL_USER:$TERMINAL_GROUP" "$OWNERSHIP_MIGRATION_MARKER"
 }
 
-validate_rootless_podman() {
-  local command_name pasta_executable proc_mount_check_path
+initialize_clean_podman6_storage() {
+  if ! bash "$APP_ROOT/scripts/initialize-podman6-storage.sh" \
+    "$TERMINAL_HOME_VALUE" \
+    "$XDG_CONFIG_HOME_VALUE" \
+    "$XDG_DATA_HOME_VALUE" \
+    "$XDG_RUNTIME_DIR_VALUE"; then
+    printf 'Unable to initialize clean Podman 6 storage.\n' >&2
+    exit 1
+  fi
+}
 
-  for command_name in podman newuidmap newgidmap fuse-overlayfs pasta unshare mount umount; do
+validate_rootless_podman() {
+  local aardvark_executable command_name database_backend host_info
+  local netavark_executable network_backend pasta_executable podman_major
+  local podman_version proc_mount_check_path rootless_network_cmd rootless_port_forwarder
+
+  for command_name in podman pasta conmon crun fuse-overlayfs unshare mount umount; do
     if ! command -v "$command_name" >/dev/null; then
       printf 'Required rootless Podman command is missing: %s\n' "$command_name" >&2
       exit 1
     fi
   done
+  if command -v slirp4netns >/dev/null; then
+    printf 'slirp4netns must not be installed; Podman 6 uses pasta.\n' >&2
+    exit 1
+  fi
 
-  if [[ ! -f "$PODMAN_CONTAINERS_CONF" || ! -f "$PODMAN_STORAGE_CONF" ]]; then
+  if [[ ! -f "$PODMAN_CONTAINERS_CONF" || ! -f "$PODMAN_MOUNTS_CONF" \
+    || ! -f "$PODMAN_STORAGE_CONF" ]]; then
     printf 'Rootless Podman configuration is missing from /etc/containers.\n' >&2
     exit 1
   fi
@@ -208,17 +228,60 @@ validate_rootless_podman() {
     exit 1
   fi
   run_as_terminal rmdir -- "$proc_mount_check_path"
-  if ! grep -Eq \
-    '^[[:space:]]*default_rootless_network_cmd[[:space:]]*=[[:space:]]*"pasta"[[:space:]]*$' \
-    "$PODMAN_CONTAINERS_CONF"; then
-    printf 'Rootless Podman must configure pasta as its default network command.\n' >&2
+  if ! podman_version="$(
+    run_in_terminal_environment \
+      podman --version 2>/dev/null
+  )"; then
+    printf 'Unable to determine the installed Podman version.\n' >&2
     exit 1
   fi
-  if ! pasta_executable="$(
+  podman_version="${podman_version#podman version }"
+  podman_major="${podman_version%%.*}"
+  if [[ ! "$podman_major" =~ ^[0-9]+$ || "$podman_major" -lt 6 ]]; then
+    printf 'Podman 6 or newer is required; found %s.\n' "$podman_version" >&2
+    exit 1
+  fi
+
+  initialize_clean_podman6_storage
+
+  if ! host_info="$(
     run_in_terminal_environment \
-      podman info --format '{{.Host.Pasta.Executable}}' 2>/dev/null
+      podman info \
+      --format '{{.Host.DatabaseBackend}}|{{.Host.NetworkBackend}}|{{.Host.RootlessNetworkCmd}}|{{.Host.RootlessPortForwarder}}|{{.Host.NetworkBackendInfo.Path}}|{{.Host.NetworkBackendInfo.DNS.Path}}|{{.Host.Pasta.Executable}}' \
+      2>/dev/null
   )"; then
     printf 'Rootless Podman failed its startup self-check.\n' >&2
+    exit 1
+  fi
+  IFS='|' read -r \
+    database_backend network_backend rootless_network_cmd rootless_port_forwarder \
+    netavark_executable aardvark_executable pasta_executable \
+    <<< "$host_info"
+  if [[ "$database_backend" != "sqlite" ]]; then
+    printf 'Rootless Podman must use its SQLite database; found %s.\n' "$database_backend" >&2
+    exit 1
+  fi
+  if [[ "$network_backend" != "netavark" ]]; then
+    printf 'Rootless Podman must use the Netavark network backend; found %s.\n' \
+      "$network_backend" >&2
+    exit 1
+  fi
+  if [[ "$rootless_network_cmd" != "pasta" ]]; then
+    printf 'Rootless Podman must use pasta for rootless networking; found %s.\n' \
+      "$rootless_network_cmd" >&2
+    exit 1
+  fi
+  if [[ "$rootless_port_forwarder" != "rootlessport" ]]; then
+    printf 'Rootless Podman must use rootlessport for bridge port forwarding; found %s.\n' \
+      "$rootless_port_forwarder" >&2
+    exit 1
+  fi
+  if [[ -z "$netavark_executable" || ! -x "$netavark_executable" ]]; then
+    printf 'Rootless Podman did not detect an executable Netavark network helper.\n' >&2
+    exit 1
+  fi
+  if [[ -z "$aardvark_executable" || ! -x "$aardvark_executable" ]]; then
+    printf 'Rootless Podman did not detect an executable Aardvark DNS helper.\n' >&2
     exit 1
   fi
   if [[ -z "$pasta_executable" || ! -x "$pasta_executable" ]]; then

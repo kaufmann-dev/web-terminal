@@ -240,7 +240,7 @@ test('WebSocket input activity is debounced and heartbeat expiry closes only the
 
 test('terminal PATH includes locally installed image commands', () => {
   const originalPath = process.env.PATH;
-  process.env.PATH = '/nix/profile/bin:/usr/bin';
+  process.env.PATH = '/opt/toolchain/bin:/usr/bin';
   try {
     const environment = createTerminalEnvironment({
       terminalHome: '/terminal-home',
@@ -250,7 +250,7 @@ test('terminal PATH includes locally installed image commands', () => {
       path.join(__dirname, '..', 'node_modules', '.bin'),
       '/terminal-home/.local/bin',
       '/usr/local/bin',
-      '/nix/profile/bin',
+      '/opt/toolchain/bin',
     ]);
   } finally {
     process.env.PATH = originalPath;
@@ -267,10 +267,10 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     OIDC_CLIENT_SECRET: 'secret-client',
     OIDC_PRIVATE_EXTENSION: 'private-value',
     SESSION_SECRET: 'secret-session',
-    FONTCONFIG_FILE: '/root/.nix-profile/etc/fonts/fonts.conf',
-    FONTCONFIG_PATH: '/root/.nix-profile/etc/fonts',
-    LIBGL_DRIVERS_PATH: '/root/.nix-profile/lib/dri',
-    XDG_DATA_DIRS: '/root/.nix-profile/share:/usr/local/share:/usr/share',
+    FONTCONFIG_FILE: '/etc/fonts/fonts.conf',
+    FONTCONFIG_PATH: '/etc/fonts',
+    LIBGL_DRIVERS_PATH: '/usr/lib64/dri',
+    XDG_DATA_DIRS: '/usr/local/share:/usr/share',
     BUILDAH_ISOLATION: 'chroot',
     _CONTAINERS_USERNS_CONFIGURED: '',
     CONTAINERS_CONF: '/etc/containers/web-terminal-containers.conf',
@@ -289,13 +289,13 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
 
     assert.equal(
       environment.FONTCONFIG_FILE,
-      '/root/.nix-profile/etc/fonts/fonts.conf',
+      '/etc/fonts/fonts.conf',
     );
-    assert.equal(environment.FONTCONFIG_PATH, '/root/.nix-profile/etc/fonts');
-    assert.equal(environment.LIBGL_DRIVERS_PATH, '/root/.nix-profile/lib/dri');
+    assert.equal(environment.FONTCONFIG_PATH, '/etc/fonts');
+    assert.equal(environment.LIBGL_DRIVERS_PATH, '/usr/lib64/dri');
     assert.equal(
       environment.XDG_DATA_DIRS,
-      '/root/.nix-profile/share:/usr/local/share:/usr/share',
+      '/usr/local/share:/usr/share',
     );
     assert.equal(environment.BUILDAH_ISOLATION, 'chroot');
     assert.equal(environment._CONTAINERS_USERNS_CONFIGURED, '');
@@ -326,8 +326,20 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
   }
 });
 
-test('Nixpacks image provides stable GUI, rootless Podman, and terminal development tools', () => {
-  const config = fs.readFileSync(path.join(__dirname, '..', 'nixpacks.toml'), 'utf8');
+test('CentOS image provides current GUI, rootless Podman, and terminal development tools', () => {
+  const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+  const dockerignore = fs.readFileSync(path.join(__dirname, '..', '.dockerignore'), 'utf8');
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'),
+  );
+  const gitWranglerInstaller = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'install-git-wrangler.sh'),
+    'utf8',
+  );
+  const nixpacksInstaller = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'install-nixpacks.sh'),
+    'utf8',
+  );
   const podmanInstaller = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'install-rootless-podman.sh'),
     'utf8',
@@ -340,88 +352,170 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
     path.join(__dirname, '..', 'config', 'containers', 'containers.conf'),
     'utf8',
   );
+  const podmanMounts = fs.readFileSync(
+    path.join(__dirname, '..', 'config', 'containers', 'mounts.conf'),
+    'utf8',
+  );
   const startupScript = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'start.sh'),
+    'utf8',
+  );
+  const podmanStorageInitializer = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'initialize-podman6-storage.sh'),
     'utf8',
   );
   const terminalBashRc = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'terminal.bashrc'),
     'utf8',
   );
-  const nixPackages = config.match(/nixPkgs = \[([\s\S]*?)\n\]/)?.[1];
-  const nixLibraries = config.match(/nixLibs = \[([\s\S]*?)\n\]/)?.[1];
-  const aptPackages = config.match(/aptPkgs = \[([\s\S]*?)\n\]/)?.[1];
+  const xdotoolInstaller = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'install-xdotool.sh'),
+    'utf8',
+  );
 
-  assert.ok(nixPackages);
-  assert.ok(nixLibraries);
-  assert.ok(aptPackages);
-  assert.match(
-    config,
-    /^FONTCONFIG_FILE = "\/root\/\.nix-profile\/etc\/fonts\/fonts\.conf"$/m,
-  );
-  assert.match(config, /^FONTCONFIG_PATH = "\/root\/\.nix-profile\/etc\/fonts"$/m);
-  assert.match(config, /^LIBGL_DRIVERS_PATH = "\/root\/\.nix-profile\/lib\/dri"$/m);
-  assert.match(
-    config,
-    /^XDG_DATA_DIRS = "\/root\/\.nix-profile\/share:\/usr\/local\/share:\/usr\/share"$/m,
-  );
-  assert.match(nixPackages, /^\s*"fontconfig\.out",$/m);
-  assert.match(nixPackages, /^\s*"mesa\.drivers",$/m);
-  assert.match(nixPackages, /^\s*"uv",$/m);
-  assert.doesNotMatch(nixPackages, /^\s*"nixpacks",$/m);
-  for (const library of [
-    'libxkbcommon',
-    'mesa.drivers',
-    'vulkan-loader',
-    'xorg.libX11',
-    'xorg.libXcursor',
-    'xorg.libXi',
-    'xorg.libXrandr',
-  ]) {
-    assert.match(nixLibraries, new RegExp(`^\\s*"${library.replace('.', '\\.')}"[,]$`, 'm'));
-  }
-  for (const rootlessPodmanPackage of [
+  assert.match(dockerfile, /^FROM quay\.io\/centos\/centos:stream10$/m);
+  assert.match(dockerfile, /^\s*&& dnf config-manager --set-enabled crb \\$/m);
+  for (const imagePackage of [
+    'cage',
+    'chromium',
     'fuse-overlayfs',
+    'mesa-dri-drivers',
+    'nodejs24',
+    'nodejs24-npm',
     'passt',
     'podman',
-    'uidmap',
+    'uv',
+    'xwayland-run',
   ]) {
     assert.match(
-      aptPackages,
-      new RegExp(`^\\s*"${rootlessPodmanPackage}",$`, 'm'),
+      dockerfile,
+      new RegExp(`^\\s+${imagePackage.replaceAll('-', '\\-')}\\s+\\\\$`, 'm'),
     );
   }
   assert.match(
-    config,
-    /^\s*"bash scripts\/install-rootless-podman\.sh",$/m,
+    dockerfile,
+    /ln --symbolic \/usr\/bin\/node-24 \/usr\/local\/bin\/node/,
   );
   assert.match(
-    config,
-    /^\s*"bash scripts\/install-nixpacks\.sh",$/m,
+    dockerfile,
+    /ln --symbolic \/usr\/bin\/npm-24 \/usr\/local\/bin\/npm/,
   );
+  assert.match(
+    dockerfile,
+    /'Compositor = cage' \/usr\/share\/wlheadless\/wlheadless\.conf/,
+  );
+  for (const imageCommand of [
+    'npm ci --omit=dev',
+    'bash scripts/install-git-wrangler.sh',
+    'bash scripts/install-nixpacks.sh',
+    'bash scripts/install-rootless-podman.sh',
+  ]) {
+    assert.match(dockerfile, new RegExp(imageCommand.replaceAll('/', '\\/')));
+  }
+  for (const [name, value] of [
+    ['FONTCONFIG_FILE', '/etc/fonts/fonts.conf'],
+    ['FONTCONFIG_PATH', '/etc/fonts'],
+    ['LIBGL_DRIVERS_PATH', '/usr/lib64/dri'],
+    ['XDG_DATA_DIRS', '/usr/local/share:/usr/share'],
+  ]) {
+    assert.match(dockerfile, new RegExp(`^ENV ${name}="${value}"$`, 'm'));
+  }
+  assert.doesNotMatch(dockerfile, /(?:apt-get|slirp4netns|\/nix\/|nix-env)/);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'nixpacks.toml')), false);
+  assert.match(dockerignore, /^\.env$/m);
+  assert.match(dockerignore, /^\.git$/m);
+  assert.match(dockerignore, /^node_modules$/m);
+
+  assert.equal(packageJson.engines.node, '24.x');
+  assert.equal(packageJson.dependencies['@openai/codex'], '0.146.0');
+  assert.equal(packageJson.dependencies['agent-browser'], '0.33.1');
+  assert.equal(packageJson.dependencies['opencode-ai'], '1.18.9');
+  assert.equal(packageJson.dependencies.pnpm, '11.18.0');
+
+  assert.match(gitWranglerInstaller, /^readonly GIT_WRANGLER_VERSION="0\.12\.0"$/m);
+  assert.match(gitWranglerInstaller, /sha256sum --check --strict/);
+  assert.match(nixpacksInstaller, /^readonly NIXPACKS_VERSION="1\.41\.0"$/m);
+  assert.match(nixpacksInstaller, /sha256sum --check --strict/);
+  assert.match(xdotoolInstaller, /^readonly XDOTOOL_VERSION="4\.20260303\.1"$/m);
+  assert.match(
+    xdotoolInstaller,
+    /^readonly XDOTOOL_SHA256="c1f971a384da588eb99ca0755fc4300316d49c1e612537e3f1de52215e104fa3"$/m,
+  );
+  assert.match(xdotoolInstaller, /sha256sum --check --strict/);
+
   assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subuid$/m);
   assert.match(podmanInstaller, /^\s*remove_subid_ranges \/etc\/subgid$/m);
   assert.match(podmanInstaller, /^\s*usermod --groups "" "\$TERMINAL_USER"$/m);
+  assert.match(podmanInstaller, /^\s*cp -- "\$filtered_file" "\$file"$/m);
   assert.doesNotMatch(podmanInstaller, /SUBID_(?:START|COUNT)/);
+  assert.match(podmanInstaller, /Podman 6 or newer is required/);
+  assert.match(podmanInstaller, /slirp4netns must not be installed; Podman 6 uses pasta\./);
+  assert.match(podmanInstaller, /\/usr\/libexec\/podman\/netavark/);
+  assert.match(podmanInstaller, /\/usr\/libexec\/podman\/aardvark-dns/);
+  assert.match(podmanInstaller, /podman --version/);
+  assert.doesNotMatch(podmanInstaller, /podman version --format/);
+  assert.match(
+    podmanInstaller,
+    /"\$APP_ROOT\/config\/containers\/mounts\.conf" \\\n\s+\/etc\/containers\/mounts\.conf/,
+  );
+
   assert.match(podmanStorage, /^ignore_chown_errors = "true"$/m);
+  assert.match(podmanMounts, /Intentionally empty/);
+  assert.doesNotMatch(podmanMounts, /\/usr\/share\/rhel\/secrets:\/run\/secrets/);
+  assert.match(podmanContainers, /^database_backend = "sqlite"$/m);
   assert.match(podmanContainers, /^\[network\]$/m);
+  assert.match(podmanContainers, /^default_rootless_network_cmd = "pasta"$/m);
+  assert.match(podmanContainers, /^network_backend = "netavark"$/m);
+  assert.match(podmanContainers, /^rootless_port_forwarder = "rootlessport"$/m);
+
+  assert.match(startupScript, /\{\{\.Host\.DatabaseBackend\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.NetworkBackend\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.RootlessNetworkCmd\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.RootlessPortForwarder\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.NetworkBackendInfo\.Path\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.NetworkBackendInfo\.DNS\.Path\}\}/);
+  assert.match(startupScript, /\{\{\.Host\.Pasta\.Executable\}\}/);
+  assert.match(startupScript, /readonly PODMAN_MOUNTS_CONF="\/etc\/containers\/mounts\.conf"/);
+  assert.match(startupScript, /podman --version 2>\/dev\/null/);
+  assert.doesNotMatch(startupScript, /podman version --format/);
+  assert.doesNotMatch(startupScript, /podman system migrate/);
   assert.match(
-    podmanContainers,
-    /^default_rootless_network_cmd = "pasta"$/m,
+    startupScript,
+    /bash "\$APP_ROOT\/scripts\/initialize-podman6-storage\.sh"/,
+  );
+  const podmanResetCall = startupScript.indexOf(
+    '\n  initialize_clean_podman6_storage\n',
+  );
+  assert.ok(podmanResetCall > startupScript.indexOf('podman --version'));
+  assert.ok(podmanResetCall < startupScript.indexOf("podman info \\\n"));
+  assert.match(
+    podmanStorageInitializer,
+    /readonly PODMAN_STORAGE_RESET_MARKER="\$WEB_TERMINAL_STATE_DIR\/podman6-storage-reset-v1"/,
+  );
+  assert.match(
+    podmanStorageInitializer,
+    /readonly PODMAN_STORAGE_ROOT="\$XDG_DATA_HOME_VALUE\/containers\/storage"/,
+  );
+  assert.match(podmanStorageInitializer, /require_descendant_path/);
+  assert.match(
+    podmanStorageInitializer,
+    /find "\$state_path" -xdev -depth -delete/,
+  );
+  assert.doesNotMatch(podmanStorageInitializer, /rm\s+(?:-[^\s]*r|--recursive)/);
+  assert.match(
+    startupScript,
+    /Rootless Podman must use the Netavark network backend/,
   );
   assert.match(
     startupScript,
-    /podman info --format '\{\{\.Host\.Pasta\.Executable\}\}'/,
+    /Rootless Podman must use pasta for rootless networking/,
   );
   assert.match(
     startupScript,
-    /Rootless Podman must configure pasta as its default network command\./,
+    /Rootless Podman must use rootlessport for bridge port forwarding/,
   );
   assert.match(startupScript, /\[\[ ! -c \/dev\/net\/tun \]\]/);
-  assert.match(
-    startupScript,
-    /unshare --mount --pid --fork/,
-  );
+  assert.match(startupScript, /unshare --mount --pid --fork/);
   assert.match(
     startupScript,
     /Nested proc mounts are blocked; add --security-opt systempaths=unconfined to Coolify Custom Docker Options\./,
@@ -449,6 +543,6 @@ test('Nixpacks image provides stable GUI, rootless Podman, and terminal developm
     /if is_container_environment; then\s+configure_rootless_podman_environment\s+validate_rootless_podman\s+fi/,
   );
   assert.doesNotMatch(terminalBashRc, /\/etc\/bash\.bashrc/);
+  assert.doesNotMatch(terminalBashRc, /\/etc\/bashrc/);
   assert.match(terminalBashRc, /^\s*source "\$HOME\/\.bashrc"$/m);
-  assert.doesNotMatch(config, /\/nix\/store\//);
 });
