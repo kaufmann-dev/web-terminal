@@ -400,9 +400,17 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     dockerfile,
     /ln --symbolic \/usr\/bin\/npm-24 \/usr\/local\/bin\/npm/,
   );
-  assert.match(
-    dockerfile,
-    /'Compositor = cage' \/usr\/share\/wlheadless\/wlheadless\.conf/,
+  assert.equal(
+    dockerfile.includes(
+      "'s/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/'",
+    ),
+    true,
+  );
+  assert.equal(
+    dockerfile.includes(
+      'config.defaults().get("compositor") != "cage"',
+    ),
+    true,
   );
   for (const imageCommand of [
     'npm ci --omit=dev',
