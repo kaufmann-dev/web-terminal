@@ -227,7 +227,10 @@ or control unrelated native Wayland windows.
   pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. Its compact line height keeps adjacent rows of block
   glyphs continuous. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
-  keyboard input.
+  wheel-to-key translation.
+- At widths of 720px or less, the terminal follows the browser's dynamic visible viewport so mobile
+  browser chrome does not cover its final rows. The collapsed-sidebar layout reserves a
+  horizontally scrollable touch strip for `Ctrl+C`, text paste, `Esc`, `Tab`, and arrow keys.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to
