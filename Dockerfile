@@ -86,6 +86,9 @@ RUN bash /tmp/install-xdotool.sh \
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
+    && node -e 'require("node-pty")' \
+    && ./node_modules/.bin/agent-browser --version \
+    && ./node_modules/.bin/opencode --version \
     && npm cache clean --force
 
 COPY . .

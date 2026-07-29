@@ -33,5 +33,10 @@
   "engines": {
     "node": "24.x"
   },
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "agent-browser@0.33.1": true,
+    "node-pty@1.1.0": true,
+    "opencode-ai@1.18.9": true
+  }
 }

@@ -414,11 +414,14 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   );
   for (const imageCommand of [
     'npm ci --omit=dev',
+    `node -e 'require("node-pty")'`,
+    './node_modules/.bin/agent-browser --version',
+    './node_modules/.bin/opencode --version',
     'bash scripts/install-git-wrangler.sh',
     'bash scripts/install-nixpacks.sh',
     'bash scripts/install-rootless-podman.sh',
   ]) {
-    assert.match(dockerfile, new RegExp(imageCommand.replaceAll('/', '\\/')));
+    assert.equal(dockerfile.includes(imageCommand), true);
   }
   for (const [name, value] of [
     ['FONTCONFIG_FILE', '/etc/fonts/fonts.conf'],
@@ -439,6 +442,11 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   assert.equal(packageJson.dependencies['agent-browser'], '0.33.1');
   assert.equal(packageJson.dependencies['opencode-ai'], '1.18.9');
   assert.equal(packageJson.dependencies.pnpm, '11.18.0');
+  assert.deepEqual(packageJson.allowScripts, {
+    [`agent-browser@${packageJson.dependencies['agent-browser']}`]: true,
+    [`node-pty@${packageJson.dependencies['node-pty']}`]: true,
+    [`opencode-ai@${packageJson.dependencies['opencode-ai']}`]: true,
+  });
 
   assert.match(gitWranglerInstaller, /^readonly GIT_WRANGLER_VERSION="0\.12\.0"$/m);
   assert.match(gitWranglerInstaller, /sha256sum --check --strict/);

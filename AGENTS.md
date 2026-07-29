@@ -15,6 +15,9 @@ npm ci
   installers or global npm installs. Exact dependency locks make an individual image reproducible;
   they are not promises to retain old releases. Advance them, their lockfile entries, and the
   documented versions when newer compatible stable releases are available.
+- Keep `allowScripts` limited to version-pinned approvals for `agent-browser`, `node-pty`, and
+  `opencode-ai`. Their installation scripts provide required native executables; update each
+  approval with its dependency version instead of allowing all dependency scripts.
 
 - The repository has no lint, type-check, or build script. After JavaScript changes, run the
   applicable syntax checks and targeted Node tests:
