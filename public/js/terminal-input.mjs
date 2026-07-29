@@ -56,9 +56,6 @@ export function encodeMobileTerminalKey(
   const { ctrl = false, alt = false } = modifiers;
   const mask = modifierMask(modifiers);
 
-  if (action === 'interrupt') {
-    return `${alt ? ESC : ''}\u0003`;
-  }
   if (action === 'escape') {
     return `${alt ? ESC : ''}${ESC}`;
   }

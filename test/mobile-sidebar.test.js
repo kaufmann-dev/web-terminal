@@ -82,7 +82,6 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     [
       'modifier-ctrl',
       'modifier-alt',
-      'interrupt',
       'paste',
       'escape',
       'tab',
@@ -149,7 +148,30 @@ test('mobile controls use xterm input modes and browser text paste', () => {
   assert.doesNotMatch(pasteHandler, /this\.terminal\.focus\(\)/);
   assert.match(
     terminalScript,
-    /toggleMobileModifier = \(modifier\) => \{[^}]*this\.terminal\.focus\(\);/s,
+    /toggleMobileModifier = \(modifier\) => \{/,
+  );
+  const modifierToggle = terminalScript.slice(
+    terminalScript.indexOf('toggleMobileModifier ='),
+    terminalScript.indexOf('clearMobileModifiers ='),
+  );
+  const modifierActivation = modifierToggle.slice(
+    modifierToggle.indexOf('this.terminal.focus()'),
+  );
+  const modifierDeactivation = modifierToggle.slice(
+    0,
+    modifierToggle.indexOf('this.terminal.focus()'),
+  );
+  assert.match(modifierActivation, /this\.mobileModifiers\[modifier\] = true/);
+  assert.doesNotMatch(modifierDeactivation, /this\.terminal\.focus\(\)/);
+  assert.match(modifierDeactivation, /this\.terminal\.blur\(\)/);
+
+  const inputHandler = terminalScript.slice(
+    terminalScript.indexOf('this.inputDisposable ='),
+    terminalScript.indexOf('this.binaryDisposable ='),
+  );
+  assert.match(
+    inputHandler,
+    /this\.send\([^;]+;\s*if \(transformedInput\.consumed\) \{[^}]*this\.clearMobileModifiers\(\);[^}]*this\.terminal\.blur\(\);/s,
   );
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
