@@ -15,6 +15,8 @@ readonly TERMINAL_GID="1000"
 readonly RUNTIME_UID="$([[ "$(id -u)" == "0" ]] && printf '%s' "$TERMINAL_UID" || id -u)"
 readonly XDG_RUNTIME_DIR_VALUE="/tmp/web-terminal-runtime-$RUNTIME_UID"
 readonly REGISTRY_AUTH_FILE_VALUE="$XDG_CONFIG_HOME_VALUE/containers/auth.json"
+readonly PODMAN_API_SOCKET="$XDG_RUNTIME_DIR_VALUE/podman/podman.sock"
+readonly DOCKER_HOST_VALUE="unix://$PODMAN_API_SOCKET"
 readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
 readonly WEB_TERMINAL_STATE_DIR="$TERMINAL_HOME_VALUE/.local/state/web-terminal"
 readonly OWNERSHIP_MIGRATION_MARKER="$WEB_TERMINAL_STATE_DIR/uid-1000-v1"
@@ -290,6 +292,68 @@ validate_rootless_podman() {
   fi
 }
 
+podman_api_is_ready() {
+  local response
+
+  response="$(
+    run_as_terminal \
+      curl \
+      --fail \
+      --max-time 1 \
+      --silent \
+      --unix-socket "$PODMAN_API_SOCKET" \
+      http://localhost/_ping \
+      2>/dev/null \
+      || true
+  )"
+  [[ "$response" == "OK" ]]
+}
+
+start_rootless_podman_api() {
+  local attempt service_pid
+
+  if ! is_container_environment; then
+    return
+  fi
+
+  run_as_terminal install -d -m 0700 -- "$(dirname -- "$PODMAN_API_SOCKET")"
+  if [[ -e "$PODMAN_API_SOCKET" && ! -S "$PODMAN_API_SOCKET" ]]; then
+    printf 'Podman API socket path exists but is not a socket: %s\n' \
+      "$PODMAN_API_SOCKET" >&2
+    exit 1
+  fi
+  if podman_api_is_ready; then
+    export DOCKER_HOST="$DOCKER_HOST_VALUE"
+    return
+  fi
+  if [[ -S "$PODMAN_API_SOCKET" ]]; then
+    run_as_terminal rm -- "$PODMAN_API_SOCKET"
+  fi
+
+  run_in_terminal_environment \
+    podman system service --time=0 "$DOCKER_HOST_VALUE" &
+  service_pid="$!"
+
+  for attempt in {1..50}; do
+    if podman_api_is_ready; then
+      export DOCKER_HOST="$DOCKER_HOST_VALUE"
+      return
+    fi
+    if ! kill -0 "$service_pid" 2>/dev/null; then
+      wait "$service_pid" || true
+      printf 'Rootless Podman API service exited before its socket became ready.\n' >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+
+  kill "$service_pid" 2>/dev/null || true
+  wait "$service_pid" || true
+  printf 'Rootless Podman API socket did not become ready: %s\n' \
+    "$PODMAN_API_SOCKET" >&2
+  exit 1
+}
+
 require_absolute_path TERMINAL_WORKDIR "$TERMINAL_WORKDIR_VALUE"
 require_absolute_path TERMINAL_HOME "$TERMINAL_HOME_VALUE"
 mkdir -p \
@@ -318,6 +382,7 @@ if is_container_environment; then
   validate_rootless_podman
 fi
 sync_dotfiles
+start_rootless_podman_api
 
 cd "$APP_ROOT"
 if is_container_environment && [[ "$(id -u)" == "0" ]]; then

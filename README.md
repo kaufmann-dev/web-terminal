@@ -161,8 +161,10 @@ image are stored as UID 1000 outside its user namespace. This avoids `SYS_ADMIN`
 mappings, but images that require distinct persisted owners may not work. Pasta creates the outer
 rootless network namespace; Netavark and Aardvark configure bridge networking, NAT, and DNS within
 it, while rootlessport publishes unprivileged host ports. Native default networking and
-Docker-compatible clients that explicitly request `bridge` use this stack. `slirp4netns` is not
-installed or required.
+Docker-compatible clients that explicitly request `bridge` use this stack. Startup exposes
+Podman's rootless Docker-compatible API at `$XDG_RUNTIME_DIR/podman/podman.sock` and sets
+`DOCKER_HOST` for every terminal session, so compatible clients discover it without systemd socket
+activation. `slirp4netns` is not installed or required.
 
 CentOS's automatic RHEL subscription bind mounts are disabled for nested containers. This terminal
 does not consume host subscription data, and those implicit `/run/secrets` mounts are incompatible
@@ -323,6 +325,10 @@ documented for Coolify.
 - **Podman warns that no subordinate UID or GID ranges are configured:** This deployment
   intentionally uses a single UID mapping so it can remain rootless without `SYS_ADMIN`. Different
   owners inside nested images are flattened to UID/GID 1000 in persistent Podman storage.
+- **A Docker-compatible client cannot connect to Podman:** Verify
+  `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` and
+  `curl --unix-socket "$XDG_RUNTIME_DIR/podman/podman.sock" http://localhost/_ping` returns `OK`.
+  Do not use `systemctl --user`; the application starts the API service without systemd.
 - **Startup rejects Podman, networking, or its database backend:** Redeploy the current Dockerfile
   image and run
   `podman info --format '{{.Host.DatabaseBackend}} {{.Host.NetworkBackend}} {{.Host.RootlessNetworkCmd}} {{.Host.RootlessPortForwarder}}'`.

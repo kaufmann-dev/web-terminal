@@ -275,6 +275,7 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     _CONTAINERS_USERNS_CONFIGURED: '',
     CONTAINERS_CONF: '/etc/containers/web-terminal-containers.conf',
     CONTAINERS_STORAGE_CONF: '/etc/containers/web-terminal-storage.conf',
+    DOCKER_HOST: 'unix:///tmp/web-terminal-runtime-1000/podman/podman.sock',
   };
   const originals = Object.fromEntries(
     Object.keys(overrides).map((name) => [name, process.env[name]]),
@@ -306,6 +307,10 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(
       environment.CONTAINERS_STORAGE_CONF,
       '/etc/containers/web-terminal-storage.conf',
+    );
+    assert.equal(
+      environment.DOCKER_HOST,
+      'unix:///tmp/web-terminal-runtime-1000/podman/podman.sock',
     );
     assert.equal(environment.LANG, 'C.UTF-8');
     assert.equal(environment.LC_CTYPE, 'C.UTF-8');
@@ -537,6 +542,26 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   assert.match(
     startupScript,
     /Nested proc mounts are blocked; add --security-opt systempaths=unconfined to Coolify Custom Docker Options\./,
+  );
+  assert.match(
+    startupScript,
+    /readonly PODMAN_API_SOCKET="\$XDG_RUNTIME_DIR_VALUE\/podman\/podman\.sock"/,
+  );
+  assert.match(
+    startupScript,
+    /readonly DOCKER_HOST_VALUE="unix:\/\/\$PODMAN_API_SOCKET"/,
+  );
+  assert.match(
+    startupScript,
+    /podman system service --time=0 "\$DOCKER_HOST_VALUE"/,
+  );
+  assert.match(
+    startupScript,
+    /^\s*export DOCKER_HOST="\$DOCKER_HOST_VALUE"$/m,
+  );
+  assert.match(
+    startupScript,
+    /sync_dotfiles\s+start_rootless_podman_api/,
   );
   assert.match(
     startupScript,
