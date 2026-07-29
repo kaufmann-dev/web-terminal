@@ -142,7 +142,7 @@ The terminal includes:
 - `xwfb-run` with Cage for isolated Xwayland displays, plus xdotool 4.20260303.1 for controlling
   X11 clients inside those displays
 - rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
-- Nixpacks 1.41.0 for plan/build-context inspection and uv for Python projects
+- Python 3 with PyYAML, plus Nixpacks 1.41.0 and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
