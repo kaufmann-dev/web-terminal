@@ -3,6 +3,11 @@
 - Fixed: 2026-07-28 12:22:00 CEST (+0200)
 - Pre-fix commit: `5b931290dd8f6df5451a39b10cf45f5545da3a31`
 
+> Final resolution: this record describes the former Podman 4.9 image. The CentOS Stream 10 image
+> now uses Podman 6 or newer, where Pasta supplies the outer rootless network and
+> Netavark/Aardvark handle both default and explicit bridge networking without `slirp4netns`. See
+> [Podman Bridge Network Helper Is Missing](podman-bridge-network-helper-missing.md).
+
 ## Symptom
 
 Rootless Podman could pull images, but an ordinary `podman run` using the default network failed
@@ -17,8 +22,10 @@ network command. Podman therefore used its 4.9 default, `slirp4netns`.
 
 Podman 4.9.3 supports selecting pasta with
 `[network] default_rootless_network_cmd = "pasta"`. The project already installs that backend, so
-adding slirp4netns would create an unnecessary second networking path. Pasta also requires
-`/dev/net/tun` in the application container so it can create the nested container's TAP device.
+adding slirp4netns was unnecessary for native commands using the default network. Pasta also
+requires `/dev/net/tun` in the application container so it can create the nested container's TAP
+device. A later investigation established that Podman 4.9's separate Docker-compatible bridge path
+still required `slirp4netns`; the subsequent Podman 6 migration removed that legacy restriction.
 
 ## Changes
 

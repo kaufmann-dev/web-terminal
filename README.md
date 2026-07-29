@@ -34,17 +34,27 @@ Authentication variables are required and documented under
 
 Connect this repository to a Coolify application with:
 
-- **Build Pack:** Nixpacks
+- **Build Pack:** Dockerfile
 - **Base Directory:** `/`
+- **Dockerfile Location:** `/Dockerfile`
 - **Replicas:** `1`
 - **Custom Docker Options:**
   `--device /dev/fuse --device /dev/net/tun --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined`
 
-The included Nixpacks configuration installs the development toolchain and the native build
-dependencies for `node-pty`, establishes the fixed non-root terminal identity, and configures nested
-rootless Podman in single-UID mode. The deployment needs no pre- or post-deployment command. The
-Coolify builder must use Nixpacks 1.41.0 or newer so the native `package.json` declaration resolves
-Node.js 24; do not set `NIXPACKS_NODE_VERSION`.
+For an existing deployment, changing the Build Pack from Nixpacks to Dockerfile and setting the
+Dockerfile location is a required one-time Coolify change. Remove any old
+`NIXPACKS_NODE_VERSION`, install, or build-command overrides; the deployment needs no pre- or
+post-deployment command.
+
+The image is built from the current CentOS Stream 10 base. Each rebuild applies the maintained DNF
+updates and installs Node.js 24 from the current LTS stream plus the native development toolchain,
+Chromium, and Podman 6 or newer. Node 24 is retained because it is the current LTS line, not as a
+permanent compatibility pin. Application dependencies remain exactly locked for reproducible
+images and are advanced when compatible stable releases are available. Nix is not installed.
+Nixpacks is included only as a terminal CLI for working on other projects.
+
+CentOS Stream 10's x86_64 image requires an x86-64-v3 CPU. Confirm that an x86_64 Coolify host
+meets that baseline before deploying; this restriction does not apply to an Arm64 deployment.
 
 Before deploying, prepare the Coolify host:
 
@@ -103,11 +113,18 @@ If you use different terminal paths, mount persistent storage over all of them a
 On the first deployment of this version, startup recursively changes the configured terminal paths
 to UID/GID 1000 and writes a migration marker. Later starts do not repeat that ownership walk.
 
+The first deployment of the Podman 6 image starts from a clean nested-container store. Before
+Podman inspects persistent state, startup removes all legacy Podman containers, images, volumes,
+runtime data, and custom networks, then writes
+`~/.local/state/web-terminal/podman6-storage-reset-v1`. Registry credentials and every non-Podman
+file under `/code` are preserved. An interrupted reset is retried on the next start; after the
+marker is written, later Podman 6 state survives redeploys normally.
+
 ### 4. Deploy
 
 Deploy, open the assigned domain, and follow the OIDC sign-in link. The image build installs all
-included programs again on every deployment; tool credentials and personal state remain on
-`/code`.
+included programs from current CentOS Stream 10 packages or the repository lockfiles on every
+deployment; tool credentials and personal state remain on `/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
 proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
@@ -118,27 +135,39 @@ user namespaces, or the rootless Podman configuration is unavailable.
 
 The terminal includes:
 
-- Node.js 24, npm, npx, and pnpm 11.17.0
+- Node.js 24 (the current LTS line), npm, npx, and pnpm 11.18.0
 - Vitest 4.1.10
-- `codex` 0.145.0 and `opencode` 1.18.3
-- `agent-browser` 0.32.1 with headless Chromium and its Nix Fontconfig environment
-- `xvfb-run` for virtual X displays and `xdotool` for X11 input/window automation, backed by the
-  matching Nix X11, Vulkan, and Mesa runtime needed by GUI programs built in the terminal
-- rootless Podman for image builds and ordinary container runs
+- `codex` 0.146.0 and `opencode` 1.18.9
+- `agent-browser` 0.33.1 with headless Chromium and native Fontconfig
+- `xwfb-run` with Cage for isolated Xwayland displays, plus xdotool 4.20260303.1 for controlling
+  X11 clients inside those displays
+- rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
 - Nixpacks 1.41.0 for plan/build-context inspection and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
 The browser terminal PATH starts with `/app/node_modules/.bin` and `~/.local/bin`, explicitly
-includes `/usr/local/bin` for Git Wrangler, and then preserves the Nixpacks image PATH. Pinned npm
-commands, user scripts stored on `/code`, Git Wrangler, and Nix packages are all callable.
+includes `/usr/local/bin` for Git Wrangler and the stable Node command links, and then preserves the
+native CentOS image PATH. Locked npm commands, user scripts stored on `/code`, Git Wrangler, and DNF
+packages are all callable.
 
-Nixpacks can validate a deployment plan and emit its OCI build context, and the bundled Podman can
-build and run that context directly. Podman uses `fuse-overlayfs`, persistent storage below
-`TERMINAL_HOME`, Buildah chroot isolation, and a single UID mapping. Files owned by different users
-inside a nested image are stored as UID 1000 outside its user namespace. This avoids `SYS_ADMIN`
-and subordinate-ID mappings, but images that require distinct persisted owners may not work.
+Nixpacks can inspect or emit build contexts for other projects, and the bundled Podman can build
+and run them directly. This application itself is built by its Dockerfile and has no Nix runtime.
+
+Nested Podman uses `fuse-overlayfs`, persistent storage below `TERMINAL_HOME`, Buildah chroot
+isolation, SQLite state, and a single UID mapping. Files owned by different users inside a nested
+image are stored as UID 1000 outside its user namespace. This avoids `SYS_ADMIN` and subordinate-ID
+mappings, but images that require distinct persisted owners may not work. Pasta creates the outer
+rootless network namespace; Netavark and Aardvark configure bridge networking, NAT, and DNS within
+it, while rootlessport publishes unprivileged host ports. Native default networking and
+Docker-compatible clients that explicitly request `bridge` use this stack. `slirp4netns` is not
+installed or required.
+
+CentOS's automatic RHEL subscription bind mounts are disabled for nested containers. This terminal
+does not consume host subscription data, and those implicit `/run/secrets` mounts are incompatible
+with single-UID storage. Podman's explicit `--secret` feature remains available.
+
 Inner cgroups are disabled because Coolify does not delegate a writable cgroup tree, so nested
 `--memory`, `--cpus`, cgroup-parent options, privileged containers, and host port mappings below
 1024 are unsupported.
@@ -162,12 +191,16 @@ git-wrangler init
 
 These logins persist below `/code` with the default volume. Git Wrangler Bash completion is
 available automatically. Agent-browser runs headlessly by default, and every managed terminal
-receives the Nix-provided Fontconfig configuration automatically, so ordinary unprefixed
+receives the native `/etc/fonts` Fontconfig configuration automatically, so ordinary unprefixed
 `agent-browser open`, `snapshot`, and `close` commands work. Use persistent profile or state
 options only when a task needs browser login state to survive.
 
 Do not reinstall Codex or OpenCode with a runtime installer. Their exact versions are already in
 the deployment image and available immediately as `codex` and `opencode`.
+
+For an X11-only GUI command, start it with `xwfb-run`; the wrapper creates a dedicated headless
+Cage/Xwayland session. xdotool can automate X11 clients launched in that session. It cannot inspect
+or control unrelated native Wayland windows.
 
 ## Everyday Use
 
@@ -239,7 +272,12 @@ bash scripts/start.sh
 ```
 
 Open `http://localhost:3000`. Use `NODE_ENV=development` when testing locally without HTTPS. The
-full bundled system toolset and Chromium are provided by the Nixpacks image, not by `npm ci`.
+full bundled system toolset, Chromium, and nested Podman stack are provided by the Dockerfile image,
+not by `npm ci`. Build the image on a normal rootful Podman host or a rootless host with subordinate
+UID/GID ranges. The deployed terminal's deliberately single-ID nested Podman can build ordinary
+compatible project images, but it cannot install this image's multi-owner RPM payloads. When
+running the completed image, use the same `/dev/fuse`, `/dev/net/tun`, and security options
+documented for Coolify.
 
 ## Troubleshooting
 
@@ -261,12 +299,14 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **`codex: command not found`:** Redeploy the latest image and run `command -v codex`. Do not use
   the standalone installer; the bundled command comes from `/app/node_modules/.bin`.
 - **Agent-browser reports a Fontconfig error or loses Chromium:** Redeploy the latest image and
-  verify `FONTCONFIG_FILE` and `FONTCONFIG_PATH` point below `/root/.nix-profile/etc/fonts`. Do not
-  run agent-browser's browser installer or prefix individual commands with store paths.
+  verify `FONTCONFIG_FILE=/etc/fonts/fonts.conf`, `FONTCONFIG_PATH=/etc/fonts`, and
+  `command -v chromium-browser`. Do not run agent-browser's browser installer.
 - **A locally built GUI cannot load X11 or Vulkan libraries:** Redeploy the latest image and verify
-  `LD_LIBRARY_PATH` contains Nix store library directories while `XDG_DATA_DIRS` and
-  `LIBGL_DRIVERS_PATH` point below `/root/.nix-profile`. Do not force an Ubuntu dynamic loader into
-  an executable produced by the Nix compiler.
+  `XDG_DATA_DIRS=/usr/local/share:/usr/share` and `LIBGL_DRIVERS_PATH=/usr/lib64/dri`. Build against
+  the native CentOS headers and libraries instead of introducing a foreign dynamic loader.
+- **An X11 GUI reports that no display is available:** Launch it through `xwfb-run`. CentOS Stream
+  10 uses the Cage/Xwayland wrapper instead of Xvfb. xdotool can see only X11 clients inside that
+  wrapper's display, not native Wayland clients elsewhere.
 - **Terminal starts in the wrong place:** Ensure `TERMINAL_WORKDIR` is an absolute path matching
   the persistent-volume destination.
 - **`cd ~` opens the wrong directory:** Check `TERMINAL_HOME`; it defaults to `TERMINAL_WORKDIR`.
@@ -283,13 +323,24 @@ full bundled system toolset and Chromium are provided by the Nixpacks image, not
 - **Podman warns that no subordinate UID or GID ranges are configured:** This deployment
   intentionally uses a single UID mapping so it can remain rootless without `SYS_ADMIN`. Different
   owners inside nested images are flattened to UID/GID 1000 in persistent Podman storage.
+- **Startup rejects Podman, networking, or its database backend:** Redeploy the current Dockerfile
+  image and run
+  `podman info --format '{{.Host.DatabaseBackend}} {{.Host.NetworkBackend}} {{.Host.RootlessNetworkCmd}} {{.Host.RootlessPortForwarder}}'`.
+  The values must be `sqlite netavark pasta rootlessport`, Podman must be version 6 or newer, and
+  `slirp4netns` must be absent.
+- **The one-time Podman 6 storage reset fails:** Inspect the startup error and correct ownership or
+  mount problems below `TERMINAL_HOME`; startup retries the incomplete reset on the next launch.
+  Legacy nested containers, images, volumes, and custom networks are intentionally not preserved.
 - **Podman rejects CPU, memory, or cgroup flags:** Nested cgroups are intentionally disabled.
   Run the container without those flags or use a separate container host when resource delegation
   is required.
 - **Podman storage consumes too much space:** Inspect it with `podman system df` and remove unused
   data with `podman system prune`; Podman storage persists below `TERMINAL_HOME`.
-- **Build logs select `nodejs_18`:** Update Coolify to a release that uses Nixpacks 1.41.0 or
-  newer. Nixpacks 1.40 does not recognize Node.js 24 and must not build this application.
+- **Build logs mention Nixpacks or `nodejs_18`:** Change the Coolify Build Pack to Dockerfile and
+  set the Dockerfile location to `/Dockerfile`. Remove stale Nixpacks version overrides, then
+  rebuild.
+- **The CentOS base exits with an x86-64-v3 error:** Move the deployment to an x86_64 host whose
+  CPU supports the x86-64-v3 baseline, or use a supported Arm64 host.
 - **Terminal stays on “Connecting” or repeatedly reconnects:** Confirm the reverse proxy preserves
   WebSocket upgrades and `PUBLIC_ORIGIN` exactly matches the browser-facing scheme, host, and
   non-default port. Do not include a path.
