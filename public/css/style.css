@@ -583,10 +583,6 @@ body.dark {
     box-shadow: 8px 8px 0 rgb(0 0 0 / 28%);
   }
 
-  .terminal-body {
-    height: var(--mobile-visual-viewport-height, 100dvh);
-  }
-
   .terminal-main {
     flex-direction: column;
   }
@@ -642,11 +638,11 @@ body.dark {
     align-items: center;
     gap: 6px;
     min-width: 0;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    padding: 6px 8px;
     overflow-x: auto;
     overflow-y: hidden;
     background: var(--panel-raised);
-    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;

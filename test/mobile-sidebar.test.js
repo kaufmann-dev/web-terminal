@@ -31,7 +31,7 @@ test('mobile sidebar has no shadow while closed or open', () => {
   );
 });
 
-test('collapsed-sidebar layout uses the visible viewport and reserves mobile controls', () => {
+test('mobile layout keeps the normal viewport and reserves controls below the header', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
@@ -42,28 +42,23 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
     /\.mobile-terminal-controls\s*\{\s*display:\s*none;\s*\}/s,
   );
   assert.doesNotMatch(desktopStyles, /\.mobile-terminal-controls\s*\{[^}]*display:\s*flex;/s);
-  assert.match(
-    mobileStyles,
-    /\.terminal-body\s*\{[^}]*height:\s*var\(--mobile-visual-viewport-height, 100dvh\);/s,
-  );
-  assert.match(terminalScript, /mobileVisualViewportHeight\(visualViewport, window\.innerHeight\)/);
-  assert.match(
+  assert.match(desktopStyles, /\.terminal-body\s*\{[^}]*height:\s*100vh;/s);
+  assert.doesNotMatch(mobileStyles, /\.terminal-body\s*\{/);
+  assert.doesNotMatch(stylesheet, /--mobile-visual-viewport-height/);
+  assert.doesNotMatch(
     terminalScript,
-    /document\.documentElement\.style\.setProperty\(mobileViewportHeightProperty, `\$\{height\}px`\)/,
-  );
-  assert.match(
-    terminalScript,
-    /visualViewport\.addEventListener\('resize', requestMobileViewportSync\);/,
-  );
-  assert.match(
-    terminalScript,
-    /visualViewport\.addEventListener\('scroll', requestMobileViewportSync\);/,
+    /\bvisualViewport\b|mobileVisualViewportHeight|requestMobileViewportSync/,
   );
   assert.match(mobileStyles, /\.terminal-main\s*\{[^}]*flex-direction:\s*column;/s);
   assert.match(
     mobileStyles,
     /\.mobile-terminal-controls\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/s,
   );
+  assert.match(
+    mobileStyles,
+    /\.mobile-terminal-controls\s*\{[^}]*padding:\s*6px 8px;[^}]*border-bottom:\s*1px solid var\(--border\);/s,
+  );
+  assert.doesNotMatch(mobileStyles, /safe-area-inset-bottom|border-top:/);
   assert.match(
     mobileStyles,
     /\.mobile-terminal-key\s*\{[^}]*min-width:\s*44px;[^}]*height:\s*44px;/s,
@@ -112,15 +107,16 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
 
 test('mobile control group exposes the terminal keys in priority order', () => {
   const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
-  const workspaceEnd = terminalView.indexOf(
-    '</section>',
-    terminalView.indexOf('class="terminal-workspace"'),
-  );
+  const mainStart = terminalView.indexOf('<main class="terminal-main">');
+  const sidebarStart = terminalView.indexOf('<aside id="session-sidebar"');
   const controlsMatch = terminalView.match(
     /<div id="mobile-terminal-controls"([^>]*)>([\s\S]*?)<\/div>/,
   );
   assert.ok(controlsMatch, 'expected the mobile terminal control group');
-  assert.ok(controlsMatch.index > workspaceEnd, 'controls must reserve space after the workspace');
+  assert.ok(
+    controlsMatch.index > mainStart && controlsMatch.index < sidebarStart,
+    'controls must be the first content below the header',
+  );
   assert.match(controlsMatch[1], /\brole="group"/);
   assert.match(controlsMatch[1], /\baria-label="Terminal controls"/);
   assert.match(controlsMatch[1], /\bhidden\b/);

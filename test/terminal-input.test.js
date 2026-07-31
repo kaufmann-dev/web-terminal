@@ -189,29 +189,6 @@ test('only arming Ctrl or Alt opens the mobile keyboard', async () => {
   assert.equal(mobileModifierOpensKeyboard('alt', true), false);
 });
 
-test('mobile layout follows the unzoomed visual viewport above the software keyboard', async () => {
-  const { mobileVisualViewportHeight } = await terminalInputModule;
-
-  assert.equal(
-    mobileVisualViewportHeight({ height: 844, offsetTop: 0, scale: 1 }, 844),
-    844,
-  );
-  assert.equal(
-    mobileVisualViewportHeight({ height: 475.25, offsetTop: 0, scale: 1 }, 844),
-    475.25,
-  );
-  assert.equal(
-    mobileVisualViewportHeight({ height: 430.25, offsetTop: 45, scale: 1 }, 844),
-    475.25,
-  );
-  assert.equal(
-    mobileVisualViewportHeight({ height: 422, offsetTop: 0, scale: 2 }, 844),
-    844,
-  );
-  assert.equal(mobileVisualViewportHeight(null, 700), 700);
-  assert.equal(mobileVisualViewportHeight({ height: 0, scale: 1 }, null), null);
-});
-
 test('mobile keyboard focus changes suppress only their synchronous xterm reports', async () => {
   const { MobileTerminalFocusManager } = await terminalInputModule;
   const textarea = {};
