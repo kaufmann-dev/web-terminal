@@ -5,6 +5,7 @@
     { Terminal },
     { FitAddon },
     {
+      TouchControlActivationGuard,
       TouchScrollGesture,
       encodeMobileTerminalKey,
       transformMobileTerminalInput,
@@ -41,6 +42,7 @@
   const mobileTerminalButtons = mobileTerminalControls.querySelectorAll(
     '[data-terminal-control]',
   );
+  const touchControlActivation = new TouchControlActivationGuard();
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -1159,12 +1161,60 @@
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
   logoutBtn.addEventListener('click', logout);
-  mobileTerminalControls.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-terminal-control]');
-    if (!button || button.disabled || !activeController) {
+  const mobileControlAction = (target) => {
+    if (!target || typeof target.closest !== 'function') {
+      return null;
+    }
+    const button = target.closest('[data-terminal-control]');
+    if (!button
+      || !mobileTerminalControls.contains(button)
+      || button.disabled
+      || !activeController) {
+      return null;
+    }
+    return button.dataset.terminalControl;
+  };
+  const activateMobileControl = (action) => {
+    if (action && activeController) {
+      activeController.handleMobileControl(action);
+    }
+  };
+  mobileTerminalControls.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' || !event.isPrimary) {
       return;
     }
-    activeController.handleMobileControl(button.dataset.terminalControl);
+    touchControlActivation.start(event.pointerId, mobileControlAction(event.target));
+  });
+  document.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch' || !event.isPrimary) {
+      return;
+    }
+    const action = touchControlActivation.end(
+      event.pointerId,
+      mobileControlAction(event.target),
+      event.timeStamp,
+    );
+    if (!action) {
+      return;
+    }
+    event.preventDefault();
+    activateMobileControl(action);
+  });
+  document.addEventListener('pointercancel', (event) => {
+    if (event.pointerType === 'touch') {
+      touchControlActivation.cancel(event.pointerId);
+    }
+  });
+  mobileTerminalControls.addEventListener('click', (event) => {
+    const action = mobileControlAction(event.target);
+    if (!action) {
+      return;
+    }
+    if (touchControlActivation.shouldSuppressClick(event.timeStamp, event.detail)) {
+      event.preventDefault();
+      return;
+    }
+    activateMobileControl(action);
   });
   mobileLayoutQuery.addEventListener('change', (event) => {
     if (activeController) {
