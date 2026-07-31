@@ -174,6 +174,7 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /new TouchControlActivationGuard\(\)/);
   assert.match(terminalScript, /import\('\/static\/js\/clipboard-reader\.mjs'\)/);
   assert.match(terminalScript, /encodeMobileTerminalKey\(/);
+  assert.match(terminalScript, /TerminalTextareaInputNormalizer/);
   assert.match(terminalScript, /transformMobileTerminalInput\(/);
   assert.match(terminalScript, /this\.terminal\.modes\.applicationCursorKeysMode/);
   assert.match(terminalScript, /inputTerminalProgrammatically = \(data\)/);
@@ -227,9 +228,15 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   );
   assert.ok(
     inputHandler.indexOf('this.mobileFocus.shouldSuppressInput(data)')
-      < inputHandler.indexOf('transformMobileTerminalInput'),
+      < inputHandler.indexOf('this.textareaInput.normalize(data)'),
     'internal focus reports must be dropped before modifier transformation and send',
   );
+  assert.ok(
+    inputHandler.indexOf('this.textareaInput.normalize(data)')
+      < inputHandler.indexOf('transformMobileTerminalInput'),
+    'textarea replacement snapshots must normalize before modifier transformation',
+  );
+  assert.match(inputHandler, /if \(!normalizedData\) \{\s*return;/s);
   assert.match(
     inputHandler,
     /this\.send\([^;]+;\s*if \(transformedInput\.consumed\) \{[^}]*this\.clearMobileModifiers\(\);[^}]*this\.closeMobileKeyboard\(\);/s,
@@ -238,6 +245,22 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /touchControlActivation\.invalidate\(\)/);
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
+  assert.match(
+    terminalScript,
+    /addEventListener\(\s*'beforeinput',\s*this\.handleTerminalBeforeInput,\s*true,/s,
+  );
+  assert.match(
+    terminalScript,
+    /addEventListener\('input', this\.handleTerminalInput, true\)/,
+  );
+  assert.match(
+    terminalScript,
+    /removeEventListener\(\s*'beforeinput',\s*this\.handleTerminalBeforeInput,\s*true,/s,
+  );
+  assert.match(
+    terminalScript,
+    /removeEventListener\('input', this\.handleTerminalInput, true\)/,
+  );
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
 });
 
