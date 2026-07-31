@@ -319,9 +319,18 @@
 
     handleTouchScrollPointerUp = (event) => {
       this.releaseTouchScrollPointer(event.pointerId);
-      if (this.touchScrollGesture.end(event.pointerId)) {
+      const outcome = this.touchScrollGesture.end(event.pointerId);
+      if (outcome === 'gesture') {
         event.preventDefault();
         this.armTouchScrollClickSuppression();
+        return;
+      }
+      if (outcome === 'tap' && this.ready) {
+        const textarea = this.terminal.textarea;
+        if (textarea && document.activeElement === textarea) {
+          this.terminal.blur();
+        }
+        this.terminal.focus();
       }
     };
 
@@ -688,7 +697,9 @@
             this.reconnectDelay = 250;
             updateMobileTerminalControls();
             setConnectionStatus('');
-            this.terminal.focus();
+            if (!mobileLayoutQuery.matches) {
+              this.terminal.focus();
+            }
           });
           return;
         }

@@ -177,8 +177,24 @@ test('touch scrolling activates after a predominantly vertical eight-pixel drag'
     gesture.move(3, 102, 118, 10),
     { lines: -1, recognized: true },
   );
-  assert.equal(gesture.end(3), true);
+  assert.equal(gesture.end(3), 'gesture');
   assert.equal(gesture.activePointerId, null);
+});
+
+test('touch release distinguishes a tap from a gesture or unrelated pointer', async () => {
+  const { TouchScrollGesture } = await terminalInputModule;
+  const gesture = new TouchScrollGesture();
+
+  gesture.start(5, 40, 60);
+  assert.deepEqual(
+    gesture.move(5, 44, 65, 10),
+    { lines: 0, recognized: false },
+  );
+  assert.equal(gesture.end(6), null);
+  assert.equal(gesture.activePointerId, 5);
+  assert.equal(gesture.end(5), 'tap');
+  assert.equal(gesture.activePointerId, null);
+  assert.equal(gesture.end(5), null);
 });
 
 test('touch scrolling uses natural direction and retains fractional row travel', async () => {
@@ -194,7 +210,7 @@ test('touch scrolling uses natural direction and retains fractional row travel',
     gesture.move(7, 0, 130, 10),
     { lines: -1, recognized: true },
   );
-  assert.equal(gesture.end(7), true);
+  assert.equal(gesture.end(7), 'gesture');
 
   gesture.start(8, 0, 100);
   assert.deepEqual(
@@ -216,7 +232,7 @@ test('touch scrolling locks horizontal gestures and ignores other pointers', asy
     gesture.move(12, 20, 50, 10),
     { lines: 0, recognized: false },
   );
-  assert.equal(gesture.end(12), false);
+  assert.equal(gesture.end(12), null);
   assert.deepEqual(
     gesture.move(11, 30, 22, 10),
     { lines: 0, recognized: true },

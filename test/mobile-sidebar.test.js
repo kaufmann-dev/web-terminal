@@ -265,6 +265,18 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
   assert.match(touchHandlers, /activeBuffer\.type === 'normal'/);
   assert.match(touchHandlers, /activeBuffer\.baseY > 0/);
   assert.match(touchHandlers, /this\.terminal\.scrollLines\(result\.lines\)/);
+  assert.match(
+    touchHandlers,
+    /const outcome = this\.touchScrollGesture\.end\(event\.pointerId\)/,
+  );
+  assert.match(
+    touchHandlers,
+    /if \(outcome === 'gesture'\)[\s\S]*event\.preventDefault\(\);[\s\S]*this\.armTouchScrollClickSuppression\(\);[\s\S]*return;/,
+  );
+  assert.match(
+    touchHandlers,
+    /if \(outcome === 'tap' && this\.ready\)[\s\S]*this\.terminal\.textarea[\s\S]*document\.activeElement === textarea[\s\S]*this\.terminal\.blur\(\);[\s\S]*this\.terminal\.focus\(\);/,
+  );
   assert.match(touchHandlers, /this\.armTouchScrollClickSuppression\(\)/);
   assert.doesNotMatch(touchHandlers, /this\.terminal\.input\(/);
   assert.doesNotMatch(touchHandlers, /this\.send\(/);
@@ -279,5 +291,14 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
   assert.match(
     terminalScript,
     /!event\.matches[\s\S]*activeController\.cancelTouchScroll\(\)/,
+  );
+
+  const readyHandler = terminalScript.slice(
+    terminalScript.indexOf("if (message.type === 'ready')"),
+    terminalScript.indexOf("if (message.type === 'exit')"),
+  );
+  assert.match(
+    readyHandler,
+    /if \(!mobileLayoutQuery\.matches\) \{\s*this\.terminal\.focus\(\);\s*\}/,
   );
 });
