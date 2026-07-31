@@ -189,6 +189,17 @@ test('only arming Ctrl or Alt opens the mobile keyboard', async () => {
   assert.equal(mobileModifierOpensKeyboard('alt', true), false);
 });
 
+test('mobile viewport offset follows only unzoomed visual viewport panning', async () => {
+  const { mobileVisualViewportOffsetTop } = await terminalInputModule;
+
+  assert.equal(mobileVisualViewportOffsetTop(), 0);
+  assert.equal(mobileVisualViewportOffsetTop({ offsetTop: 0, scale: 1 }), 0);
+  assert.equal(mobileVisualViewportOffsetTop({ offsetTop: 45.257, scale: 1 }), 45.26);
+  assert.equal(mobileVisualViewportOffsetTop({ offsetTop: -12, scale: 1 }), 0);
+  assert.equal(mobileVisualViewportOffsetTop({ offsetTop: 45, scale: 2 }), 0);
+  assert.equal(mobileVisualViewportOffsetTop({ offsetTop: Number.NaN, scale: 1 }), 0);
+});
+
 test('mobile keyboard focus changes suppress only their synchronous xterm reports', async () => {
   const { MobileTerminalFocusManager } = await terminalInputModule;
   const textarea = {};

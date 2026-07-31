@@ -583,6 +583,10 @@ body.dark {
     box-shadow: 8px 8px 0 rgb(0 0 0 / 28%);
   }
 
+  .terminal-body {
+    height: 100dvh;
+  }
+
   .terminal-main {
     flex-direction: column;
   }
@@ -594,6 +598,7 @@ body.dark {
 
   .terminal-header {
     padding-left: 8px;
+    transform: translateY(var(--mobile-visual-viewport-offset-top, 0));
   }
 
   .terminal-title {
@@ -633,6 +638,8 @@ body.dark {
   }
 
   .mobile-terminal-controls {
+    position: relative;
+    z-index: 10;
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -643,6 +650,7 @@ body.dark {
     overflow-y: hidden;
     background: var(--panel-raised);
     border-bottom: 1px solid var(--border);
+    transform: translateY(var(--mobile-visual-viewport-offset-top, 0));
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
