@@ -110,6 +110,12 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     assert.match(attributes, /\bdisabled\b/);
   }
 
+  const pasteButtons = buttons.filter((button) => (
+    button[1].includes('data-terminal-control="paste"')
+  ));
+  assert.equal(pasteButtons.length, 1);
+  assert.match(pasteButtons[0][1], /\baria-label="Paste clipboard text or image"/);
+
   for (const modifier of ['ctrl', 'shift', 'alt']) {
     const modifierButton = buttons.find((button) => (
       button[1].includes(`data-terminal-modifier="${modifier}"`)
@@ -136,10 +142,11 @@ test('mobile arrow controls use one consistent hardcoded SVG path', () => {
   }
 });
 
-test('mobile controls use xterm input modes and browser text paste', () => {
+test('mobile controls use xterm input modes and adaptive browser paste', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
 
   assert.match(terminalScript, /import\('\/static\/js\/terminal-input\.mjs'\)/);
+  assert.match(terminalScript, /import\('\/static\/js\/clipboard-reader\.mjs'\)/);
   assert.match(terminalScript, /encodeMobileTerminalKey\(/);
   assert.match(terminalScript, /transformMobileTerminalInput\(/);
   assert.match(terminalScript, /this\.terminal\.modes\.applicationCursorKeysMode/);
@@ -148,11 +155,15 @@ test('mobile controls use xterm input modes and browser text paste', () => {
     terminalScript,
     /this\.terminal\.input\(input\);\s*this\.terminal\.focus\(\)/,
   );
-  assert.match(terminalScript, /navigator\.clipboard\.readText\(\)/);
-  assert.match(terminalScript, /this\.terminal\.paste\(text\)/);
+  assert.match(terminalScript, /readClipboardContent\(navigator\.clipboard\)/);
+  assert.match(terminalScript, /this\.terminal\.paste\(clipboardContent\.text\)/);
+  assert.match(
+    terminalScript,
+    /this\.uploadClipboardImage\(\s*clipboardContent\.image,\s*clipboardContent\.contentType,/s,
+  );
   const pasteHandler = terminalScript.slice(
-    terminalScript.indexOf('pasteClipboardText = async'),
-    terminalScript.indexOf('copySelection =', terminalScript.indexOf('pasteClipboardText = async')),
+    terminalScript.indexOf('pasteClipboard = async'),
+    terminalScript.indexOf('copySelection =', terminalScript.indexOf('pasteClipboard = async')),
   );
   assert.doesNotMatch(pasteHandler, /this\.terminal\.focus\(\)/);
   assert.match(
