@@ -223,11 +223,15 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   );
   assert.match(
     modifierToggle,
-    /const updateModifier = \(\) => \{[\s\S]*this\.mobileModifiers\[modifier\] = !this\.mobileModifiers\[modifier\][\s\S]*updateMobileTerminalControls\(\)[\s\S]*return mobileModifiersNeedKeyboard\(this\.mobileModifiers\);/,
+    /const opensKeyboard = mobileModifierOpensKeyboard\(\s*modifier,\s*this\.mobileModifiers\[modifier\],\s*\);/,
   );
   assert.match(
     modifierToggle,
-    /if \(manageKeyboard\) \{\s*this\.mobileFocus\.transitionKeyboard\(updateModifier\);\s*return;/s,
+    /const updateModifier = \(\) => \{[\s\S]*this\.mobileModifiers\[modifier\] = !this\.mobileModifiers\[modifier\][\s\S]*updateMobileTerminalControls\(\);\s*\};/,
+  );
+  assert.match(
+    modifierToggle,
+    /if \(manageKeyboard && opensKeyboard\) \{\s*this\.mobileFocus\.transitionKeyboard\(\(\) => \{\s*updateModifier\(\);\s*return true;\s*\}\);\s*return;/s,
   );
   assert.match(modifierToggle, /updateModifier\(\);/);
   assert.match(

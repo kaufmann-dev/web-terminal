@@ -9,7 +9,7 @@
       TouchControlActivationGuard,
       TouchScrollGesture,
       encodeMobileTerminalKey,
-      mobileModifiersNeedKeyboard,
+      mobileModifierOpensKeyboard,
       mobileVisualViewportHeight,
       transformMobileTerminalInput,
     },
@@ -474,13 +474,19 @@
     };
 
     toggleMobileModifier = (modifier, { manageKeyboard = true } = {}) => {
+      const opensKeyboard = mobileModifierOpensKeyboard(
+        modifier,
+        this.mobileModifiers[modifier],
+      );
       const updateModifier = () => {
         this.mobileModifiers[modifier] = !this.mobileModifiers[modifier];
         updateMobileTerminalControls();
-        return mobileModifiersNeedKeyboard(this.mobileModifiers);
       };
-      if (manageKeyboard) {
-        this.mobileFocus.transitionKeyboard(updateModifier);
+      if (manageKeyboard && opensKeyboard) {
+        this.mobileFocus.transitionKeyboard(() => {
+          updateModifier();
+          return true;
+        });
         return;
       }
       updateModifier();
