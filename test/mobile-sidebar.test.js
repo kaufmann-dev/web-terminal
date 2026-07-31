@@ -49,7 +49,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles,
-    /\.terminal-header\s*\{[^}]*transform:\s*translateY\(var\(--mobile-visual-viewport-offset-top, 0\)\);/s,
+    /\.terminal-header\s*\{[^}]*display:\s*none;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
@@ -80,16 +80,20 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   assert.match(mobileStyles, /\.terminal-main\s*\{[^}]*flex-direction:\s*column;/s);
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-controls\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/s,
+    /\.mobile-terminal-controls\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\);[^}]*grid-template-rows:\s*repeat\(2, 44px\);/s,
   );
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-controls\s*\{[^}]*padding:\s*6px 8px;[^}]*border-bottom:\s*1px solid var\(--border\);/s,
+    /\.mobile-terminal-controls\s*\{[^}]*gap:\s*4px;[^}]*width:\s*100%;[^}]*padding:\s*6px;[^}]*overflow:\s*hidden;/s,
+  );
+  assert.doesNotMatch(
+    mobileStyles,
+    /\.mobile-terminal-controls\s*\{[^}]*(?:border|overflow-x|scrollbar-width):/s,
   );
   assert.doesNotMatch(mobileStyles, /safe-area-inset-bottom|border-top:/);
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-key\s*\{[^}]*min-width:\s*44px;[^}]*height:\s*44px;/s,
+    /\.mobile-terminal-key\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*height:\s*44px;/s,
   );
   assert.match(
     mobileStyles,
@@ -133,7 +137,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
 });
 
-test('mobile control group exposes the terminal keys in priority order', () => {
+test('mobile control group exposes a session toggle and fifteen terminal keys', () => {
   const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
   const mainStart = terminalView.indexOf('<main class="terminal-main">');
   const sidebarStart = terminalView.indexOf('<aside id="session-sidebar"');
@@ -146,12 +150,19 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     'controls must be the first content below the header',
   );
   assert.match(controlsMatch[1], /\brole="group"/);
-  assert.match(controlsMatch[1], /\baria-label="Terminal controls"/);
-  assert.match(controlsMatch[1], /\bhidden\b/);
+  assert.match(controlsMatch[1], /\baria-label="Terminal and session controls"/);
+  assert.doesNotMatch(controlsMatch[1], /\bhidden\b/);
 
   const buttons = [...controlsMatch[2].matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
+  assert.equal(buttons.length, 16);
+  assert.match(buttons[0][1], /\bid="sidebar-toggle"/);
+  assert.match(buttons[0][1], /\baria-controls="session-sidebar"/);
+  assert.match(buttons[0][1], /\baria-expanded="false"/);
+  assert.doesNotMatch(buttons[0][1], /\bdisabled\b/);
   assert.deepEqual(
-    buttons.map((button) => button[1].match(/data-terminal-control="([^"]+)"/)?.[1]),
+    buttons.slice(1).map((button) => (
+      button[1].match(/data-terminal-control="([^"]+)"/)?.[1]
+    )),
     [
       'modifier-ctrl',
       'modifier-shift',
@@ -170,7 +181,7 @@ test('mobile control group exposes the terminal keys in priority order', () => {
       'page-down',
     ],
   );
-  for (const [, attributes] of buttons) {
+  for (const [, attributes] of buttons.slice(1)) {
     assert.match(attributes, /\btype="button"/);
     assert.match(attributes, /\baria-label="[^"]+"/);
     assert.match(attributes, /\bdisabled\b/);
@@ -189,6 +200,38 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     assert.ok(modifierButton, `expected the ${modifier} modifier button`);
     assert.match(modifierButton[1], /\baria-pressed="false"/);
   }
+});
+
+test('mobile logout is available only inside the open session sidebar', () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
+  const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
+  const mobileStyles = getMobileStyles(stylesheet);
+  const header = terminalView.slice(
+    terminalView.indexOf('<header class="terminal-header">'),
+    terminalView.indexOf('<main class="terminal-main">'),
+  );
+  const sidebar = terminalView.slice(
+    terminalView.indexOf('<aside id="session-sidebar"'),
+    terminalView.indexOf('<button id="sidebar-backdrop"'),
+  );
+
+  assert.match(header, /id="logout-btn"[^>]*data-logout/);
+  assert.match(sidebar, /id="mobile-logout-btn"[^>]*data-logout/);
+  assert.match(stylesheet, /\.mobile-logout-btn\s*\{[^}]*display:\s*none;/s);
+  assert.match(
+    mobileStyles,
+    /\.sessions-open \.mobile-logout-btn\s*\{[^}]*display:\s*inline-flex;/s,
+  );
+  assert.match(terminalScript, /document\.querySelectorAll\('\[data-logout\]'\)/);
+  assert.match(
+    terminalScript,
+    /sidebarToggle\.setAttribute\('aria-label', toggleLabel\);/,
+  );
+  assert.match(
+    terminalScript,
+    /for \(const button of logoutButtons\) \{\s*button\.addEventListener\('click', logout\);/s,
+  );
 });
 
 test('mobile arrow controls use one consistent hardcoded SVG path', () => {
@@ -282,7 +325,7 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   );
   assert.match(terminalScript, /resetMobileInput\(\{ closeKeyboard: mobileLayoutQuery\.matches \}\)/);
   assert.match(terminalScript, /touchControlActivation\.invalidate\(\)/);
-  assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
+  assert.doesNotMatch(terminalScript, /mobileTerminalControls\.hidden/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
   assert.doesNotMatch(terminalScript, /TerminalTextareaInputNormalizer/);
   assert.doesNotMatch(terminalScript, /handleTerminalBeforeInput|handleTerminalInput/);

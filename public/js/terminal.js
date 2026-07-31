@@ -27,7 +27,7 @@
     document.fonts.load(`600 ${desktopTerminalFontSize}px "JetBrains Mono"`),
   ]);
 
-  const logoutBtn = document.getElementById('logout-btn');
+  const logoutButtons = document.querySelectorAll('[data-logout]');
   const sidebar = document.getElementById('session-sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const sidebarClose = document.getElementById('sidebar-close');
@@ -155,7 +155,6 @@
   function updateMobileTerminalControls() {
     const hasActiveTerminal = Boolean(activeController && !activeController.disposed);
     const controlsEnabled = hasActiveTerminal && activeController.ready;
-    mobileTerminalControls.hidden = !hasActiveTerminal;
     for (const button of mobileTerminalButtons) {
       button.disabled = !controlsEnabled;
       const modifier = button.dataset.terminalModifier;
@@ -170,8 +169,10 @@
 
   function setSidebarOpen(open) {
     document.body.classList.toggle('sessions-open', open);
+    const toggleLabel = open ? 'Hide terminal sessions' : 'Show terminal sessions';
     sidebarToggle.setAttribute('aria-expanded', String(open));
-    sidebarToggle.title = open ? 'Hide terminal sessions' : 'Show terminal sessions';
+    sidebarToggle.setAttribute('aria-label', toggleLabel);
+    sidebarToggle.title = toggleLabel;
   }
 
   function updateTerminalUrl(name) {
@@ -1233,7 +1234,9 @@
   }
 
   async function logout() {
-    logoutBtn.disabled = true;
+    for (const button of logoutButtons) {
+      button.disabled = true;
+    }
     try {
       const response = await fetch('/logout', {
         method: 'POST',
@@ -1251,7 +1254,9 @@
     } catch (err) {
       setStatus('Logout failed. Please try again.', true);
     }
-    logoutBtn.disabled = false;
+    for (const button of logoutButtons) {
+      button.disabled = false;
+    }
   }
 
   async function initialize() {
@@ -1278,7 +1283,9 @@
   sidebarClose.addEventListener('click', () => setSidebarOpen(false));
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
-  logoutBtn.addEventListener('click', logout);
+  for (const button of logoutButtons) {
+    button.addEventListener('click', logout);
+  }
   const mobileControlButton = (target) => {
     if (!target || typeof target.closest !== 'function') {
       return null;

@@ -15,17 +15,16 @@
 <body class="dark terminal-body">
   <header class="terminal-header">
     <div class="terminal-header-main">
-      <button id="sidebar-toggle" class="btn-icon sidebar-toggle" type="button" aria-controls="session-sidebar" aria-expanded="false" title="Show terminal sessions">
-        <span class="sidebar-toggle-icon" aria-hidden="true"></span>
-        <span class="sr-only">Show terminal sessions</span>
-      </button>
       <span class="terminal-title">terminal.kaufmann.dev</span>
       <span id="active-session-label" class="active-session-label"></span>
     </div>
-    <button id="logout-btn" class="btn-logout" title="Logout">Logout</button>
+    <button id="logout-btn" class="btn-logout" type="button" data-logout title="Logout">Logout</button>
   </header>
   <main class="terminal-main">
-    <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal controls" hidden>
+    <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal and session controls">
+      <button id="sidebar-toggle" class="mobile-terminal-key sidebar-toggle" type="button" aria-controls="session-sidebar" aria-expanded="false" aria-label="Show terminal sessions" title="Show terminal sessions">
+        <span class="sidebar-toggle-icon" aria-hidden="true"></span>
+      </button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="modifier-ctrl" data-terminal-modifier="ctrl" aria-label="Toggle Control modifier" aria-pressed="false" disabled>Ctrl</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="modifier-shift" data-terminal-modifier="shift" aria-label="Toggle Shift modifier" aria-pressed="false" disabled>Shift</button>
       <button class="mobile-terminal-key" type="button" data-terminal-control="modifier-alt" data-terminal-modifier="alt" aria-label="Toggle Alt modifier" aria-pressed="false" disabled>Alt</button>
@@ -62,10 +61,13 @@
     <aside id="session-sidebar" class="session-sidebar" aria-label="Terminal sessions">
       <div class="session-sidebar-header">
         <h1>Sessions</h1>
-        <button id="sidebar-close" class="btn-icon sidebar-close" type="button" title="Hide terminal sessions">
-          <span aria-hidden="true">×</span>
-          <span class="sr-only">Hide terminal sessions</span>
-        </button>
+        <div class="session-sidebar-actions">
+          <button id="mobile-logout-btn" class="btn-logout mobile-logout-btn" type="button" data-logout title="Logout">Logout</button>
+          <button id="sidebar-close" class="btn-icon sidebar-close" type="button" title="Hide terminal sessions">
+            <span aria-hidden="true">×</span>
+            <span class="sr-only">Hide terminal sessions</span>
+          </button>
+        </div>
       </div>
 
       <form id="session-form" class="session-form">

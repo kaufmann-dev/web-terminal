@@ -344,6 +344,16 @@ body.dark {
   padding: 0 4px;
 }
 
+.session-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-logout-btn {
+  display: none;
+}
+
 .session-sidebar h1 {
   margin: 0;
   color: var(--text);
@@ -597,11 +607,6 @@ body.dark {
   }
 
   .terminal-header {
-    padding-left: 8px;
-    transform: translateY(var(--mobile-visual-viewport-offset-top, 0));
-  }
-
-  .terminal-title {
     display: none;
   }
 
@@ -616,6 +621,10 @@ body.dark {
 
   .sessions-open .session-sidebar {
     transform: translateX(0);
+  }
+
+  .sessions-open .mobile-logout-btn {
+    display: inline-flex;
   }
 
   .sidebar-backdrop {
@@ -640,41 +649,35 @@ body.dark {
   .mobile-terminal-controls {
     position: relative;
     z-index: 10;
-    display: flex;
+    display: grid;
     flex: 0 0 auto;
-    align-items: center;
-    gap: 6px;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-rows: repeat(2, 44px);
+    gap: 4px;
+    width: 100%;
     min-width: 0;
-    padding: 6px 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
+    padding: 6px;
+    overflow: hidden;
     background: var(--panel-raised);
-    border-bottom: 1px solid var(--border);
     transform: translateY(var(--mobile-visual-viewport-offset-top, 0));
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .mobile-terminal-controls::-webkit-scrollbar {
-    display: none;
   }
 
   .mobile-terminal-key {
     display: inline-flex;
-    flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    min-width: 44px;
+    width: 100%;
+    min-width: 0;
     height: 44px;
-    padding: 0 10px;
+    padding: 0 2px;
     background: var(--panel);
     color: var(--text);
     border: 1px solid var(--border);
     cursor: pointer;
     font-family: "JetBrains Mono", monospace;
-    font-size: 12px;
+    font-size: clamp(9px, 2.6vw, 12px);
     font-weight: 600;
+    line-height: 1;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     user-select: none;
