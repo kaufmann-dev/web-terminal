@@ -33,6 +33,7 @@ test('mobile sidebar has no shadow while closed or open', () => {
 
 test('collapsed-sidebar layout uses the visible viewport and reserves mobile controls', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
   const mobileStyles = getMobileStyles(stylesheet);
 
@@ -41,7 +42,23 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
     /\.mobile-terminal-controls\s*\{\s*display:\s*none;\s*\}/s,
   );
   assert.doesNotMatch(desktopStyles, /\.mobile-terminal-controls\s*\{[^}]*display:\s*flex;/s);
-  assert.match(mobileStyles, /\.terminal-body\s*\{[^}]*height:\s*100dvh;/s);
+  assert.match(
+    mobileStyles,
+    /\.terminal-body\s*\{[^}]*height:\s*var\(--mobile-visual-viewport-height, 100dvh\);/s,
+  );
+  assert.match(terminalScript, /mobileVisualViewportHeight\(visualViewport, window\.innerHeight\)/);
+  assert.match(
+    terminalScript,
+    /document\.documentElement\.style\.setProperty\(mobileViewportHeightProperty, `\$\{height\}px`\)/,
+  );
+  assert.match(
+    terminalScript,
+    /visualViewport\.addEventListener\('resize', requestMobileViewportSync\);/,
+  );
+  assert.match(
+    terminalScript,
+    /visualViewport\.addEventListener\('scroll', requestMobileViewportSync\);/,
+  );
   assert.match(mobileStyles, /\.terminal-main\s*\{[^}]*flex-direction:\s*column;/s);
   assert.match(
     mobileStyles,
@@ -175,7 +192,6 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /new TouchControlActivationGuard\(\)/);
   assert.match(terminalScript, /import\('\/static\/js\/clipboard-reader\.mjs'\)/);
   assert.match(terminalScript, /encodeMobileTerminalKey\(/);
-  assert.match(terminalScript, /TerminalTextareaInputNormalizer/);
   assert.match(terminalScript, /transformMobileTerminalInput\(/);
   assert.match(terminalScript, /this\.terminal\.modes\.applicationCursorKeysMode/);
   assert.match(terminalScript, /inputTerminalProgrammatically = \(data\)/);
@@ -229,15 +245,9 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   );
   assert.ok(
     inputHandler.indexOf('this.mobileFocus.shouldSuppressInput(data)')
-      < inputHandler.indexOf('this.textareaInput.normalize(data)'),
+      < inputHandler.indexOf('transformMobileTerminalInput'),
     'internal focus reports must be dropped before modifier transformation and send',
   );
-  assert.ok(
-    inputHandler.indexOf('this.textareaInput.normalize(data)')
-      < inputHandler.indexOf('transformMobileTerminalInput'),
-    'textarea replacement snapshots must normalize before modifier transformation',
-  );
-  assert.match(inputHandler, /if \(!normalizedData\) \{\s*return;/s);
   assert.match(
     inputHandler,
     /this\.send\([^;]+;\s*if \(transformedInput\.consumed\) \{[^}]*this\.clearMobileModifiers\(\);[^}]*this\.closeMobileKeyboard\(\);/s,
@@ -246,22 +256,8 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /touchControlActivation\.invalidate\(\)/);
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
-  assert.match(
-    terminalScript,
-    /addEventListener\(\s*'beforeinput',\s*this\.handleTerminalBeforeInput,\s*true,/s,
-  );
-  assert.match(
-    terminalScript,
-    /addEventListener\('input', this\.handleTerminalInput, true\)/,
-  );
-  assert.match(
-    terminalScript,
-    /removeEventListener\(\s*'beforeinput',\s*this\.handleTerminalBeforeInput,\s*true,/s,
-  );
-  assert.match(
-    terminalScript,
-    /removeEventListener\('input', this\.handleTerminalInput, true\)/,
-  );
+  assert.doesNotMatch(terminalScript, /TerminalTextareaInputNormalizer/);
+  assert.doesNotMatch(terminalScript, /handleTerminalBeforeInput|handleTerminalInput/);
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
 });
 

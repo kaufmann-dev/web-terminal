@@ -584,7 +584,7 @@ body.dark {
   }
 
   .terminal-body {
-    height: 100dvh;
+    height: var(--mobile-visual-viewport-height, 100dvh);
   }
 
   .terminal-main {

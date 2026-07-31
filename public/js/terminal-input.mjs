@@ -1,6 +1,4 @@
 const ESC = '\u001b';
-const DEL = '\u007f';
-
 const arrowCodes = Object.freeze({
   'arrow-down': 'B',
   'arrow-left': 'D',
@@ -311,84 +309,25 @@ export function mobileModifiersNeedKeyboard({ ctrl = false, alt = false } = {}) 
   return ctrl || alt;
 }
 
-function terminalEditForTextareaChange(previousValue, currentValue) {
-  const previous = Array.from(previousValue);
-  const current = Array.from(currentValue);
-  let commonPrefixLength = 0;
-  while (
-    commonPrefixLength < previous.length
-    && commonPrefixLength < current.length
-    && previous[commonPrefixLength] === current[commonPrefixLength]
-  ) {
-    commonPrefixLength += 1;
+export function mobileVisualViewportHeight(visualViewport, layoutViewportHeight) {
+  const fallbackHeight = Number.isFinite(layoutViewportHeight)
+    && layoutViewportHeight > 0
+    ? layoutViewportHeight
+    : null;
+  if (!visualViewport) {
+    return fallbackHeight;
   }
 
-  return `${DEL.repeat(previous.length - commonPrefixLength)}${current
-    .slice(commonPrefixLength)
-    .join('')}`;
-}
-
-export class TerminalTextareaInputNormalizer {
-  constructor(textarea, scheduleMicrotask = (callback) => queueMicrotask(callback)) {
-    this.textarea = textarea;
-    this.scheduleMicrotask = scheduleMicrotask;
-    this.previousValue = textarea?.value ?? '';
-    this.beforeInputValue = null;
-    this.pendingInput = null;
+  const { height, offsetTop = 0, scale = 1 } = visualViewport;
+  if (!Number.isFinite(height)
+    || height <= 0
+    || !Number.isFinite(scale)
+    || Math.abs(scale - 1) > 0.01) {
+    return fallbackHeight;
   }
 
-  recordBeforeInput(event) {
-    if (event.target === this.textarea) {
-      const beforeInputValue = { value: this.textarea.value };
-      this.beforeInputValue = beforeInputValue;
-      this.scheduleMicrotask(() => {
-        if (this.beforeInputValue === beforeInputValue) {
-          this.beforeInputValue = null;
-        }
-      });
-    }
-  }
-
-  recordInput(event) {
-    if (event.target !== this.textarea) {
-      return;
-    }
-
-    const previousValue = this.beforeInputValue?.value ?? this.previousValue;
-    const currentValue = this.textarea.value;
-    this.beforeInputValue = null;
-    this.previousValue = currentValue;
-    this.pendingInput = null;
-    if (event.inputType !== 'insertText' || typeof event.data !== 'string' || !event.data) {
-      return;
-    }
-
-    const pendingInput = {
-      source: event.data,
-      normalized: terminalEditForTextareaChange(previousValue, currentValue),
-    };
-    this.pendingInput = pendingInput;
-    this.scheduleMicrotask(() => {
-      if (this.pendingInput === pendingInput) {
-        this.pendingInput = null;
-      }
-    });
-  }
-
-  normalize(data) {
-    if (!this.pendingInput || data !== this.pendingInput.source) {
-      return data;
-    }
-    const normalized = this.pendingInput.normalized;
-    this.pendingInput = null;
-    return normalized;
-  }
-
-  reset() {
-    this.previousValue = this.textarea?.value ?? '';
-    this.beforeInputValue = null;
-    this.pendingInput = null;
-  }
+  const viewportTop = Number.isFinite(offsetTop) ? Math.max(0, offsetTop) : 0;
+  return Math.round((height + viewportTop) * 100) / 100;
 }
 
 export class MobileTerminalFocusManager {

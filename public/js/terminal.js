@@ -6,11 +6,11 @@
     { FitAddon },
     {
       MobileTerminalFocusManager,
-      TerminalTextareaInputNormalizer,
       TouchControlActivationGuard,
       TouchScrollGesture,
       encodeMobileTerminalKey,
       mobileModifiersNeedKeyboard,
+      mobileVisualViewportHeight,
       transformMobileTerminalInput,
     },
     { readClipboardContent },
@@ -47,6 +47,8 @@
   );
   const touchControlActivation = new TouchControlActivationGuard();
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
+  const visualViewport = window.visualViewport;
+  const mobileViewportHeightProperty = '--mobile-visual-viewport-height';
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
@@ -58,6 +60,36 @@
   let activeController = null;
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
+  let mobileViewportFrame = null;
+
+  function applyMobileViewportHeight() {
+    mobileViewportFrame = null;
+    if (!mobileLayoutQuery.matches) {
+      document.documentElement.style.removeProperty(mobileViewportHeightProperty);
+      return;
+    }
+
+    const height = mobileVisualViewportHeight(visualViewport, window.innerHeight);
+    if (height === null) {
+      document.documentElement.style.removeProperty(mobileViewportHeightProperty);
+      return;
+    }
+    document.documentElement.style.setProperty(mobileViewportHeightProperty, `${height}px`);
+  }
+
+  function requestMobileViewportSync() {
+    if (mobileViewportFrame !== null) {
+      return;
+    }
+    mobileViewportFrame = window.requestAnimationFrame(applyMobileViewportHeight);
+  }
+
+  applyMobileViewportHeight();
+  window.addEventListener('resize', requestMobileViewportSync);
+  if (visualViewport) {
+    visualViewport.addEventListener('resize', requestMobileViewportSync);
+    visualViewport.addEventListener('scroll', requestMobileViewportSync);
+  }
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -191,21 +223,14 @@
         this.terminal,
         () => document.activeElement,
       );
-      this.textareaInput = new TerminalTextareaInputNormalizer(this.terminal.textarea);
 
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.mobileFocus.shouldSuppressInput(data)) {
           return;
         }
-        const normalizedData = this.programmaticInputDepth > 0
-          ? data
-          : this.textareaInput.normalize(data);
-        if (!normalizedData) {
-          return;
-        }
         if (this.ready) {
           const transformedInput = transformMobileTerminalInput(
-            normalizedData,
+            data,
             this.programmaticInputDepth > 0 ? {} : this.mobileModifiers,
           );
           this.send({ type: 'input', data: transformedInput.data });
@@ -227,13 +252,6 @@
       });
       this.resizeObserver.observe(terminalHost);
       terminalHost.addEventListener('click', this.focusTerminal);
-      this.terminalElement.addEventListener(
-        'beforeinput',
-        this.handleTerminalBeforeInput,
-        true,
-      );
-      this.terminalElement.addEventListener('input', this.handleTerminalInput, true);
-      this.terminal.textarea.addEventListener('blur', this.handleTerminalTextareaBlur);
       this.terminalElement.addEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.addEventListener('paste', this.handlePaste, true);
       this.terminalElement.addEventListener(
@@ -263,18 +281,6 @@
       if (this.ready) {
         this.terminal.focus();
       }
-    };
-
-    handleTerminalBeforeInput = (event) => {
-      this.textareaInput.recordBeforeInput(event);
-    };
-
-    handleTerminalInput = (event) => {
-      this.textareaInput.recordInput(event);
-    };
-
-    handleTerminalTextareaBlur = () => {
-      this.textareaInput.reset();
     };
 
     openMobileKeyboard = () => {
@@ -973,13 +979,6 @@
       window.clearTimeout(this.resizeTimer);
       this.resizeObserver.disconnect();
       terminalHost.removeEventListener('click', this.focusTerminal);
-      this.terminalElement.removeEventListener(
-        'beforeinput',
-        this.handleTerminalBeforeInput,
-        true,
-      );
-      this.terminalElement.removeEventListener('input', this.handleTerminalInput, true);
-      this.terminal.textarea.removeEventListener('blur', this.handleTerminalTextareaBlur);
       this.terminalElement.removeEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.removeEventListener('paste', this.handlePaste, true);
       this.terminalElement.removeEventListener(
@@ -1416,6 +1415,7 @@
   mobileTerminalControls.addEventListener('animationcancel', clearMobileControlFeedback);
   mobileLayoutQuery.addEventListener('change', (event) => {
     touchControlActivation.invalidate();
+    requestMobileViewportSync();
     if (activeController) {
       activeController.updateTerminalFontSize(event.matches);
       if (!event.matches) {
@@ -1434,12 +1434,16 @@
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
     touchControlActivation.invalidate();
+    if (!document.hidden) {
+      requestMobileViewportSync();
+    }
     if (activeController) {
       activeController.setPageHidden(document.hidden);
     }
   });
 
   window.addEventListener('focus', () => {
+    requestMobileViewportSync();
     if (!mutationInProgress) {
       refreshSessions().catch((err) => setStatus(err.message, true));
     }

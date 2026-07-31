@@ -228,9 +228,10 @@ or control unrelated native Wayland windows.
 - xterm.js handles wheel scrolling directly. Its compact line height keeps adjacent rows of block
   glyphs continuous. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
   wheel-to-key translation.
-- At widths of 720px or less, the terminal follows the browser's dynamic visible viewport and uses
-  12px text so mobile browser chrome does not cover its final rows and more terminal cells remain
-  visible. The collapsed-sidebar layout reserves a horizontally scrollable touch strip for one-shot
+- At widths of 720px or less, the terminal tracks the browser's visual viewport and uses 12px text
+  so mobile browser chrome or the software keyboard does not cover its final rows. The control strip
+  consistently remains directly above an open keyboard and returns to the bottom when it closes.
+  The collapsed-sidebar layout reserves that horizontally scrollable strip for one-shot
   `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, `Enter`, consistent SVG
   arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. An armed Ctrl or Alt keeps the software keyboard open,
   including when combined with Shift; Shift alone keeps it closed for combinations such as
@@ -253,9 +254,7 @@ or control unrelated native Wayland windows.
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
-  locale so international characters such as `ß` work for typed and pasted input. On iOS,
-  successive voice-dictation snapshots are translated into terminal edits so only the current
-  transcript is entered.
+  locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab
   without stopping the PTY.
 - Deleting a terminal session is destructive: it sends SIGHUP to every process in the PTY's Linux
