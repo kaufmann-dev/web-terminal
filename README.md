@@ -232,22 +232,24 @@ or control unrelated native Wayland windows.
   12px text so mobile browser chrome does not cover its final rows and more terminal cells remain
   visible. The collapsed-sidebar layout reserves a horizontally scrollable touch strip for one-shot
   `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, consistent SVG arrow
-  keys, `Home`, `End`, `PgUp`, and `PgDn`. Activating Ctrl or Alt opens the software keyboard;
-  activating Shift keeps it closed for combinations such as Shift+Tab. Consuming a modifier closes
-  the keyboard, and tapping the active modifier again deactivates it without reopening the keyboard.
-  Every physical touch activates its control exactly once, while intentional repeated taps remain
-  repeatable. The other controls can be tapped repeatedly without summoning the keyboard. A
-  stationary tap on a ready terminal opens or reopens the software keyboard on the first tap. A
-  one-finger vertical drag scrolls xterm's retained normal-screen history directly, without
-  momentum or sending mouse or key input to alternate-screen programs; pinch-to-zoom remains
-  available.
+  keys, `Home`, `End`, `PgUp`, and `PgDn`. An armed Ctrl or Alt keeps the software keyboard open,
+  including when combined with Shift; Shift alone keeps it closed for combinations such as
+  Shift+Tab. Tapping an armed modifier toggles it off, and consuming a modifier clears all armed
+  modifiers and closes the keyboard. Every physical touch activates its control exactly once,
+  while intentional repeated taps remain repeatable. The other controls leave terminal focus
+  unchanged and never summon the keyboard. Toolbar-managed keyboard transitions do not send focus
+  reports to terminal applications. A stationary tap on a ready terminal opens or reopens the
+  software keyboard on the first tap. A one-finger vertical drag scrolls xterm's retained
+  normal-screen history directly, without momentum or sending mouse or key input to
+  alternate-screen programs; pinch-to-zoom remains available.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to
   `$TERMINAL_HOME/.cache/web-terminal/clipboard-images` and inserts its absolute path into the
   terminal; images older than 24 hours are pruned at startup and on later image uploads. Because
-  `Ctrl+V` is reserved for browser paste, it is not sent to the terminal as the `^V` control
-  character.
+  physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
+  as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
+  `^V`.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
   locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab
