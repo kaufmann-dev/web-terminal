@@ -463,6 +463,9 @@ export function encodeMobileTerminalKey(
   if (action === 'tab') {
     return shift ? `${ESC}[Z` : '\t';
   }
+  if (action === 'enter') {
+    return `${alt ? ESC : ''}\r`;
+  }
 
   const arrowCode = arrowCodes[action];
   if (arrowCode) {
