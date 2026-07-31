@@ -53,6 +53,10 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
   );
   assert.match(
     mobileStyles,
+    /\.mobile-terminal-key\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent;/s,
+  );
+  assert.match(
+    mobileStyles,
     /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
   );
   assert.match(
