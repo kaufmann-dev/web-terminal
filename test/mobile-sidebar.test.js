@@ -146,6 +146,7 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
 
   assert.match(terminalScript, /import\('\/static\/js\/terminal-input\.mjs'\)/);
+  assert.match(terminalScript, /new TouchControlActivationGuard\(\)/);
   assert.match(terminalScript, /import\('\/static\/js\/clipboard-reader\.mjs'\)/);
   assert.match(terminalScript, /encodeMobileTerminalKey\(/);
   assert.match(terminalScript, /transformMobileTerminalInput\(/);
@@ -208,6 +209,33 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
+});
+
+test('mobile controls activate once per touch while retaining click fallback', () => {
+  const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
+  const controlHandlers = terminalScript.slice(
+    terminalScript.indexOf("mobileTerminalControls.addEventListener('pointerdown'"),
+    terminalScript.indexOf("mobileLayoutQuery.addEventListener('change'"),
+  );
+
+  assert.match(controlHandlers, /mobileTerminalControls\.addEventListener\('pointerdown'/);
+  assert.match(controlHandlers, /document\.addEventListener\('pointerup'/);
+  assert.match(controlHandlers, /document\.addEventListener\('pointercancel'/);
+  assert.match(controlHandlers, /mobileTerminalControls\.addEventListener\('click'/);
+  assert.match(
+    controlHandlers,
+    /touchControlActivation\.start\(event\.pointerId, mobileControlAction\(event\.target\)\)/,
+  );
+  assert.match(
+    controlHandlers,
+    /touchControlActivation\.end\([\s\S]*event\.pointerId,[\s\S]*mobileControlAction\(event\.target\),[\s\S]*event\.timeStamp/,
+  );
+  assert.match(controlHandlers, /touchControlActivation\.cancel\(event\.pointerId\)/);
+  assert.match(
+    controlHandlers,
+    /touchControlActivation\.shouldSuppressClick\(event\.timeStamp, event\.detail\)/,
+  );
+  assert.match(controlHandlers, /event\.preventDefault\(\);[\s\S]*activateMobileControl\(action\)/);
 });
 
 test('terminal uses compact mobile text and refits across the breakpoint', () => {

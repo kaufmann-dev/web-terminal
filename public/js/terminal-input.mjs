@@ -96,6 +96,62 @@ export class TouchScrollGesture {
   }
 }
 
+export class TouchControlActivationGuard {
+  constructor(compatibilityClickWindowMs = 1000) {
+    this.compatibilityClickWindowMs = compatibilityClickWindowMs;
+    this.lastTouchActivationAt = null;
+    this.resetPointer();
+  }
+
+  start(pointerId, action) {
+    if (this.pointerId !== null || !action) {
+      return false;
+    }
+
+    this.pointerId = pointerId;
+    this.action = action;
+    return true;
+  }
+
+  end(pointerId, action, timestamp) {
+    if (this.pointerId === null || pointerId !== this.pointerId) {
+      return null;
+    }
+
+    const activeAction = this.action;
+    this.resetPointer();
+    if (!action || action !== activeAction) {
+      return null;
+    }
+
+    this.lastTouchActivationAt = timestamp;
+    return activeAction;
+  }
+
+  cancel(pointerId = this.pointerId) {
+    if (this.pointerId === null || pointerId !== this.pointerId) {
+      return false;
+    }
+
+    this.resetPointer();
+    return true;
+  }
+
+  shouldSuppressClick(timestamp, detail) {
+    if (detail === 0 || this.lastTouchActivationAt === null) {
+      return false;
+    }
+
+    const elapsed = timestamp - this.lastTouchActivationAt;
+    return elapsed >= 0 && elapsed <= this.compatibilityClickWindowMs;
+  }
+
+  resetPointer() {
+    this.pointerId = null;
+    this.action = null;
+  }
+}
+
 function modifierMask({ ctrl = false, alt = false, shift = false } = {}) {
   return (shift ? 1 : 0) | (alt ? 2 : 0) | (ctrl ? 4 : 0);
 }

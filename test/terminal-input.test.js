@@ -246,3 +246,46 @@ test('touch scrolling locks horizontal gestures and ignores other pointers', asy
   assert.equal(gesture.activePointerId, null);
   assert.equal(gesture.cancel(), false);
 });
+
+test('touch control activation suppresses every compatibility click from one tap', async () => {
+  const { TouchControlActivationGuard } = await terminalInputModule;
+  const activation = new TouchControlActivationGuard();
+
+  assert.equal(activation.start(21, 'modifier-shift'), true);
+  assert.equal(
+    activation.end(21, 'modifier-shift', 100),
+    'modifier-shift',
+  );
+  for (const timestamp of [100, 150, 400, 1100]) {
+    assert.equal(activation.shouldSuppressClick(timestamp, 1), true);
+  }
+  assert.equal(activation.shouldSuppressClick(1101, 1), false);
+  assert.equal(activation.shouldSuppressClick(150, 0), false);
+});
+
+test('touch control activation preserves separate taps and rejects incomplete gestures', async () => {
+  const { TouchControlActivationGuard } = await terminalInputModule;
+  const activation = new TouchControlActivationGuard();
+
+  assert.equal(activation.start(31, 'modifier-shift'), true);
+  assert.equal(activation.start(32, 'modifier-shift'), false);
+  assert.equal(activation.end(32, 'modifier-shift', 100), null);
+  assert.equal(activation.end(31, 'modifier-ctrl', 100), null);
+
+  assert.equal(activation.start(33, 'modifier-shift'), true);
+  assert.equal(activation.cancel(34), false);
+  assert.equal(activation.cancel(33), true);
+  assert.equal(activation.end(33, 'modifier-shift', 150), null);
+
+  assert.equal(activation.start(34, 'modifier-shift'), true);
+  assert.equal(
+    activation.end(34, 'modifier-shift', 200),
+    'modifier-shift',
+  );
+  assert.equal(activation.start(35, 'modifier-shift'), true);
+  assert.equal(
+    activation.end(35, 'modifier-shift', 250),
+    'modifier-shift',
+  );
+  assert.equal(activation.shouldSuppressClick(251, 2), true);
+});
