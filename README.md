@@ -207,7 +207,8 @@ or control unrelated native Wayland windows.
 ## Everyday Use
 
 - The first visit creates a session named `main`. Use the sidebar to create and switch between
-  named sessions.
+  named sessions. Names contain 1–32 letters, numbers, or hyphens, start with a letter or number,
+  and convert uppercase letters to lowercase automatically.
 - The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
   Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.

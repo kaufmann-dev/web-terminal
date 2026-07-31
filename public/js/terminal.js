@@ -14,11 +14,13 @@
       transformMobileTerminalInput,
     },
     { readClipboardContent },
+    { bindTerminalSessionNameNormalization },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
     import('/static/js/terminal-input.mjs'),
     import('/static/js/clipboard-reader.mjs'),
+    import('/static/js/session-name.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -49,6 +51,7 @@
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
   const visualViewport = window.visualViewport;
   const mobileViewportOffsetTopProperty = '--mobile-visual-viewport-offset-top';
+  const normalizeSessionNameInput = bindTerminalSessionNameNormalization(sessionNameInput);
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
@@ -1161,10 +1164,10 @@
 
   async function createSession(event) {
     event.preventDefault();
-    const name = sessionNameInput.value.trim();
+    const name = normalizeSessionNameInput().trim();
 
     if (!sessionNamePattern.test(name)) {
-      setStatus('Use 1-32 lowercase letters, numbers, or hyphens.', true);
+      setStatus('Use 1-32 letters, numbers, or hyphens.', true);
       sessionNameInput.focus();
       return;
     }

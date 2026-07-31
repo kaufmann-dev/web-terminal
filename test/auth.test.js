@@ -336,6 +336,37 @@ test('accepted terminal-session mutations count as interactive activity', async 
   assert.equal((await onlyStoredSession(service.sessionStore)).lastActivityAt, currentTime);
 });
 
+test('terminal session creation normalizes uppercase letters', async (t) => {
+  const names = new Set();
+  const sessionManager = {
+    listSessions: () => [...names].map((name) => ({ name, attachedClients: 0 })),
+    createSession: (name) => {
+      names.add(name);
+      return { name, attachedClients: 0 };
+    },
+    shutdown: async () => {},
+  };
+  const openidClient = createFakeOpenidClient();
+  const { baseUrl } = await startService(t, { openidClient, sessionManager });
+  const { cookies, csrfToken } = await authenticate(baseUrl, openidClient);
+
+  const response = await fetch(`${baseUrl}/api/terminal-sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'CSRF-Token': csrfToken,
+      Cookie: cookieHeader(cookies),
+    },
+    body: JSON.stringify({ name: 'My-PROJECT-2' }),
+  });
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), {
+    session: { name: 'my-project-2', attachedClients: 0 },
+  });
+  assert.deepEqual([...names], ['my-project-2']);
+});
+
 test('idle and absolute deadlines invalidate local authorization', async (t) => {
   const base = 1_800_000_000_000;
   assert.equal(isApplicationSessionActive({

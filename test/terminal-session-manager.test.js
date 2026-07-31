@@ -12,7 +12,10 @@ const {
   listLinuxSessionPids,
   writeTerminal,
 } = require('../terminal-session-manager');
-const { isValidTerminalSessionName } = require('../app');
+const {
+  isValidTerminalSessionName,
+  normalizeTerminalSessionName,
+} = require('../app');
 
 class FakePty {
   constructor(pid = 41000) {
@@ -99,6 +102,7 @@ function binaryMessages(socket) {
 }
 
 test('validates terminal names and dimensions', () => {
+  assert.equal(normalizeTerminalSessionName('Upper-CASE-2'), 'upper-case-2');
   assert.equal(isValidTerminalSessionName('main'), true);
   assert.equal(isValidTerminalSessionName('project-2'), true);
   assert.equal(isValidTerminalSessionName('Upper'), false);
