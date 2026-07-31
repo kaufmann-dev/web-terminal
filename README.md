@@ -228,9 +228,11 @@ or control unrelated native Wayland windows.
 - xterm.js handles wheel scrolling directly. Its compact line height keeps adjacent rows of block
   glyphs continuous. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
   wheel-to-key translation.
-- At widths of 720px or less, the terminal uses 12px text and remains sized to the normal layout
-  viewport when the software keyboard opens; its lower rows may therefore sit behind the keyboard.
-  The collapsed-sidebar layout reserves a horizontally scrollable control strip directly below the
+- At widths of 720px or less, the terminal uses 12px text and follows the browser chrome with
+  `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
+  behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
+  header and control strip follow that top offset without moving or resizing the terminal. The
+  collapsed-sidebar layout reserves the horizontally scrollable control strip directly below the
   header. It provides one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
   `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or
   Alt opens or reopens the software keyboard, including when combined with Shift. Shift

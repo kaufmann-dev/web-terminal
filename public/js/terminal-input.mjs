@@ -309,6 +309,21 @@ export function mobileModifierOpensKeyboard(modifier, isActive) {
   return (modifier === 'ctrl' || modifier === 'alt') && !isActive;
 }
 
+export function mobileVisualViewportOffsetTop(visualViewport) {
+  if (!visualViewport) {
+    return 0;
+  }
+
+  const { offsetTop = 0, scale = 1 } = visualViewport;
+  if (!Number.isFinite(offsetTop)
+    || !Number.isFinite(scale)
+    || Math.abs(scale - 1) > 0.01) {
+    return 0;
+  }
+
+  return Math.round(Math.max(0, offsetTop) * 100) / 100;
+}
+
 export class MobileTerminalFocusManager {
   constructor(terminal, getActiveElement) {
     this.terminal = terminal;

@@ -31,7 +31,7 @@ test('mobile sidebar has no shadow while closed or open', () => {
   );
 });
 
-test('mobile layout keeps the normal viewport and reserves controls below the header', () => {
+test('mobile layout stays full-height under the keyboard and follows Safari panning', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
@@ -43,12 +43,40 @@ test('mobile layout keeps the normal viewport and reserves controls below the he
   );
   assert.doesNotMatch(desktopStyles, /\.mobile-terminal-controls\s*\{[^}]*display:\s*flex;/s);
   assert.match(desktopStyles, /\.terminal-body\s*\{[^}]*height:\s*100vh;/s);
-  assert.doesNotMatch(mobileStyles, /\.terminal-body\s*\{/);
-  assert.doesNotMatch(stylesheet, /--mobile-visual-viewport-height/);
-  assert.doesNotMatch(
-    terminalScript,
-    /\bvisualViewport\b|mobileVisualViewportHeight|requestMobileViewportSync/,
+  assert.match(
+    mobileStyles,
+    /\.terminal-body\s*\{[^}]*height:\s*100dvh;[^}]*\}/s,
   );
+  assert.match(
+    mobileStyles,
+    /\.terminal-header\s*\{[^}]*transform:\s*translateY\(var\(--mobile-visual-viewport-offset-top, 0\)\);/s,
+  );
+  assert.match(
+    mobileStyles,
+    /\.mobile-terminal-controls\s*\{[^}]*z-index:\s*10;[^}]*transform:\s*translateY\(var\(--mobile-visual-viewport-offset-top, 0\)\);/s,
+  );
+  assert.doesNotMatch(stylesheet, /--mobile-visual-viewport-height/);
+  assert.match(
+    terminalScript,
+    /mobileVisualViewportOffsetTop\(visualViewport\)/,
+  );
+  assert.match(
+    terminalScript,
+    /document\.documentElement\.style\.setProperty\(\s*mobileViewportOffsetTopProperty,\s*`\$\{offsetTop\}px`,\s*\)/s,
+  );
+  assert.match(
+    terminalScript,
+    /mobileViewportSyncFrame = window\.requestAnimationFrame\(\(\) => \{\s*mobileViewportSyncFrame = window\.requestAnimationFrame\(applyMobileViewportOffset\);/s,
+  );
+  assert.match(
+    terminalScript,
+    /visualViewport\.addEventListener\('resize', requestMobileViewportSync\);/,
+  );
+  assert.match(
+    terminalScript,
+    /visualViewport\.addEventListener\('scroll', requestMobileViewportSync\);/,
+  );
+  assert.doesNotMatch(terminalScript, /mobileVisualViewportHeight|mobileViewportHeightProperty/);
   assert.match(mobileStyles, /\.terminal-main\s*\{[^}]*flex-direction:\s*column;/s);
   assert.match(
     mobileStyles,

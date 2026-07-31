@@ -10,6 +10,7 @@
       TouchScrollGesture,
       encodeMobileTerminalKey,
       mobileModifierOpensKeyboard,
+      mobileVisualViewportOffsetTop,
       transformMobileTerminalInput,
     },
     { readClipboardContent },
@@ -46,6 +47,8 @@
   );
   const touchControlActivation = new TouchControlActivationGuard();
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
+  const visualViewport = window.visualViewport;
+  const mobileViewportOffsetTopProperty = '--mobile-visual-viewport-offset-top';
 
   const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
@@ -57,6 +60,41 @@
   let activeController = null;
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
+  let mobileViewportSyncFrame = null;
+
+  function applyMobileViewportOffset() {
+    mobileViewportSyncFrame = null;
+    if (!mobileLayoutQuery.matches) {
+      document.documentElement.style.removeProperty(mobileViewportOffsetTopProperty);
+      return;
+    }
+
+    const offsetTop = mobileVisualViewportOffsetTop(visualViewport);
+    if (offsetTop === 0) {
+      document.documentElement.style.removeProperty(mobileViewportOffsetTopProperty);
+      return;
+    }
+    document.documentElement.style.setProperty(
+      mobileViewportOffsetTopProperty,
+      `${offsetTop}px`,
+    );
+  }
+
+  function requestMobileViewportSync() {
+    if (mobileViewportSyncFrame !== null) {
+      return;
+    }
+    mobileViewportSyncFrame = window.requestAnimationFrame(() => {
+      mobileViewportSyncFrame = window.requestAnimationFrame(applyMobileViewportOffset);
+    });
+  }
+
+  applyMobileViewportOffset();
+  window.addEventListener('resize', requestMobileViewportSync);
+  if (visualViewport) {
+    visualViewport.addEventListener('resize', requestMobileViewportSync);
+    visualViewport.addEventListener('scroll', requestMobileViewportSync);
+  }
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -1388,6 +1426,7 @@
   mobileTerminalControls.addEventListener('animationcancel', clearMobileControlFeedback);
   mobileLayoutQuery.addEventListener('change', (event) => {
     touchControlActivation.invalidate();
+    requestMobileViewportSync();
     if (activeController) {
       activeController.updateTerminalFontSize(event.matches);
       if (!event.matches) {
@@ -1406,12 +1445,16 @@
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
     touchControlActivation.invalidate();
+    if (!document.hidden) {
+      requestMobileViewportSync();
+    }
     if (activeController) {
       activeController.setPageHidden(document.hidden);
     }
   });
 
   window.addEventListener('focus', () => {
+    requestMobileViewportSync();
     if (!mutationInProgress) {
       refreshSessions().catch((err) => setStatus(err.message, true));
     }
