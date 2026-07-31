@@ -25,9 +25,17 @@ test('mobile terminal keys follow normal and application cursor modes', async ()
   assert.equal(encodeMobileTerminalKey('unknown', false), null);
 });
 
-test('mobile terminal keys encode Ctrl and Alt like xterm', async () => {
+test('mobile terminal keys encode Ctrl, Shift, and Alt like xterm', async () => {
   const { encodeMobileTerminalKey } = await terminalInputModule;
 
+  assert.equal(
+    encodeMobileTerminalKey('tab', false, { shift: true }),
+    '\u001b[Z',
+  );
+  assert.equal(
+    encodeMobileTerminalKey('arrow-right', false, { shift: true }),
+    '\u001b[1;2C',
+  );
   assert.equal(
     encodeMobileTerminalKey('arrow-left', false, { ctrl: true }),
     '\u001b[1;5D',
@@ -37,8 +45,8 @@ test('mobile terminal keys encode Ctrl and Alt like xterm', async () => {
     '\u001b[1;3A',
   );
   assert.equal(
-    encodeMobileTerminalKey('end', true, { ctrl: true, alt: true }),
-    '\u001b[1;7F',
+    encodeMobileTerminalKey('end', true, { ctrl: true, shift: true, alt: true }),
+    '\u001b[1;8F',
   );
   assert.equal(
     encodeMobileTerminalKey('page-up', false, { ctrl: true }),
@@ -55,6 +63,10 @@ test('mobile terminal keys encode Ctrl and Alt like xterm', async () => {
   assert.equal(
     encodeMobileTerminalKey('escape', false, { alt: true }),
     '\u001b\u001b',
+  );
+  assert.equal(
+    encodeMobileTerminalKey('page-up', false, { shift: true }),
+    null,
   );
 });
 
@@ -90,6 +102,10 @@ test('one-shot modifiers transform the next typed character', async () => {
     { data: '\u001bé', consumed: true },
   );
   assert.deepEqual(
+    transformMobileTerminalInput('#', { shift: true }),
+    { data: '#', consumed: true },
+  );
+  assert.deepEqual(
     transformMobileTerminalInput('plain text'),
     { data: 'plain text', consumed: false },
   );
@@ -123,7 +139,7 @@ test('Ctrl input supports xterm control-character aliases', async () => {
 
 test('terminal protocol reports bypass armed mobile modifiers', async () => {
   const { transformMobileTerminalInput } = await terminalInputModule;
-  const modifiers = { ctrl: true, alt: true };
+  const modifiers = { ctrl: true, shift: true, alt: true };
 
   assert.deepEqual(
     transformMobileTerminalInput('\u001b[I', modifiers),

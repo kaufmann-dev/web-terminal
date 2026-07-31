@@ -89,6 +89,7 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     buttons.map((button) => button[1].match(/data-terminal-control="([^"]+)"/)?.[1]),
     [
       'modifier-ctrl',
+      'modifier-shift',
       'modifier-alt',
       'paste',
       'escape',
@@ -109,7 +110,7 @@ test('mobile control group exposes the terminal keys in priority order', () => {
     assert.match(attributes, /\bdisabled\b/);
   }
 
-  for (const modifier of ['ctrl', 'alt']) {
+  for (const modifier of ['ctrl', 'shift', 'alt']) {
     const modifierButton = buttons.find((button) => (
       button[1].includes(`data-terminal-modifier="${modifier}"`)
     ));
@@ -172,6 +173,18 @@ test('mobile controls use xterm input modes and browser text paste', () => {
   assert.match(modifierActivation, /this\.mobileModifiers\[modifier\] = true/);
   assert.doesNotMatch(modifierDeactivation, /this\.terminal\.focus\(\)/);
   assert.match(modifierDeactivation, /this\.terminal\.blur\(\)/);
+  assert.match(
+    modifierToggle,
+    /if \(modifier === 'shift'\) \{\s*this\.terminal\.blur\(\);\s*\} else \{\s*this\.terminal\.focus\(\);/s,
+  );
+  assert.match(
+    terminalScript,
+    /this\.mobileModifiers = \{ ctrl: false, shift: false, alt: false \}/,
+  );
+  assert.match(
+    terminalScript,
+    /this\.mobileModifiers\.shift\s*&& \(action === 'page-up' \|\| action === 'page-down'\)[\s\S]*this\.terminal\.scrollPages\(/,
+  );
 
   const inputHandler = terminalScript.slice(
     terminalScript.indexOf('this.inputDisposable ='),
@@ -184,6 +197,25 @@ test('mobile controls use xterm input modes and browser text paste', () => {
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
+});
+
+test('terminal uses compact mobile text and refits across the breakpoint', () => {
+  const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
+
+  assert.match(terminalScript, /const desktopTerminalFontSize = 14;/);
+  assert.match(terminalScript, /const mobileTerminalFontSize = 12;/);
+  assert.match(
+    terminalScript,
+    /fontSize:\s*mobileLayoutQuery\.matches\s*\? mobileTerminalFontSize\s*:\s*desktopTerminalFontSize/s,
+  );
+  assert.match(
+    terminalScript,
+    /updateTerminalFontSize\(isMobile\)[\s\S]*this\.terminal\.options\.fontSize = fontSize;[\s\S]*this\.fitAndNotify\(\);/,
+  );
+  assert.match(
+    terminalScript,
+    /mobileLayoutQuery\.addEventListener\('change',[\s\S]*activeController\.updateTerminalFontSize\(event\.matches\);/,
+  );
 });
 
 test('collapsed-sidebar terminal scrolls retained output with touch gestures', () => {

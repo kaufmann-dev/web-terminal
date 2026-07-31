@@ -96,8 +96,8 @@ export class TouchScrollGesture {
   }
 }
 
-function modifierMask({ ctrl = false, alt = false } = {}) {
-  return (alt ? 2 : 0) | (ctrl ? 4 : 0);
+function modifierMask({ ctrl = false, alt = false, shift = false } = {}) {
+  return (shift ? 1 : 0) | (alt ? 2 : 0) | (ctrl ? 4 : 0);
 }
 
 function controlCharacter(character) {
@@ -137,14 +137,14 @@ export function encodeMobileTerminalKey(
   applicationCursorKeysMode,
   modifiers = {},
 ) {
-  const { ctrl = false, alt = false } = modifiers;
+  const { ctrl = false, alt = false, shift = false } = modifiers;
   const mask = modifierMask(modifiers);
 
   if (action === 'escape') {
     return `${alt ? ESC : ''}${ESC}`;
   }
   if (action === 'tab') {
-    return '\t';
+    return shift ? `${ESC}[Z` : '\t';
   }
 
   const arrowCode = arrowCodes[action];
@@ -165,6 +165,9 @@ export function encodeMobileTerminalKey(
 
   const pageCode = pageCodes[action];
   if (pageCode) {
+    if (shift) {
+      return null;
+    }
     if (ctrl) {
       return `${ESC}[${pageCode};${mask + 1}~`;
     }
@@ -175,8 +178,8 @@ export function encodeMobileTerminalKey(
 }
 
 export function transformMobileTerminalInput(data, modifiers = {}) {
-  const { ctrl = false, alt = false } = modifiers;
-  if (!data || (!ctrl && !alt)) {
+  const { ctrl = false, alt = false, shift = false } = modifiers;
+  if (!data || (!ctrl && !alt && !shift)) {
     return { data, consumed: false };
   }
 
