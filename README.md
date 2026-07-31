@@ -232,11 +232,12 @@ or control unrelated native Wayland windows.
 - At widths of 720px or less, the terminal uses 12px text and follows the browser chrome with
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
-  header and control strip follow that top offset without moving or resizing the terminal. The
-  collapsed-sidebar layout reserves the horizontally scrollable control strip directly below the
-  header. It provides one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
-  `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or
-  Alt opens or reopens the software keyboard, including when combined with Shift. Shift
+  control grid follows that top offset without moving or resizing the terminal. The mobile header
+  is removed, and 16 controls fill two non-scrolling rows of eight equal-width buttons. The first
+  button opens the session sidebar, where Logout appears while the sidebar is open. The remaining
+  buttons provide one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
+  `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or Alt
+  opens or reopens the software keyboard, including when combined with Shift. Shift
   toggles without opening or closing the keyboard, and toggling an armed Ctrl or Alt off likewise
   preserves the keyboard's current visibility. Consuming a modifier clears all armed modifiers
   and closes the keyboard. Every
