@@ -59,6 +59,14 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
     mobileStyles,
     /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
   );
+  assert.match(
+    mobileStyles,
+    /\.mobile-terminal-key\.is-feedback-active\s*\{[^}]*animation:\s*mobile-terminal-key-feedback 160ms ease-out;/s,
+  );
+  assert.match(
+    stylesheet,
+    /@keyframes mobile-terminal-key-feedback\s*\{[\s\S]*background:\s*var\(--border\);[\s\S]*background:\s*var\(--panel\);/,
+  );
   const finePointerStylesStart = mobileStyles.indexOf(
     '@media (hover: hover) and (pointer: fine)',
   );
@@ -195,16 +203,15 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
     terminalScript.indexOf('toggleMobileModifier ='),
     terminalScript.indexOf('clearMobileModifiers ='),
   );
-  assert.match(modifierToggle, /this\.mobileModifiers\[modifier\] = !this\.mobileModifiers\[modifier\]/);
-  assert.ok(
-    modifierToggle.indexOf('this.mobileModifiers[modifier] =')
-      < modifierToggle.indexOf('updateMobileTerminalControls()'),
-    'ARIA state must update before keyboard focus moves',
+  assert.match(
+    modifierToggle,
+    /const updateModifier = \(\) => \{[\s\S]*this\.mobileModifiers\[modifier\] = !this\.mobileModifiers\[modifier\][\s\S]*updateMobileTerminalControls\(\)[\s\S]*return mobileModifiersNeedKeyboard\(this\.mobileModifiers\);/,
   );
-  assert.match(modifierToggle, /if \(!manageKeyboard\) \{\s*return;/s);
-  assert.match(modifierToggle, /mobileModifiersNeedKeyboard\(this\.mobileModifiers\)/);
-  assert.match(modifierToggle, /this\.openMobileKeyboard\(\)/);
-  assert.match(modifierToggle, /this\.closeMobileKeyboard\(\)/);
+  assert.match(
+    modifierToggle,
+    /if \(manageKeyboard\) \{\s*this\.mobileFocus\.transitionKeyboard\(updateModifier\);\s*return;/s,
+  );
+  assert.match(modifierToggle, /updateModifier\(\);/);
   assert.match(
     terminalScript,
     /this\.mobileModifiers = \{ ctrl: false, shift: false, alt: false \}/,
@@ -272,10 +279,34 @@ test('mobile controls preserve focus and activate one matched click per touch', 
   assert.match(controlHandlers, /event\.stopPropagation\(\)/);
   assert.match(
     controlHandlers,
-    /activateMobileControl\(touchClick\.action, touchClick\.context, \{ manageKeyboard: true \}\)/,
+    /activateMobileControl\(\s*touchClick\.action,\s*touchClick\.context,\s*\{ manageKeyboard: true \},\s*\)/,
+  );
+  assert.match(
+    controlHandlers,
+    /touchClick\.kind === 'activate'[\s\S]*&& activateMobileControl\([\s\S]*\)\s*\) \{\s*showMobileControlFeedback\(event\.target, touchClick\.action\);/,
   );
   assert.match(controlHandlers, /const isNonPointingActivation = event\.detail === 0/);
   assert.match(controlHandlers, /manageKeyboard: !isNonPointingActivation/);
+  assert.match(
+    controlHandlers,
+    /if \(activateMobileControl\(action, activeController,[\s\S]*\)\) \{\s*showMobileControlFeedback\(event\.target, action\);/,
+  );
+  assert.match(
+    terminalScript,
+    /const showMobileControlFeedback = \(target, action\) => \{[\s\S]*button\.dataset\.terminalModifier[\s\S]*button\.classList\.remove\('is-feedback-active'\);[\s\S]*button\.classList\.add\('is-feedback-active'\);/,
+  );
+  assert.match(
+    terminalScript,
+    /const clearMobileControlFeedback = \(event\) => \{[\s\S]*mobile-terminal-key-feedback[\s\S]*classList\.remove\('is-feedback-active'\);/,
+  );
+  assert.match(
+    terminalScript,
+    /mobileTerminalControls\.addEventListener\('animationend', clearMobileControlFeedback\);/,
+  );
+  assert.match(
+    terminalScript,
+    /mobileTerminalControls\.addEventListener\('animationcancel', clearMobileControlFeedback\);/,
+  );
 });
 
 test('terminal uses compact mobile text and refits across the breakpoint', () => {

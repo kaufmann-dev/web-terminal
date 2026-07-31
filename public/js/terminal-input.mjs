@@ -330,18 +330,32 @@ export class MobileTerminalFocusManager {
     }
   }
 
-  openKeyboard() {
-    this.runInternalFocusChange(() => {
+  transitionKeyboard(updateState) {
+    return this.runInternalFocusChange(() => {
       const textarea = this.terminal.textarea;
-      if (textarea && this.getActiveElement() === textarea) {
-        this.terminal.blur();
+      if (textarea) {
+        for (
+          let attempt = 0;
+          attempt < 2 && this.getActiveElement() === textarea;
+          attempt += 1
+        ) {
+          this.terminal.blur();
+        }
       }
-      this.terminal.focus();
+      const needsKeyboard = updateState();
+      if (needsKeyboard) {
+        this.terminal.focus();
+      }
+      return needsKeyboard;
     });
   }
 
+  openKeyboard() {
+    this.transitionKeyboard(() => true);
+  }
+
   closeKeyboard() {
-    this.runInternalFocusChange(() => this.terminal.blur());
+    this.transitionKeyboard(() => false);
   }
 
   focusFromTerminalTap() {

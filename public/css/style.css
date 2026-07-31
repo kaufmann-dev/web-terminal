@@ -682,6 +682,10 @@ body.dark {
     border-color: var(--accent);
   }
 
+  .mobile-terminal-key.is-feedback-active {
+    animation: mobile-terminal-key-feedback 160ms ease-out;
+  }
+
   .mobile-terminal-key-icon {
     display: block;
     width: 20px;
@@ -720,11 +724,29 @@ body.dark {
   }
 }
 
+@keyframes mobile-terminal-key-feedback {
+  from {
+    background: var(--border);
+    color: var(--accent-bright);
+    border-color: var(--accent);
+  }
+
+  to {
+    background: var(--panel);
+    color: var(--text);
+    border-color: var(--border);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .mobile-terminal-key.is-feedback-active {
+    animation-duration: 0.01ms !important;
   }
 }

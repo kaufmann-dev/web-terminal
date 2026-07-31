@@ -254,6 +254,80 @@ test('mobile keyboard focus changes suppress only their synchronous xterm report
   assert.equal(focusManager.shouldSuppressInput('\u001b[I'), false);
 });
 
+test('mobile modifier transitions flush stale textarea input before applying new state', async () => {
+  const {
+    MobileTerminalFocusManager,
+    mobileModifiersNeedKeyboard,
+    transformMobileTerminalInput,
+  } = await terminalInputModule;
+  const textarea = {};
+  const modifiers = { ctrl: false, shift: false, alt: false };
+  const sent = [];
+  let activeElement = textarea;
+  let pendingInput = 'a';
+  let retainFocusAfterPendingCommit = true;
+  let blurCalls = 0;
+  let focusManager;
+  const emit = (data) => {
+    if (focusManager.shouldSuppressInput(data)) {
+      return;
+    }
+    const result = transformMobileTerminalInput(data, modifiers);
+    sent.push(result.data);
+    if (result.consumed) {
+      modifiers.ctrl = false;
+      modifiers.shift = false;
+      modifiers.alt = false;
+    }
+  };
+  const terminal = {
+    textarea,
+    blur() {
+      blurCalls += 1;
+      if (activeElement !== textarea) {
+        return;
+      }
+      if (pendingInput) {
+        const data = pendingInput;
+        pendingInput = '';
+        emit(data);
+        if (retainFocusAfterPendingCommit) {
+          retainFocusAfterPendingCommit = false;
+          return;
+        }
+      }
+      activeElement = null;
+      emit('\u001b[O');
+    },
+    focus() {
+      activeElement = textarea;
+      emit('\u001b[I');
+    },
+  };
+  focusManager = new MobileTerminalFocusManager(terminal, () => activeElement);
+  const toggle = (modifier) => focusManager.transitionKeyboard(() => {
+    modifiers[modifier] = !modifiers[modifier];
+    return mobileModifiersNeedKeyboard(modifiers);
+  });
+
+  assert.equal(toggle('shift'), false);
+  assert.equal(modifiers.shift, true);
+  assert.deepEqual(sent, ['a']);
+  assert.equal(blurCalls, 2);
+
+  assert.equal(toggle('shift'), false);
+  assert.equal(modifiers.shift, false);
+
+  activeElement = textarea;
+  pendingInput = 'b';
+  retainFocusAfterPendingCommit = true;
+  assert.equal(toggle('ctrl'), true);
+  assert.equal(modifiers.ctrl, true);
+  assert.equal(activeElement, textarea);
+  assert.deepEqual(sent, ['a', 'b']);
+  assert.equal(blurCalls, 4);
+});
+
 test('touch scrolling activates after a predominantly vertical eight-pixel drag', async () => {
   const { TouchScrollGesture } = await terminalInputModule;
   const gesture = new TouchScrollGesture();
