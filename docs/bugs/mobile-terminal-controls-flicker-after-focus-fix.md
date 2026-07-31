@@ -1,43 +1,44 @@
-# Mobile Terminal Controls Flicker After Focus Fix
+# Mobile Terminal Controls Break After Flicker Fix
 
-- Fixed: 2026-07-31 12:21:58 UTC (+0000)
-- Pre-fix commit: `e62179fcc43a44f7fc2c1baf8a4c1db094ebec43`
+- Fixed: 2026-07-31 12:51:13 UTC (+0000)
+- Pre-fix commit: `e24a399f1cf34cf6f8e9112a3299d2f87ec1a70c`
 
 ## Symptom
 
-Mobile terminal controls flickered again when tapped. Modifier buttons could briefly show the
-wrong visual state even though each tap eventually produced the correct result. The flash was
-especially visible when a second tap turned Shift, Ctrl, or Alt off.
+The attempted mobile-control flicker fix made the controls malfunction again on the target mobile
+browser. Before that regression, controls eventually performed the correct action but briefly
+showed the wrong visual state during a tap, especially when turning off an armed modifier.
 
 ## Confirmed Root Cause
 
-The focus-stability fix in the pre-fix commit moved touch activation from `pointerup` to the later
-browser-generated compatibility `click`. Before the capture-phase click handler could suppress
-that click or update the modifier, the browser applied the button's CSS `:active` style. Turning a
-modifier off therefore changed it to the normal application state at the same time that the
-compatibility click temporarily painted it as selected.
+Commit `e24a399` coupled a visual fix to an unnecessary event-contract rewrite. It moved touch
+activation from the identity-matched compatibility `click` back to `pointerup`, reversing the
+known-good Safari keyboard and focus path established by commit `e62179f`. Its Chromium fixture
+encoded that new pointerup assumption and therefore could not validate the iPhone Safari behavior
+that the change broke.
 
-The earlier WebKit tap-highlight fix was still present. This regression came from the new event
-timing combined with browser-controlled `:active` painting, not from restoration of the native
-tap-highlight overlay.
+The visual flash did not require any event change. The browser applies the CSS `:active` pseudo-
+class to its compatibility click before a capture-phase handler can suppress the event. On a
+coarse touch pointer, that transient browser-controlled style could contradict the application's
+`aria-pressed` modifier state. The existing transparent WebKit tap highlight was still intact.
 
 ## Changes
 
-- Return a valid tracked activation from `pointerup`, apply it synchronously during that trusted
-  release event, and retain the completed touch only to suppress its compatibility clicks.
-- Drive touch press feedback with a tracked `data-touch-active` marker. Clear it on movement,
-  release, cancellation, reset, session invalidation, layout changes, and page visibility changes.
-- Limit native CSS `:active` feedback to hover-capable fine pointers so a compatibility click from
-  a coarse touch pointer cannot repaint a released control.
-- Preserve native keyboard and assistive-technology click fallback, release-target and controller
-  validation, drag rejection, duplicate-click suppression, and the existing transparent WebKit
-  tap highlight.
+- Reverted every JavaScript, touch-guard, feedback-marker, test, and historical-note change from
+  the broken flicker fix, restoring identity-matched click activation and all existing focus,
+  keyboard, drag, cancellation, controller-identity, and duplicate-click behavior.
+- Limited native `:active` button styling to hover-capable fine pointers. Coarse touch pointers now
+  render only the stable application-managed `aria-pressed` state.
+- Retained the transparent WebKit tap highlight, keyboard focus-visible styling, and mouse press
+  feedback.
+- Added a CSS regression assertion without changing the control-event regression expectations.
 
 ## Verification
 
 - JavaScript syntax checks passed for the Express entrypoint, terminal session manager, browser
   terminal, and terminal-input module.
-- All 62 Node tests passed, including the targeted mobile control and terminal-input regressions.
-- A Chromium mobile primary-touch trace confirmed that one tap changes the modifier state at
-  release, its compatibility click cannot change or repaint that state, and a second tap turns the
-  modifier off without a selected-state flash.
+- All 62 Node tests passed with the restored event-contract expectations and the CSS regression.
+- A Chromium mobile primary-touch trace using the restored activation guard, focus manager, click
+  handler contract, and actual project stylesheet produced exactly two activations for two Ctrl
+  taps. The first tap focused the terminal input, the second blurred it, and neither compatibility
+  click changed the computed color through native `:active` styling.

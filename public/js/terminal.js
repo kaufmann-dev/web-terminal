@@ -57,26 +57,6 @@
   let activeController = null;
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
-  let activeMobileTouchButton = null;
-
-  function setActiveMobileTouchButton(button = null) {
-    if (activeMobileTouchButton === button) {
-      return;
-    }
-    activeMobileTouchButton?.removeAttribute('data-touch-active');
-    activeMobileTouchButton = button;
-    activeMobileTouchButton?.setAttribute('data-touch-active', 'true');
-  }
-
-  function resetTouchControlActivation() {
-    touchControlActivation.reset();
-    setActiveMobileTouchButton();
-  }
-
-  function invalidateTouchControlActivation() {
-    touchControlActivation.invalidate();
-    setActiveMobileTouchButton();
-  }
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -720,7 +700,7 @@
         return;
       }
 
-      invalidateTouchControlActivation();
+      touchControlActivation.invalidate();
       this.cancelTouchScroll();
       this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
       this.ready = false;
@@ -766,7 +746,7 @@
         }
 
         if (message.type === 'snapshot') {
-          invalidateTouchControlActivation();
+          touchControlActivation.invalidate();
           this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
           this.ready = false;
           updateMobileTerminalControls();
@@ -794,7 +774,7 @@
           return;
         }
         if (message.type === 'exit') {
-          invalidateTouchControlActivation();
+          touchControlActivation.invalidate();
           this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
           this.ready = false;
           updateMobileTerminalControls();
@@ -812,7 +792,7 @@
           return;
         }
         this.socket = null;
-        invalidateTouchControlActivation();
+        touchControlActivation.invalidate();
         this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
         this.ready = false;
         updateMobileTerminalControls();
@@ -915,7 +895,7 @@
         return;
       }
       if (hidden) {
-        invalidateTouchControlActivation();
+        touchControlActivation.invalidate();
         this.cancelTouchScroll();
       }
       if (hidden === this.suspended) {
@@ -955,7 +935,7 @@
       if (this.disposed) {
         return;
       }
-      invalidateTouchControlActivation();
+      touchControlActivation.invalidate();
       this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
       this.disposed = true;
       this.cancelTouchScroll();
@@ -1287,14 +1267,13 @@
       return;
     }
     if (event.pointerType !== 'touch') {
-      resetTouchControlActivation();
+      touchControlActivation.reset();
       return;
     }
 
-    const button = mobileControlButton(event.target);
-    const action = mobileControlAction(button);
+    const action = mobileControlAction(event.target);
     if (!action) {
-      resetTouchControlActivation();
+      touchControlActivation.reset();
       return;
     }
     if (touchControlActivation.start(
@@ -1304,15 +1283,12 @@
       event.clientX,
       event.clientY,
     )) {
-      setActiveMobileTouchButton(button);
       event.preventDefault();
     }
   }, true);
   document.addEventListener('pointermove', (event) => {
     if (event.pointerType === 'touch' && event.isPrimary) {
-      if (touchControlActivation.move(event.pointerId, event.clientX, event.clientY)) {
-        setActiveMobileTouchButton();
-      }
+      touchControlActivation.move(event.pointerId, event.clientX, event.clientY);
     }
   }, true);
   document.addEventListener('pointerup', (event) => {
@@ -1320,28 +1296,17 @@
       return;
     }
     const releaseTarget = document.elementFromPoint(event.clientX, event.clientY);
-    const touchActivation = touchControlActivation.end(
+    touchControlActivation.end(
       event.pointerId,
       mobileControlTargetAction(releaseTarget),
       event.timeStamp,
       event.clientX,
       event.clientY,
     );
-    setActiveMobileTouchButton();
-    if (!touchActivation) {
-      return;
-    }
-    event.preventDefault();
-    activateMobileControl(
-      touchActivation.action,
-      touchActivation.context,
-      { manageKeyboard: true },
-    );
   }, true);
   document.addEventListener('pointercancel', (event) => {
-    if (event.pointerType === 'touch'
-      && touchControlActivation.cancel(event.pointerId, event.timeStamp)) {
-      setActiveMobileTouchButton();
+    if (event.pointerType === 'touch') {
+      touchControlActivation.cancel(event.pointerId, event.timeStamp);
     }
   }, true);
   document.addEventListener('mousedown', (event) => {
@@ -1365,6 +1330,9 @@
     if (touchClick) {
       event.preventDefault();
       event.stopPropagation();
+      if (touchClick.kind === 'activate') {
+        activateMobileControl(touchClick.action, touchClick.context, { manageKeyboard: true });
+      }
       return;
     }
 
@@ -1375,14 +1343,14 @@
     const isNonPointingActivation = event.detail === 0
       || (event.pointerType === '' && event.pointerId === -1);
     if (isNonPointingActivation) {
-      resetTouchControlActivation();
+      touchControlActivation.reset();
     }
     activateMobileControl(action, activeController, {
       manageKeyboard: !isNonPointingActivation,
     });
   }, true);
   mobileLayoutQuery.addEventListener('change', (event) => {
-    invalidateTouchControlActivation();
+    touchControlActivation.invalidate();
     if (activeController) {
       activeController.updateTerminalFontSize(event.matches);
       if (!event.matches) {
@@ -1400,7 +1368,7 @@
 
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
-    invalidateTouchControlActivation();
+    touchControlActivation.invalidate();
     if (activeController) {
       activeController.setPageHidden(document.hidden);
     }
