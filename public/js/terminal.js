@@ -9,10 +9,12 @@
       encodeMobileTerminalKey,
       transformMobileTerminalInput,
     },
+    { readClipboardContent },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
     import('/static/js/terminal-input.mjs'),
+    import('/static/js/clipboard-reader.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -354,7 +356,7 @@
       }
       if (action === 'paste') {
         this.clearMobileModifiers();
-        this.pasteClipboardText();
+        this.pasteClipboard();
         return;
       }
       if (this.mobileModifiers.shift
@@ -417,48 +419,76 @@
       return true;
     };
 
-    pasteClipboardText = async () => {
+    pasteClipboard = async () => {
       if (this.disposed || !this.ready) {
         return;
       }
-      if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+
+      setClipboardStatus('Reading clipboard…');
+      let clipboardContent;
+      try {
+        clipboardContent = await readClipboardContent(navigator.clipboard);
+      } catch (err) {
+        if (!this.disposed) {
+          setClipboardStatus(
+            'Unable to read the clipboard contents. Copy them again and retry.',
+            true,
+            5000,
+          );
+        }
+        return;
+      }
+
+      if (this.disposed) {
+        return;
+      }
+      if (!this.ready) {
         setClipboardStatus(
-          'Clipboard text access is unavailable. Use the keyboard paste command.',
+          'The terminal disconnected before the clipboard could be pasted.',
           true,
           5000,
         );
         return;
       }
 
-      setClipboardStatus('Reading clipboard…');
-      try {
-        const text = await navigator.clipboard.readText();
-        if (this.disposed) {
-          return;
-        }
-        if (!this.ready) {
-          setClipboardStatus(
-            'The terminal disconnected before the clipboard could be pasted.',
-            true,
-            5000,
-          );
-          return;
-        }
-        if (!text) {
-          setClipboardStatus('The clipboard contains no text.', false, 3000);
-          return;
-        }
-        this.terminal.paste(text);
-        setClipboardStatus('Clipboard text pasted.', false, 3000);
-      } catch (err) {
-        if (!this.disposed) {
-          setClipboardStatus(
-            'Unable to read clipboard text. Allow clipboard access and try again.',
-            true,
-            5000,
-          );
-        }
+      if (clipboardContent.kind === 'unavailable') {
+        setClipboardStatus(
+          'Clipboard access is unavailable. Use the keyboard paste command.',
+          true,
+          5000,
+        );
+        return;
       }
+      if (clipboardContent.kind === 'denied') {
+        setClipboardStatus(
+          'Clipboard access was denied. Allow paste access and try again.',
+          true,
+          5000,
+        );
+        return;
+      }
+      if (clipboardContent.kind === 'empty') {
+        setClipboardStatus('The clipboard is empty.', false, 3000);
+        return;
+      }
+      if (clipboardContent.kind === 'unsupported') {
+        setClipboardStatus(
+          'The clipboard contains no supported text, PNG, JPEG, or WebP image.',
+          true,
+          5000,
+        );
+        return;
+      }
+      if (clipboardContent.kind === 'image') {
+        this.imageUploadQueue = this.imageUploadQueue.then(() => this.uploadClipboardImage(
+          clipboardContent.image,
+          clipboardContent.contentType,
+        ));
+        return;
+      }
+
+      this.terminal.paste(clipboardContent.text);
+      setClipboardStatus('Clipboard text pasted.', false, 3000);
     };
 
     copySelection = () => {
@@ -508,7 +538,7 @@
       this.imageUploadQueue = this.imageUploadQueue.then(() => this.uploadClipboardImage(image));
     };
 
-    async uploadClipboardImage(image) {
+    async uploadClipboardImage(image, contentType = image.type) {
       if (this.disposed) {
         return;
       }
@@ -524,7 +554,7 @@
         const data = await apiRequest('/api/clipboard-images', {
           method: 'POST',
           headers: {
-            'Content-Type': image.type,
+            'Content-Type': contentType,
             'CSRF-Token': csrfToken,
           },
           body: image,

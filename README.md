@@ -231,13 +231,13 @@ or control unrelated native Wayland windows.
 - At widths of 720px or less, the terminal follows the browser's dynamic visible viewport and uses
   12px text so mobile browser chrome does not cover its final rows and more terminal cells remain
   visible. The collapsed-sidebar layout reserves a horizontally scrollable touch strip for one-shot
-  `Ctrl`/`Shift`/`Alt` modifiers, text paste, `Esc`, `Tab`, consistent SVG arrow keys, `Home`, `End`,
-  `PgUp`, and `PgDn`. Activating Ctrl or Alt opens the software keyboard; activating Shift keeps it
-  closed for combinations such as Shift+Tab. Consuming a modifier closes the keyboard, and tapping
-  the active modifier again deactivates it without reopening the keyboard. The other controls can
-  be tapped repeatedly without summoning it. A one-finger vertical drag scrolls xterm's retained
-  normal-screen history directly, without momentum or sending mouse or key input to alternate-screen
-  programs; pinch-to-zoom remains available.
+  `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, consistent SVG arrow
+  keys, `Home`, `End`, `PgUp`, and `PgDn`. Activating Ctrl or Alt opens the software keyboard;
+  activating Shift keeps it closed for combinations such as Shift+Tab. Consuming a modifier closes
+  the keyboard, and tapping the active modifier again deactivates it without reopening the keyboard.
+  The other controls can be tapped repeatedly without summoning it. A one-finger vertical drag
+  scrolls xterm's retained normal-screen history directly, without momentum or sending mouse or key
+  input to alternate-screen programs; pinch-to-zoom remains available.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to
