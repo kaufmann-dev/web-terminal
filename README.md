@@ -233,10 +233,11 @@ or control unrelated native Wayland windows.
   consistently remains directly above an open keyboard and returns to the bottom when it closes.
   The collapsed-sidebar layout reserves that horizontally scrollable strip for one-shot
   `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, `Enter`, consistent SVG
-  arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. An armed Ctrl or Alt keeps the software keyboard open,
-  including when combined with Shift; Shift alone keeps it closed for combinations such as
-  Shift+Tab. Tapping an armed modifier toggles it off, and consuming a modifier clears all armed
-  modifiers and closes the keyboard. Every physical touch activates its control exactly once,
+  arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or Alt opens or reopens the software
+  keyboard, including when combined with Shift. Shift toggles without opening or closing the
+  keyboard, and toggling an armed Ctrl or Alt off likewise preserves the keyboard's current
+  visibility. Consuming a modifier clears all armed modifiers and closes the keyboard. Every
+  physical touch activates its control exactly once,
   while intentional repeated taps remain repeatable. Momentary controls briefly blink after a
   successful activation; modifier controls instead retain their armed styling. The other controls
   leave terminal focus unchanged and never summon the keyboard. Toolbar-managed keyboard

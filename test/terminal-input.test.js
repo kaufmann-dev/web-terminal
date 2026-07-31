@@ -178,19 +178,15 @@ test('terminal focus reports are recognized exactly', async () => {
   assert.equal(isTerminalFocusReport(''), false);
 });
 
-test('Ctrl or Alt keeps the mobile keyboard open for every modifier combination', async () => {
-  const { mobileModifiersNeedKeyboard } = await terminalInputModule;
+test('only arming Ctrl or Alt opens the mobile keyboard', async () => {
+  const { mobileModifierOpensKeyboard } = await terminalInputModule;
 
-  assert.equal(mobileModifiersNeedKeyboard(), false);
-  assert.equal(mobileModifiersNeedKeyboard({ shift: true }), false);
-  assert.equal(mobileModifiersNeedKeyboard({ ctrl: true }), true);
-  assert.equal(mobileModifiersNeedKeyboard({ alt: true }), true);
-  assert.equal(mobileModifiersNeedKeyboard({ ctrl: true, shift: true }), true);
-  assert.equal(mobileModifiersNeedKeyboard({ alt: true, shift: true }), true);
-  assert.equal(
-    mobileModifiersNeedKeyboard({ ctrl: true, shift: true, alt: true }),
-    true,
-  );
+  assert.equal(mobileModifierOpensKeyboard('shift', false), false);
+  assert.equal(mobileModifierOpensKeyboard('shift', true), false);
+  assert.equal(mobileModifierOpensKeyboard('ctrl', false), true);
+  assert.equal(mobileModifierOpensKeyboard('ctrl', true), false);
+  assert.equal(mobileModifierOpensKeyboard('alt', false), true);
+  assert.equal(mobileModifierOpensKeyboard('alt', true), false);
 });
 
 test('mobile layout follows the unzoomed visual viewport above the software keyboard', async () => {
@@ -286,17 +282,17 @@ test('mobile keyboard focus changes suppress only their synchronous xterm report
   assert.equal(focusManager.shouldSuppressInput('\u001b[I'), false);
 });
 
-test('mobile modifier transitions flush stale textarea input before applying new state', async () => {
+test('mobile modifier taps preserve the keyboard except when arming Ctrl or Alt', async () => {
   const {
     MobileTerminalFocusManager,
-    mobileModifiersNeedKeyboard,
+    mobileModifierOpensKeyboard,
     transformMobileTerminalInput,
   } = await terminalInputModule;
   const textarea = {};
   const modifiers = { ctrl: false, shift: false, alt: false };
   const sent = [];
-  let activeElement = textarea;
-  let pendingInput = 'a';
+  let activeElement = null;
+  let pendingInput = '';
   let retainFocusAfterPendingCommit = true;
   let blurCalls = 0;
   let focusManager;
@@ -337,24 +333,50 @@ test('mobile modifier transitions flush stale textarea input before applying new
     },
   };
   focusManager = new MobileTerminalFocusManager(terminal, () => activeElement);
-  const toggle = (modifier) => focusManager.transitionKeyboard(() => {
-    modifiers[modifier] = !modifiers[modifier];
-    return mobileModifiersNeedKeyboard(modifiers);
-  });
+  const toggle = (modifier) => {
+    const opensKeyboard = mobileModifierOpensKeyboard(modifier, modifiers[modifier]);
+    const updateModifier = () => {
+      modifiers[modifier] = !modifiers[modifier];
+    };
+    if (opensKeyboard) {
+      return focusManager.transitionKeyboard(() => {
+        updateModifier();
+        return true;
+      });
+    }
+    updateModifier();
+    return false;
+  };
 
   assert.equal(toggle('shift'), false);
   assert.equal(modifiers.shift, true);
+  assert.equal(activeElement, null);
+  assert.deepEqual(sent, []);
+  assert.equal(blurCalls, 0);
+
+  activeElement = textarea;
+  assert.equal(toggle('shift'), false);
+  assert.equal(modifiers.shift, false);
+  assert.equal(activeElement, textarea);
+  assert.deepEqual(sent, []);
+  assert.equal(blurCalls, 0);
+
+  pendingInput = 'a';
+  assert.equal(toggle('ctrl'), true);
+  assert.equal(modifiers.ctrl, true);
+  assert.equal(activeElement, textarea);
   assert.deepEqual(sent, ['a']);
   assert.equal(blurCalls, 2);
 
-  assert.equal(toggle('shift'), false);
-  assert.equal(modifiers.shift, false);
+  assert.equal(toggle('ctrl'), false);
+  assert.equal(modifiers.ctrl, false);
+  assert.equal(activeElement, textarea);
+  assert.equal(blurCalls, 2);
 
-  activeElement = textarea;
   pendingInput = 'b';
   retainFocusAfterPendingCommit = true;
-  assert.equal(toggle('ctrl'), true);
-  assert.equal(modifiers.ctrl, true);
+  assert.equal(toggle('alt'), true);
+  assert.equal(modifiers.alt, true);
   assert.equal(activeElement, textarea);
   assert.deepEqual(sent, ['a', 'b']);
   assert.equal(blurCalls, 4);

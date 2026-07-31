@@ -305,8 +305,8 @@ export function isTerminalFocusReport(data) {
   return data === `${ESC}[I` || data === `${ESC}[O`;
 }
 
-export function mobileModifiersNeedKeyboard({ ctrl = false, alt = false } = {}) {
-  return ctrl || alt;
+export function mobileModifierOpensKeyboard(modifier, isActive) {
+  return (modifier === 'ctrl' || modifier === 'alt') && !isActive;
 }
 
 export function mobileVisualViewportHeight(visualViewport, layoutViewportHeight) {
