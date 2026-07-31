@@ -1,4 +1,6 @@
 (async () => {
+  const desktopTerminalFontSize = 14;
+  const mobileTerminalFontSize = 12;
   const [
     { Terminal },
     { FitAddon },
@@ -13,8 +15,8 @@
     import('/static/js/terminal-input.mjs'),
   ]);
   await Promise.all([
-    document.fonts.load('400 14px "JetBrains Mono"'),
-    document.fonts.load('600 14px "JetBrains Mono"'),
+    document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
+    document.fonts.load(`600 ${desktopTerminalFontSize}px "JetBrains Mono"`),
   ]);
 
   const logoutBtn = document.getElementById('logout-btn');
@@ -151,7 +153,7 @@
       this.writeQueue = Promise.resolve();
       this.imageUploadController = null;
       this.imageUploadQueue = Promise.resolve();
-      this.mobileModifiers = { ctrl: false, alt: false };
+      this.mobileModifiers = { ctrl: false, shift: false, alt: false };
       this.touchScrollGesture = new TouchScrollGesture();
       this.suppressTouchScrollClick = false;
       this.touchScrollClickTimer = null;
@@ -159,7 +161,9 @@
       this.terminal = new Terminal({
         cursorBlink: true,
         fontFamily: '"JetBrains Mono", monospace',
-        fontSize: 14,
+        fontSize: mobileLayoutQuery.matches
+          ? mobileTerminalFontSize
+          : desktopTerminalFontSize,
         fontWeight: '400',
         fontWeightBold: '600',
         lineHeight: 1,
@@ -339,13 +343,27 @@
       if (this.disposed || !this.ready) {
         return;
       }
-      if (action === 'modifier-ctrl' || action === 'modifier-alt') {
-        this.toggleMobileModifier(action === 'modifier-ctrl' ? 'ctrl' : 'alt');
+      const modifier = {
+        'modifier-alt': 'alt',
+        'modifier-ctrl': 'ctrl',
+        'modifier-shift': 'shift',
+      }[action];
+      if (modifier) {
+        this.toggleMobileModifier(modifier);
         return;
       }
       if (action === 'paste') {
         this.clearMobileModifiers();
         this.pasteClipboardText();
+        return;
+      }
+      if (this.mobileModifiers.shift
+        && (action === 'page-up' || action === 'page-down')) {
+        const hadModifiers = this.clearMobileModifiers();
+        this.terminal.scrollPages(action === 'page-up' ? -1 : 1);
+        if (hadModifiers) {
+          this.terminal.blur();
+        }
         return;
       }
 
@@ -369,22 +387,31 @@
       if (this.mobileModifiers[modifier]) {
         this.mobileModifiers[modifier] = false;
         updateMobileTerminalControls();
-        if (!this.mobileModifiers.ctrl && !this.mobileModifiers.alt) {
+        if (!this.mobileModifiers.ctrl
+          && !this.mobileModifiers.shift
+          && !this.mobileModifiers.alt) {
           this.terminal.blur();
         }
         return;
       }
 
-      this.terminal.focus();
+      if (modifier === 'shift') {
+        this.terminal.blur();
+      } else {
+        this.terminal.focus();
+      }
       this.mobileModifiers[modifier] = true;
       updateMobileTerminalControls();
     };
 
     clearMobileModifiers = () => {
-      if (!this.mobileModifiers.ctrl && !this.mobileModifiers.alt) {
+      if (!this.mobileModifiers.ctrl
+        && !this.mobileModifiers.shift
+        && !this.mobileModifiers.alt) {
         return false;
       }
       this.mobileModifiers.ctrl = false;
+      this.mobileModifiers.shift = false;
       this.mobileModifiers.alt = false;
       updateMobileTerminalControls();
       return true;
@@ -535,6 +562,15 @@
         this.terminal.resize(cols, rows);
       }
       return { cols, rows };
+    }
+
+    updateTerminalFontSize(isMobile) {
+      const fontSize = isMobile ? mobileTerminalFontSize : desktopTerminalFontSize;
+      if (this.terminal.options.fontSize === fontSize) {
+        return;
+      }
+      this.terminal.options.fontSize = fontSize;
+      this.fitAndNotify();
     }
 
     fitAndNotify() {
@@ -1090,9 +1126,12 @@
     activeController.handleMobileControl(button.dataset.terminalControl);
   });
   mobileLayoutQuery.addEventListener('change', (event) => {
-    if (!event.matches && activeController) {
-      activeController.clearMobileModifiers();
-      activeController.cancelTouchScroll();
+    if (activeController) {
+      activeController.updateTerminalFontSize(event.matches);
+      if (!event.matches) {
+        activeController.clearMobileModifiers();
+        activeController.cancelTouchScroll();
+      }
     }
   });
 
