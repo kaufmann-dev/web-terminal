@@ -676,8 +676,7 @@ body.dark {
     user-select: none;
   }
 
-  .mobile-terminal-key[aria-pressed="true"],
-  .mobile-terminal-key[data-touch-active="true"] {
+  .mobile-terminal-key[aria-pressed="true"] {
     background: var(--border);
     color: var(--accent-bright);
     border-color: var(--accent);

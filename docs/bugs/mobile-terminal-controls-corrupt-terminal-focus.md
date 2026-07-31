@@ -37,10 +37,9 @@ time-based compatibility-click check.
 
 ## Changes
 
-- Prevent native toolbar focus on valid touch pointerdown and mouse down, then activate the same
-  tracked touch on a matching release while rejecting drags, release mismatches, duplicate clicks,
-  canceled gestures, stale controllers, and retargeted compatibility clicks. Suppress the later
-  identity-matched compatibility click without activating the control again.
+- Prevent native toolbar focus on valid touch pointerdown and mouse down, then activate from one
+  identity-matched capture-phase click while rejecting drags, release mismatches, duplicate clicks,
+  canceled gestures, stale controllers, and retargeted compatibility clicks.
 - Preserve native keyboard and assistive-technology button activation without transferring DOM
   focus away before the updated `aria-pressed` state can be announced.
 - Centralize mobile keyboard focus changes. Reopen an already-active xterm textarea with a

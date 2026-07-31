@@ -342,16 +342,13 @@ test('touch scrolling locks horizontal gestures and ignores other pointers', asy
   assert.equal(gesture.cancel(), false);
 });
 
-test('touch control activation occurs on release and suppresses later clicks', async () => {
+test('touch control activation uses one matched touch click and suppresses duplicates', async () => {
   const { TouchControlActivationGuard } = await terminalInputModule;
   const activation = new TouchControlActivationGuard();
   const controller = {};
 
   assert.equal(activation.start(21, 'modifier-shift', controller, 10, 20), true);
-  assert.deepEqual(
-    activation.end(21, 'modifier-shift', 100),
-    { action: 'modifier-shift', context: controller },
-  );
+  assert.equal(activation.end(21, 'modifier-shift', 100), true);
   assert.deepEqual(
     activation.consumeClick({
       action: 'modifier-shift',
@@ -361,7 +358,7 @@ test('touch control activation occurs on release and suppresses later clicks', a
       pointerType: 'touch',
       timestamp: 100,
     }),
-    { kind: 'suppress' },
+    { kind: 'activate', action: 'modifier-shift', context: controller },
   );
   for (const timestamp of [150, 400, 1100]) {
     assert.deepEqual(
@@ -396,7 +393,7 @@ test('touch control activation rejects movement, release mismatch, and stale con
   assert.equal(activation.move(32, 20, 0), false);
   assert.equal(activation.move(31, 7, 0), false);
   assert.equal(activation.move(31, 8, 0), true);
-  assert.equal(activation.end(31, 'modifier-shift', 100), null);
+  assert.equal(activation.end(31, 'modifier-shift', 100), true);
   assert.deepEqual(activation.consumeClick({
     action: 'modifier-shift',
     detail: 1,
@@ -407,7 +404,7 @@ test('touch control activation rejects movement, release mismatch, and stale con
   }), { kind: 'suppress' });
 
   assert.equal(activation.start(32, 'modifier-shift', firstController, 0, 0), true);
-  assert.equal(activation.end(32, 'modifier-ctrl', 150), null);
+  assert.equal(activation.end(32, 'modifier-ctrl', 150), true);
   assert.deepEqual(activation.consumeClick({
     action: 'modifier-ctrl',
     detail: 1,
@@ -430,15 +427,9 @@ test('touch control activation rejects movement, release mismatch, and stale con
   }), { kind: 'suppress' });
 
   assert.equal(activation.start(34, 'modifier-ctrl', firstController, 0, 0), true);
-  assert.deepEqual(
-    activation.end(34, 'modifier-ctrl', 200),
-    { action: 'modifier-ctrl', context: firstController },
-  );
+  assert.equal(activation.end(34, 'modifier-ctrl', 200), true);
   assert.equal(activation.start(35, 'modifier-alt', secondController, 0, 0), true);
-  assert.deepEqual(
-    activation.end(35, 'modifier-alt', 250),
-    { action: 'modifier-alt', context: secondController },
-  );
+  assert.equal(activation.end(35, 'modifier-alt', 250), true);
   assert.deepEqual(activation.consumeClick({
     action: null,
     detail: 1,
@@ -446,7 +437,7 @@ test('touch control activation rejects movement, release mismatch, and stale con
     pointerId: 35,
     pointerType: 'touch',
     timestamp: 250,
-  }), { kind: 'suppress' });
+  }), { kind: 'activate', action: 'modifier-alt', context: secondController });
   assert.equal(activation.consumeClick({
     action: 'modifier-ctrl',
     detail: 1,
@@ -458,7 +449,7 @@ test('touch control activation rejects movement, release mismatch, and stale con
 
   activation.start(36, 'modifier-shift', firstController, 0, 0);
   activation.invalidate();
-  assert.equal(activation.end(36, 'modifier-shift', 10000), null);
+  assert.equal(activation.end(36, 'modifier-shift', 10000), false);
   assert.deepEqual(activation.consumeClick({
     action: 'modifier-shift',
     detail: 1,
@@ -500,7 +491,7 @@ test('touch click fallback distinguishes legacy touch, real mouse, and accessibi
     pointerId: null,
     pointerType: '',
     timestamp: 303,
-  }), { kind: 'suppress' });
+  }), { kind: 'activate', action: 'modifier-ctrl', context: controller });
 
   activation.start(42, 'modifier-alt', controller, 0, 0);
   activation.end(42, 'modifier-alt', 400);
@@ -511,7 +502,7 @@ test('touch click fallback distinguishes legacy touch, real mouse, and accessibi
     pointerId: 42,
     pointerType: 'touch',
     timestamp: 400,
-  }), { kind: 'suppress' });
+  }), { kind: 'activate', action: 'modifier-alt', context: controller });
 
   activation.start(43, 'modifier-shift', controller, 50, 60);
   activation.end(43, 'modifier-shift', 500, 50, 60);
@@ -524,5 +515,5 @@ test('touch click fallback distinguishes legacy touch, real mouse, and accessibi
     pointerId: null,
     pointerType: '',
     timestamp: 501,
-  }), { kind: 'suppress' });
+  }), { kind: 'activate', action: 'modifier-shift', context: controller });
 });
