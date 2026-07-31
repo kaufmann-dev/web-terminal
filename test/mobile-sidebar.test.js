@@ -118,6 +118,7 @@ test('mobile control group exposes the terminal keys in priority order', () => {
       'paste',
       'escape',
       'tab',
+      'enter',
       'arrow-left',
       'arrow-up',
       'arrow-down',

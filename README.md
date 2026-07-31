@@ -231,8 +231,8 @@ or control unrelated native Wayland windows.
 - At widths of 720px or less, the terminal follows the browser's dynamic visible viewport and uses
   12px text so mobile browser chrome does not cover its final rows and more terminal cells remain
   visible. The collapsed-sidebar layout reserves a horizontally scrollable touch strip for one-shot
-  `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, consistent SVG arrow
-  keys, `Home`, `End`, `PgUp`, and `PgDn`. An armed Ctrl or Alt keeps the software keyboard open,
+  `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`, `Tab`, `Enter`, consistent SVG
+  arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. An armed Ctrl or Alt keeps the software keyboard open,
   including when combined with Shift; Shift alone keeps it closed for combinations such as
   Shift+Tab. Tapping an armed modifier toggles it off, and consuming a modifier clears all armed
   modifiers and closes the keyboard. Every physical touch activates its control exactly once,
