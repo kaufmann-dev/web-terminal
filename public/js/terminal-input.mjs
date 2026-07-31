@@ -136,7 +136,7 @@ export class TouchControlActivationGuard {
 
   end(pointerId, releaseAction, timestamp, clientX, clientY) {
     if (!this.activeTouch || pointerId !== this.activeTouch.pointerId) {
-      return false;
+      return null;
     }
 
     const touch = this.activeTouch;
@@ -149,10 +149,15 @@ export class TouchControlActivationGuard {
       clientX,
       clientY,
       canActivate: !touch.moved && releaseAction === touch.action,
-      handled: false,
       invalidated: false,
     };
-    return true;
+    if (!this.completedTouch.canActivate) {
+      return null;
+    }
+    return {
+      action: touch.action,
+      context: touch.context,
+    };
   }
 
   cancel(pointerId = this.activeTouch?.pointerId, timestamp = null) {
@@ -171,7 +176,6 @@ export class TouchControlActivationGuard {
         clientX: touch.startX,
         clientY: touch.startY,
         canActivate: false,
-        handled: false,
         invalidated: false,
       }
       : null;
@@ -224,17 +228,7 @@ export class TouchControlActivationGuard {
       return null;
     }
 
-    if (touch.handled || !touch.canActivate) {
-      touch.handled = true;
-      return { kind: 'suppress' };
-    }
-
-    touch.handled = true;
-    return {
-      kind: 'activate',
-      action: touch.action,
-      context: touch.context,
-    };
+    return { kind: 'suppress' };
   }
 
   invalidate() {
@@ -249,7 +243,6 @@ export class TouchControlActivationGuard {
         clientX: touch.startX,
         clientY: touch.startY,
         canActivate: false,
-        handled: false,
         invalidated: true,
       };
       return;

@@ -57,7 +57,19 @@ test('collapsed-sidebar layout uses the visible viewport and reserves mobile con
   );
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
+    /\.mobile-terminal-key\[aria-pressed="true"\],\s*\.mobile-terminal-key\[data-touch-active="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
+  );
+  assert.match(
+    mobileStyles,
+    /@media \(hover:\s*hover\) and \(pointer:\s*fine\)\s*\{[\s\S]*?\.mobile-terminal-key:active\s*\{/,
+  );
+  const finePointerStylesStart = mobileStyles.indexOf(
+    '@media (hover: hover) and (pointer: fine)',
+  );
+  assert.notEqual(finePointerStylesStart, -1, 'expected fine-pointer active styles');
+  assert.doesNotMatch(
+    mobileStyles.slice(0, finePointerStylesStart),
+    /\.mobile-terminal-key:active/,
   );
   assert.match(
     mobileStyles,
@@ -222,7 +234,7 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
 });
 
-test('mobile controls preserve focus and activate one matched click per touch', () => {
+test('mobile controls activate on matched touch release and suppress its click', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const controlHandlers = terminalScript.slice(
     terminalScript.indexOf("document.addEventListener('pointerdown'"),
@@ -236,6 +248,15 @@ test('mobile controls preserve focus and activate one matched click per touch', 
   assert.match(controlHandlers, /document\.addEventListener\('mousedown'/);
   assert.match(controlHandlers, /document\.addEventListener\('click'/);
   assert.match(
+    terminalScript,
+    /function setActiveMobileTouchButton\([\s\S]*?removeAttribute\('data-touch-active'\)[\s\S]*?setAttribute\('data-touch-active', 'true'\)/,
+  );
+  assert.equal(
+    [...terminalScript.matchAll(/touchControlActivation\.invalidate\(\)/g)].length,
+    1,
+    'all lifecycle invalidation should also clear touch feedback',
+  );
+  assert.match(
     controlHandlers,
     /touchControlActivation\.start\(\s*event\.pointerId,\s*action,\s*activeController,\s*event\.clientX,\s*event\.clientY,/s,
   );
@@ -244,24 +265,38 @@ test('mobile controls preserve focus and activate one matched click per touch', 
     controlHandlers.indexOf("document.addEventListener('pointermove'"),
   );
   assert.match(pointerDown, /event\.preventDefault\(\)/);
+  assert.match(pointerDown, /setActiveMobileTouchButton\(button\)/);
   assert.match(controlHandlers, /touchControlActivation\.move\(event\.pointerId/);
+  assert.match(
+    controlHandlers,
+    /if \(touchControlActivation\.move\([\s\S]*?setActiveMobileTouchButton\(\);/,
+  );
   assert.match(controlHandlers, /document\.elementFromPoint\(event\.clientX, event\.clientY\)/);
   assert.match(
     controlHandlers,
-    /touchControlActivation\.end\(\s*event\.pointerId,\s*mobileControlTargetAction\(releaseTarget\),\s*event\.timeStamp,/s,
+    /const touchActivation = touchControlActivation\.end\(\s*event\.pointerId,\s*mobileControlTargetAction\(releaseTarget\),\s*event\.timeStamp,/s,
   );
   const pointerUp = controlHandlers.slice(
     controlHandlers.indexOf("document.addEventListener('pointerup'"),
     controlHandlers.indexOf("document.addEventListener('pointercancel'"),
   );
-  assert.doesNotMatch(pointerUp, /event\.preventDefault\(\)/);
+  assert.match(pointerUp, /if \(!touchActivation\) \{\s*return;/s);
+  assert.match(
+    pointerUp,
+    /setActiveMobileTouchButton\(\);\s*if \(!touchActivation\)/s,
+  );
+  assert.match(pointerUp, /event\.preventDefault\(\)/);
+  assert.match(
+    pointerUp,
+    /activateMobileControl\(\s*touchActivation\.action,\s*touchActivation\.context,\s*\{ manageKeyboard: true \},/s,
+  );
   assert.match(controlHandlers, /touchControlActivation\.cancel\(event\.pointerId, event\.timeStamp\)/);
   assert.match(controlHandlers, /touchControlActivation\.consumeClick\(\{/);
   assert.match(controlHandlers, /event\.stopPropagation\(\)/);
-  assert.match(
-    controlHandlers,
-    /activateMobileControl\(touchClick\.action, touchClick\.context, \{ manageKeyboard: true \}\)/,
+  const clickHandler = controlHandlers.slice(
+    controlHandlers.indexOf("document.addEventListener('click'"),
   );
+  assert.doesNotMatch(clickHandler, /activateMobileControl\(touchClick\.action/);
   assert.match(controlHandlers, /const isNonPointingActivation = event\.detail === 0/);
   assert.match(controlHandlers, /manageKeyboard: !isNonPointingActivation/);
 });
