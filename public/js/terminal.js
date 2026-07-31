@@ -6,6 +6,7 @@
     { FitAddon },
     {
       MobileTerminalFocusManager,
+      TerminalTextareaInputNormalizer,
       TouchControlActivationGuard,
       TouchScrollGesture,
       encodeMobileTerminalKey,
@@ -190,14 +191,21 @@
         this.terminal,
         () => document.activeElement,
       );
+      this.textareaInput = new TerminalTextareaInputNormalizer(this.terminal.textarea);
 
       this.inputDisposable = this.terminal.onData((data) => {
         if (this.mobileFocus.shouldSuppressInput(data)) {
           return;
         }
+        const normalizedData = this.programmaticInputDepth > 0
+          ? data
+          : this.textareaInput.normalize(data);
+        if (!normalizedData) {
+          return;
+        }
         if (this.ready) {
           const transformedInput = transformMobileTerminalInput(
-            data,
+            normalizedData,
             this.programmaticInputDepth > 0 ? {} : this.mobileModifiers,
           );
           this.send({ type: 'input', data: transformedInput.data });
@@ -219,6 +227,13 @@
       });
       this.resizeObserver.observe(terminalHost);
       terminalHost.addEventListener('click', this.focusTerminal);
+      this.terminalElement.addEventListener(
+        'beforeinput',
+        this.handleTerminalBeforeInput,
+        true,
+      );
+      this.terminalElement.addEventListener('input', this.handleTerminalInput, true);
+      this.terminal.textarea.addEventListener('blur', this.handleTerminalTextareaBlur);
       this.terminalElement.addEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.addEventListener('paste', this.handlePaste, true);
       this.terminalElement.addEventListener(
@@ -248,6 +263,18 @@
       if (this.ready) {
         this.terminal.focus();
       }
+    };
+
+    handleTerminalBeforeInput = (event) => {
+      this.textareaInput.recordBeforeInput(event);
+    };
+
+    handleTerminalInput = (event) => {
+      this.textareaInput.recordInput(event);
+    };
+
+    handleTerminalTextareaBlur = () => {
+      this.textareaInput.reset();
     };
 
     openMobileKeyboard = () => {
@@ -946,6 +973,13 @@
       window.clearTimeout(this.resizeTimer);
       this.resizeObserver.disconnect();
       terminalHost.removeEventListener('click', this.focusTerminal);
+      this.terminalElement.removeEventListener(
+        'beforeinput',
+        this.handleTerminalBeforeInput,
+        true,
+      );
+      this.terminalElement.removeEventListener('input', this.handleTerminalInput, true);
+      this.terminal.textarea.removeEventListener('blur', this.handleTerminalTextareaBlur);
       this.terminalElement.removeEventListener('keydown', this.handleBrowserPasteKeyDown, true);
       this.terminalElement.removeEventListener('paste', this.handlePaste, true);
       this.terminalElement.removeEventListener(

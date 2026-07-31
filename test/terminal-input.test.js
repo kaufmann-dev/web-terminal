@@ -7,6 +7,18 @@ const terminalInputModule = import(pathToFileURL(
   path.join(__dirname, '..', 'public', 'js', 'terminal-input.mjs'),
 ));
 
+function applyTerminalEdit(value, edit) {
+  const codePoints = Array.from(value);
+  for (const codePoint of edit) {
+    if (codePoint === '\u007f') {
+      codePoints.pop();
+    } else {
+      codePoints.push(codePoint);
+    }
+  }
+  return codePoints.join('');
+}
+
 test('mobile terminal keys follow normal and application cursor modes', async () => {
   const { encodeMobileTerminalKey } = await terminalInputModule;
 
@@ -326,6 +338,87 @@ test('mobile modifier transitions flush stale textarea input before applying new
   assert.equal(activeElement, textarea);
   assert.deepEqual(sent, ['a', 'b']);
   assert.equal(blurCalls, 4);
+});
+
+test('textarea input normalization sends only changes from cumulative dictation snapshots', async () => {
+  const { TerminalTextareaInputNormalizer } = await terminalInputModule;
+  const textarea = { value: '' };
+  const scheduled = [];
+  const normalizer = new TerminalTextareaInputNormalizer(
+    textarea,
+    (callback) => scheduled.push(callback),
+  );
+  const snapshots = [
+    'hal',
+    'hallo',
+    'hallo Test Test',
+    'hallo Test Test 12',
+    'hallo Test Test 123',
+    'hallo Test Test 123',
+  ];
+  const normalized = [];
+
+  for (const snapshot of snapshots) {
+    normalizer.recordBeforeInput({ target: textarea });
+    textarea.value = snapshot;
+    normalizer.recordInput({
+      target: textarea,
+      data: snapshot,
+      inputType: 'insertText',
+    });
+    normalized.push(normalizer.normalize(snapshot));
+  }
+
+  assert.deepEqual(normalized, [
+    'hal',
+    'lo',
+    ' Test Test',
+    ' 12',
+    '3',
+    '',
+  ]);
+  assert.equal(normalized.join(''), 'hallo Test Test 123');
+  for (const callback of scheduled) {
+    callback();
+  }
+  assert.equal(normalizer.normalize('unchanged'), 'unchanged');
+});
+
+test('textarea input normalization preserves typing and edits revised dictation text', async () => {
+  const { TerminalTextareaInputNormalizer } = await terminalInputModule;
+  const textarea = { value: '' };
+  const scheduled = [];
+  const normalizer = new TerminalTextareaInputNormalizer(
+    textarea,
+    (callback) => scheduled.push(callback),
+  );
+  let terminalValue = '';
+  const input = (value, data) => {
+    normalizer.recordBeforeInput({ target: textarea });
+    textarea.value = value;
+    normalizer.recordInput({ target: textarea, data, inputType: 'insertText' });
+    const normalized = normalizer.normalize(data);
+    terminalValue = applyTerminalEdit(terminalValue, normalized);
+    return normalized;
+  };
+
+  assert.equal(input('hallo world', 'hallo world'), 'hallo world');
+  assert.equal(terminalValue, 'hallo world');
+  assert.equal(input('hello world', 'hello world'), `${'\u007f'.repeat(10)}ello world`);
+  assert.equal(terminalValue, 'hello world');
+
+  textarea.value = '';
+  normalizer.reset();
+  terminalValue = '';
+  assert.equal(input('a', 'a'), 'a');
+  assert.equal(input('aa', 'a'), 'a');
+  assert.equal(terminalValue, 'aa');
+
+  normalizer.recordBeforeInput({ target: textarea });
+  textarea.value = 'aab';
+  normalizer.recordInput({ target: textarea, data: 'aab', inputType: 'insertText' });
+  scheduled.at(-1)();
+  assert.equal(normalizer.normalize('aab'), 'aab');
 });
 
 test('touch scrolling activates after a predominantly vertical eight-pixel drag', async () => {
