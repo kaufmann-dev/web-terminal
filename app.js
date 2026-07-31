@@ -34,6 +34,12 @@ const SESSION_IDLE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WEBSOCKET_ACTIVITY_DEBOUNCE_MS = 15000;
 
+function normalizeTerminalSessionName(name) {
+  return typeof name === 'string'
+    ? name.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
+    : name;
+}
+
 function isValidTerminalSessionName(name) {
   return typeof name === 'string' && TERMINAL_SESSION_NAME_PATTERN.test(name);
 }
@@ -545,14 +551,15 @@ function createWebTerminal(options = {}) {
 
   app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, (req, res) => {
     const { name } = req.body || {};
-    if (!isValidTerminalSessionName(name)) {
+    const normalizedName = normalizeTerminalSessionName(name);
+    if (!isValidTerminalSessionName(normalizedName)) {
       return res.status(400).json({
-        error: 'Session names must be 1-32 lowercase letters, numbers, or hyphens.',
+        error: 'Session names must be 1-32 letters, numbers, or hyphens.',
       });
     }
 
     try {
-      const terminalSession = sessionManager.createSession(name);
+      const terminalSession = sessionManager.createSession(normalizedName);
       recordHttpActivity(req);
       return res.status(201).json({ session: terminalSession });
     } catch (err) {
@@ -1072,6 +1079,7 @@ module.exports = {
   isApplicationSessionActive,
   isStrictBase64,
   isValidTerminalSessionName,
+  normalizeTerminalSessionName,
   normalizeIssuerUrl,
   normalizePublicOrigin,
 };
