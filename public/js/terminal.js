@@ -5,9 +5,11 @@
     { Terminal },
     { FitAddon },
     {
+      MobileTerminalFocusManager,
       TouchControlActivationGuard,
       TouchScrollGesture,
       encodeMobileTerminalKey,
+      mobileModifiersNeedKeyboard,
       transformMobileTerminalInput,
     },
     { readClipboardContent },
@@ -156,7 +158,8 @@
       this.resizeTimer = null;
       this.writeQueue = Promise.resolve();
       this.imageUploadController = null;
-      this.imageUploadQueue = Promise.resolve();
+      this.clipboardOperationQueue = Promise.resolve();
+      this.programmaticInputDepth = 0;
       this.mobileModifiers = { ctrl: false, shift: false, alt: false };
       this.touchScrollGesture = new TouchScrollGesture();
       this.suppressTouchScrollClick = false;
@@ -183,14 +186,24 @@
       this.terminal.loadAddon(this.fitAddon);
       this.terminal.open(terminalHost);
       this.terminalElement = this.terminal.element;
+      this.mobileFocus = new MobileTerminalFocusManager(
+        this.terminal,
+        () => document.activeElement,
+      );
 
       this.inputDisposable = this.terminal.onData((data) => {
+        if (this.mobileFocus.shouldSuppressInput(data)) {
+          return;
+        }
         if (this.ready) {
-          const transformedInput = transformMobileTerminalInput(data, this.mobileModifiers);
+          const transformedInput = transformMobileTerminalInput(
+            data,
+            this.programmaticInputDepth > 0 ? {} : this.mobileModifiers,
+          );
           this.send({ type: 'input', data: transformedInput.data });
           if (transformedInput.consumed) {
             this.clearMobileModifiers();
-            this.terminal.blur();
+            this.closeMobileKeyboard();
           }
         }
       });
@@ -234,6 +247,38 @@
       }
       if (this.ready) {
         this.terminal.focus();
+      }
+    };
+
+    openMobileKeyboard = () => {
+      this.mobileFocus.openKeyboard();
+    };
+
+    closeMobileKeyboard = () => {
+      this.mobileFocus.closeKeyboard();
+    };
+
+    runWithMobileModifiersBypassed = (callback) => {
+      this.programmaticInputDepth += 1;
+      try {
+        return callback();
+      } finally {
+        this.programmaticInputDepth -= 1;
+      }
+    };
+
+    inputTerminalProgrammatically = (data) => {
+      this.runWithMobileModifiersBypassed(() => this.terminal.input(data));
+    };
+
+    pasteTerminalProgrammatically = (text) => {
+      this.runWithMobileModifiersBypassed(() => this.terminal.paste(text));
+    };
+
+    resetMobileInput = ({ closeKeyboard = false } = {}) => {
+      this.clearMobileModifiers();
+      if (closeKeyboard) {
+        this.closeMobileKeyboard();
       }
     };
 
@@ -328,11 +373,7 @@
         return;
       }
       if (outcome === 'tap' && this.ready) {
-        const textarea = this.terminal.textarea;
-        if (textarea && document.activeElement === textarea) {
-          this.terminal.blur();
-        }
-        this.terminal.focus();
+        this.mobileFocus.focusFromTerminalTap();
       }
     };
 
@@ -352,7 +393,7 @@
       event.stopPropagation();
     };
 
-    handleMobileControl = (action) => {
+    handleMobileControl = (action, { manageKeyboard = true } = {}) => {
       if (this.disposed || !this.ready) {
         return;
       }
@@ -362,20 +403,23 @@
         'modifier-shift': 'shift',
       }[action];
       if (modifier) {
-        this.toggleMobileModifier(modifier);
+        this.toggleMobileModifier(modifier, { manageKeyboard });
         return;
       }
       if (action === 'paste') {
-        this.clearMobileModifiers();
-        this.pasteClipboard();
+        const hadModifiers = this.clearMobileModifiers();
+        if (manageKeyboard && hadModifiers) {
+          this.closeMobileKeyboard();
+        }
+        this.requestClipboardPaste();
         return;
       }
       if (this.mobileModifiers.shift
         && (action === 'page-up' || action === 'page-down')) {
         const hadModifiers = this.clearMobileModifiers();
         this.terminal.scrollPages(action === 'page-up' ? -1 : 1);
-        if (hadModifiers) {
-          this.terminal.blur();
+        if (manageKeyboard && hadModifiers) {
+          this.closeMobileKeyboard();
         }
         return;
       }
@@ -390,31 +434,24 @@
       }
 
       const hadModifiers = this.clearMobileModifiers();
-      this.terminal.input(input);
-      if (hadModifiers) {
-        this.terminal.blur();
+      this.inputTerminalProgrammatically(input);
+      if (manageKeyboard && hadModifiers) {
+        this.closeMobileKeyboard();
       }
     };
 
-    toggleMobileModifier = (modifier) => {
-      if (this.mobileModifiers[modifier]) {
-        this.mobileModifiers[modifier] = false;
-        updateMobileTerminalControls();
-        if (!this.mobileModifiers.ctrl
-          && !this.mobileModifiers.shift
-          && !this.mobileModifiers.alt) {
-          this.terminal.blur();
-        }
+    toggleMobileModifier = (modifier, { manageKeyboard = true } = {}) => {
+      this.mobileModifiers[modifier] = !this.mobileModifiers[modifier];
+      updateMobileTerminalControls();
+      if (!manageKeyboard) {
         return;
       }
 
-      if (modifier === 'shift') {
-        this.terminal.blur();
+      if (mobileModifiersNeedKeyboard(this.mobileModifiers)) {
+        this.openMobileKeyboard();
       } else {
-        this.terminal.focus();
+        this.closeMobileKeyboard();
       }
-      this.mobileModifiers[modifier] = true;
-      updateMobileTerminalControls();
     };
 
     clearMobileModifiers = () => {
@@ -430,26 +467,52 @@
       return true;
     };
 
-    pasteClipboard = async () => {
+    enqueueClipboardOperation = (operation) => {
+      this.clipboardOperationQueue = this.clipboardOperationQueue
+        .then(() => {
+          if (!this.disposed) {
+            return operation();
+          }
+          return undefined;
+        })
+        .catch((err) => {
+          if (!this.disposed) {
+            setClipboardStatus(
+              err.message || 'Unable to complete the clipboard operation.',
+              true,
+              5000,
+            );
+          }
+        });
+    };
+
+    requestClipboardPaste = () => {
       if (this.disposed || !this.ready) {
         return;
       }
 
       setClipboardStatus('Reading clipboard…');
-      let clipboardContent;
-      try {
-        clipboardContent = await readClipboardContent(navigator.clipboard);
-      } catch (err) {
-        if (!this.disposed) {
-          setClipboardStatus(
-            'Unable to read the clipboard contents. Copy them again and retry.',
-            true,
-            5000,
-          );
+      const clipboardRead = readClipboardContent(navigator.clipboard);
+      this.enqueueClipboardOperation(async () => {
+        let clipboardContent;
+        try {
+          clipboardContent = await clipboardRead;
+        } catch (err) {
+          if (!this.disposed) {
+            setClipboardStatus(
+              'Unable to read the clipboard contents. Copy them again and retry.',
+              true,
+              5000,
+            );
+          }
+          return;
         }
-        return;
-      }
 
+        await this.applyClipboardContent(clipboardContent);
+      });
+    };
+
+    applyClipboardContent = async (clipboardContent) => {
       if (this.disposed) {
         return;
       }
@@ -491,14 +554,14 @@
         return;
       }
       if (clipboardContent.kind === 'image') {
-        this.imageUploadQueue = this.imageUploadQueue.then(() => this.uploadClipboardImage(
+        await this.uploadClipboardImage(
           clipboardContent.image,
           clipboardContent.contentType,
-        ));
+        );
         return;
       }
 
-      this.terminal.paste(clipboardContent.text);
+      this.pasteTerminalProgrammatically(clipboardContent.text);
       setClipboardStatus('Clipboard text pasted.', false, 3000);
     };
 
@@ -531,7 +594,10 @@
     };
 
     handlePaste = (event) => {
-      this.clearMobileModifiers();
+      const hadModifiers = this.clearMobileModifiers();
+      if (hadModifiers) {
+        this.closeMobileKeyboard();
+      }
       const imageItem = Array.from(event.clipboardData?.items || []).find(
         (item) => item.kind === 'file' && item.type.startsWith('image/'),
       );
@@ -546,7 +612,7 @@
         setClipboardStatus('Unable to read the clipboard image.', true, 5000);
         return;
       }
-      this.imageUploadQueue = this.imageUploadQueue.then(() => this.uploadClipboardImage(image));
+      this.enqueueClipboardOperation(() => this.uploadClipboardImage(image));
     };
 
     async uploadClipboardImage(image, contentType = image.type) {
@@ -582,7 +648,7 @@
           );
           return;
         }
-        this.terminal.paste(data.path);
+        this.pasteTerminalProgrammatically(data.path);
         setClipboardStatus('Image path pasted into the terminal.', false, 3000);
       } catch (err) {
         if (err.name !== 'AbortError') {
@@ -634,8 +700,9 @@
         return;
       }
 
+      touchControlActivation.invalidate();
       this.cancelTouchScroll();
-      this.clearMobileModifiers();
+      this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
       this.ready = false;
       updateMobileTerminalControls();
       setConnectionStatus('Connecting…');
@@ -679,7 +746,8 @@
         }
 
         if (message.type === 'snapshot') {
-          this.clearMobileModifiers();
+          touchControlActivation.invalidate();
+          this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
           this.ready = false;
           updateMobileTerminalControls();
           this.writeQueue = this.writeQueue.then(() => {
@@ -706,7 +774,8 @@
           return;
         }
         if (message.type === 'exit') {
-          this.clearMobileModifiers();
+          touchControlActivation.invalidate();
+          this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
           this.ready = false;
           updateMobileTerminalControls();
           setConnectionStatus('Terminal process exited.', true);
@@ -723,7 +792,8 @@
           return;
         }
         this.socket = null;
-        this.clearMobileModifiers();
+        touchControlActivation.invalidate();
+        this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
         this.ready = false;
         updateMobileTerminalControls();
 
@@ -825,6 +895,7 @@
         return;
       }
       if (hidden) {
+        touchControlActivation.invalidate();
         this.cancelTouchScroll();
       }
       if (hidden === this.suspended) {
@@ -840,7 +911,7 @@
         return;
       }
 
-      this.clearMobileModifiers();
+      this.resetMobileInput();
       this.ready = false;
       updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
@@ -864,9 +935,10 @@
       if (this.disposed) {
         return;
       }
+      touchControlActivation.invalidate();
+      this.resetMobileInput({ closeKeyboard: mobileLayoutQuery.matches });
       this.disposed = true;
       this.cancelTouchScroll();
-      this.clearMobileModifiers();
       this.ready = false;
       updateMobileTerminalControls();
       window.clearTimeout(this.reconnectTimer);
@@ -1161,62 +1233,124 @@
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
   logoutBtn.addEventListener('click', logout);
-  const mobileControlAction = (target) => {
+  const mobileControlButton = (target) => {
     if (!target || typeof target.closest !== 'function') {
       return null;
     }
     const button = target.closest('[data-terminal-control]');
-    if (!button
-      || !mobileTerminalControls.contains(button)
-      || button.disabled
-      || !activeController) {
+    if (!button || !mobileTerminalControls.contains(button)) {
+      return null;
+    }
+    return button;
+  };
+  const mobileControlTargetAction = (target) => (
+    mobileControlButton(target)?.dataset.terminalControl || null
+  );
+  const mobileControlAction = (target) => {
+    const button = mobileControlButton(target);
+    if (!button || button.disabled || !activeController) {
       return null;
     }
     return button.dataset.terminalControl;
   };
-  const activateMobileControl = (action) => {
-    if (action && activeController) {
-      activeController.handleMobileControl(action);
+  const activateMobileControl = (
+    action,
+    controller = activeController,
+    options = undefined,
+  ) => {
+    if (action && controller && controller === activeController) {
+      controller.handleMobileControl(action, options);
     }
   };
-  mobileTerminalControls.addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'touch' || !event.isPrimary) {
+  document.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary) {
       return;
     }
-    touchControlActivation.start(event.pointerId, mobileControlAction(event.target));
-  });
+    if (event.pointerType !== 'touch') {
+      touchControlActivation.reset();
+      return;
+    }
+
+    const action = mobileControlAction(event.target);
+    if (!action) {
+      touchControlActivation.reset();
+      return;
+    }
+    if (touchControlActivation.start(
+      event.pointerId,
+      action,
+      activeController,
+      event.clientX,
+      event.clientY,
+    )) {
+      event.preventDefault();
+    }
+  }, true);
+  document.addEventListener('pointermove', (event) => {
+    if (event.pointerType === 'touch' && event.isPrimary) {
+      touchControlActivation.move(event.pointerId, event.clientX, event.clientY);
+    }
+  }, true);
   document.addEventListener('pointerup', (event) => {
     if (event.pointerType !== 'touch' || !event.isPrimary) {
       return;
     }
-    const action = touchControlActivation.end(
+    const releaseTarget = document.elementFromPoint(event.clientX, event.clientY);
+    touchControlActivation.end(
       event.pointerId,
-      mobileControlAction(event.target),
+      mobileControlTargetAction(releaseTarget),
       event.timeStamp,
+      event.clientX,
+      event.clientY,
     );
-    if (!action) {
-      return;
-    }
-    event.preventDefault();
-    activateMobileControl(action);
-  });
+  }, true);
   document.addEventListener('pointercancel', (event) => {
     if (event.pointerType === 'touch') {
-      touchControlActivation.cancel(event.pointerId);
+      touchControlActivation.cancel(event.pointerId, event.timeStamp);
     }
-  });
-  mobileTerminalControls.addEventListener('click', (event) => {
+  }, true);
+  document.addEventListener('mousedown', (event) => {
+    if (mobileControlAction(event.target)) {
+      event.preventDefault();
+    }
+  }, true);
+  document.addEventListener('click', (event) => {
+    const targetAction = mobileControlTargetAction(event.target);
+    const touchClick = touchControlActivation.consumeClick({
+      action: targetAction,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      detail: event.detail,
+      firesTouchEvents: event.sourceCapabilities?.firesTouchEvents,
+      isControlTarget: Boolean(targetAction),
+      pointerId: typeof event.pointerId === 'number' ? event.pointerId : null,
+      pointerType: typeof event.pointerType === 'string' ? event.pointerType : '',
+      timestamp: event.timeStamp,
+    });
+    if (touchClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (touchClick.kind === 'activate') {
+        activateMobileControl(touchClick.action, touchClick.context, { manageKeyboard: true });
+      }
+      return;
+    }
+
     const action = mobileControlAction(event.target);
     if (!action) {
       return;
     }
-    if (touchControlActivation.shouldSuppressClick(event.timeStamp, event.detail)) {
-      event.preventDefault();
-      return;
+    const isNonPointingActivation = event.detail === 0
+      || (event.pointerType === '' && event.pointerId === -1);
+    if (isNonPointingActivation) {
+      touchControlActivation.reset();
     }
-    activateMobileControl(action);
-  });
+    activateMobileControl(action, activeController, {
+      manageKeyboard: !isNonPointingActivation,
+    });
+  }, true);
   mobileLayoutQuery.addEventListener('change', (event) => {
+    touchControlActivation.invalidate();
     if (activeController) {
       activeController.updateTerminalFontSize(event.matches);
       if (!event.matches) {
@@ -1234,6 +1368,7 @@
 
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
+    touchControlActivation.invalidate();
     if (activeController) {
       activeController.setPageHidden(document.hidden);
     }

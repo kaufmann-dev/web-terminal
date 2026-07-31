@@ -159,6 +159,101 @@ test('terminal protocol reports bypass armed mobile modifiers', async () => {
   );
 });
 
+test('terminal focus reports are recognized exactly', async () => {
+  const { isTerminalFocusReport } = await terminalInputModule;
+
+  assert.equal(isTerminalFocusReport('\u001b[I'), true);
+  assert.equal(isTerminalFocusReport('\u001b[O'), true);
+  assert.equal(isTerminalFocusReport('\u001b[Iextra'), false);
+  assert.equal(isTerminalFocusReport('\u001b[1;2I'), false);
+  assert.equal(isTerminalFocusReport(''), false);
+});
+
+test('Ctrl or Alt keeps the mobile keyboard open for every modifier combination', async () => {
+  const { mobileModifiersNeedKeyboard } = await terminalInputModule;
+
+  assert.equal(mobileModifiersNeedKeyboard(), false);
+  assert.equal(mobileModifiersNeedKeyboard({ shift: true }), false);
+  assert.equal(mobileModifiersNeedKeyboard({ ctrl: true }), true);
+  assert.equal(mobileModifiersNeedKeyboard({ alt: true }), true);
+  assert.equal(mobileModifiersNeedKeyboard({ ctrl: true, shift: true }), true);
+  assert.equal(mobileModifiersNeedKeyboard({ alt: true, shift: true }), true);
+  assert.equal(
+    mobileModifiersNeedKeyboard({ ctrl: true, shift: true, alt: true }),
+    true,
+  );
+});
+
+test('mobile keyboard focus changes suppress only their synchronous xterm reports', async () => {
+  const { MobileTerminalFocusManager } = await terminalInputModule;
+  const textarea = {};
+  const buffer = { x: 17, y: 4, ydisp: 9 };
+  const calls = [];
+  const forwarded = [];
+  let activeElement = null;
+  let focusManager;
+  const emit = (data) => {
+    if (!focusManager.shouldSuppressInput(data)) {
+      forwarded.push(data);
+    }
+  };
+  const terminal = {
+    textarea,
+    buffer,
+    blur() {
+      calls.push('blur');
+      if (activeElement === textarea) {
+        activeElement = null;
+        emit('\u001b[O');
+      }
+    },
+    focus() {
+      calls.push('focus');
+      if (activeElement !== textarea) {
+        activeElement = textarea;
+        emit('\u001b[I');
+      }
+    },
+  };
+  focusManager = new MobileTerminalFocusManager(terminal, () => activeElement);
+  const originalBuffer = { ...buffer };
+
+  focusManager.openKeyboard();
+  assert.equal(activeElement, textarea);
+  assert.deepEqual(calls, ['focus']);
+  assert.deepEqual(forwarded, []);
+
+  calls.length = 0;
+  focusManager.openKeyboard();
+  assert.equal(activeElement, textarea);
+  assert.deepEqual(calls, ['blur', 'focus']);
+  assert.deepEqual(forwarded, []);
+
+  calls.length = 0;
+  focusManager.closeKeyboard();
+  assert.equal(activeElement, null);
+  assert.deepEqual(calls, ['blur']);
+  assert.deepEqual(forwarded, []);
+
+  calls.length = 0;
+  focusManager.focusFromTerminalTap();
+  assert.equal(activeElement, textarea);
+  assert.deepEqual(calls, ['focus']);
+  assert.deepEqual(forwarded, ['\u001b[I']);
+
+  calls.length = 0;
+  focusManager.focusFromTerminalTap();
+  assert.deepEqual(calls, ['blur', 'focus']);
+  assert.deepEqual(forwarded, ['\u001b[I']);
+  assert.deepEqual(buffer, originalBuffer);
+
+  assert.throws(
+    () => focusManager.runInternalFocusChange(() => { throw new Error('focus failed'); }),
+    /focus failed/,
+  );
+  assert.equal(focusManager.shouldSuppressInput('\u001b[I'), false);
+});
+
 test('touch scrolling activates after a predominantly vertical eight-pixel drag', async () => {
   const { TouchScrollGesture } = await terminalInputModule;
   const gesture = new TouchScrollGesture();
@@ -247,45 +342,178 @@ test('touch scrolling locks horizontal gestures and ignores other pointers', asy
   assert.equal(gesture.cancel(), false);
 });
 
-test('touch control activation suppresses every compatibility click from one tap', async () => {
+test('touch control activation uses one matched touch click and suppresses duplicates', async () => {
   const { TouchControlActivationGuard } = await terminalInputModule;
   const activation = new TouchControlActivationGuard();
+  const controller = {};
 
-  assert.equal(activation.start(21, 'modifier-shift'), true);
-  assert.equal(
-    activation.end(21, 'modifier-shift', 100),
-    'modifier-shift',
+  assert.equal(activation.start(21, 'modifier-shift', controller, 10, 20), true);
+  assert.equal(activation.end(21, 'modifier-shift', 100), true);
+  assert.deepEqual(
+    activation.consumeClick({
+      action: 'modifier-shift',
+      detail: 1,
+      isControlTarget: true,
+      pointerId: 21,
+      pointerType: 'touch',
+      timestamp: 100,
+    }),
+    { kind: 'activate', action: 'modifier-shift', context: controller },
   );
-  for (const timestamp of [100, 150, 400, 1100]) {
-    assert.equal(activation.shouldSuppressClick(timestamp, 1), true);
+  for (const timestamp of [150, 400, 1100]) {
+    assert.deepEqual(
+      activation.consumeClick({
+        action: 'modifier-shift',
+        detail: 1,
+        isControlTarget: true,
+        pointerId: 21,
+        pointerType: 'touch',
+        timestamp,
+      }),
+      { kind: 'suppress' },
+    );
   }
-  assert.equal(activation.shouldSuppressClick(1101, 1), false);
-  assert.equal(activation.shouldSuppressClick(150, 0), false);
+  assert.equal(activation.consumeClick({
+    action: 'modifier-shift',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 21,
+    pointerType: 'touch',
+    timestamp: 1101,
+  }), null);
 });
 
-test('touch control activation preserves separate taps and rejects incomplete gestures', async () => {
+test('touch control activation rejects movement, release mismatch, and stale context', async () => {
   const { TouchControlActivationGuard } = await terminalInputModule;
   const activation = new TouchControlActivationGuard();
+  const firstController = {};
+  const secondController = {};
 
-  assert.equal(activation.start(31, 'modifier-shift'), true);
-  assert.equal(activation.start(32, 'modifier-shift'), false);
-  assert.equal(activation.end(32, 'modifier-shift', 100), null);
-  assert.equal(activation.end(31, 'modifier-ctrl', 100), null);
+  assert.equal(activation.start(31, 'modifier-shift', firstController, 0, 0), true);
+  assert.equal(activation.move(32, 20, 0), false);
+  assert.equal(activation.move(31, 7, 0), false);
+  assert.equal(activation.move(31, 8, 0), true);
+  assert.equal(activation.end(31, 'modifier-shift', 100), true);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-shift',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 31,
+    pointerType: 'touch',
+    timestamp: 100,
+  }), { kind: 'suppress' });
 
-  assert.equal(activation.start(33, 'modifier-shift'), true);
-  assert.equal(activation.cancel(34), false);
-  assert.equal(activation.cancel(33), true);
-  assert.equal(activation.end(33, 'modifier-shift', 150), null);
+  assert.equal(activation.start(32, 'modifier-shift', firstController, 0, 0), true);
+  assert.equal(activation.end(32, 'modifier-ctrl', 150), true);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-ctrl',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 32,
+    pointerType: 'touch',
+    timestamp: 150,
+  }), { kind: 'suppress' });
 
-  assert.equal(activation.start(34, 'modifier-shift'), true);
-  assert.equal(
-    activation.end(34, 'modifier-shift', 200),
-    'modifier-shift',
-  );
-  assert.equal(activation.start(35, 'modifier-shift'), true);
-  assert.equal(
-    activation.end(35, 'modifier-shift', 250),
-    'modifier-shift',
-  );
-  assert.equal(activation.shouldSuppressClick(251, 2), true);
+  assert.equal(activation.start(33, 'modifier-alt', firstController, 0, 0), true);
+  assert.equal(activation.cancel(34, 175), false);
+  assert.equal(activation.cancel(33, 175), true);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-alt',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 33,
+    pointerType: 'touch',
+    timestamp: 175,
+  }), { kind: 'suppress' });
+
+  assert.equal(activation.start(34, 'modifier-ctrl', firstController, 0, 0), true);
+  assert.equal(activation.end(34, 'modifier-ctrl', 200), true);
+  assert.equal(activation.start(35, 'modifier-alt', secondController, 0, 0), true);
+  assert.equal(activation.end(35, 'modifier-alt', 250), true);
+  assert.deepEqual(activation.consumeClick({
+    action: null,
+    detail: 1,
+    isControlTarget: false,
+    pointerId: 35,
+    pointerType: 'touch',
+    timestamp: 250,
+  }), { kind: 'activate', action: 'modifier-alt', context: secondController });
+  assert.equal(activation.consumeClick({
+    action: 'modifier-ctrl',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 34,
+    pointerType: 'touch',
+    timestamp: 251,
+  }), null);
+
+  activation.start(36, 'modifier-shift', firstController, 0, 0);
+  activation.invalidate();
+  assert.equal(activation.end(36, 'modifier-shift', 10000), false);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-shift',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: 36,
+    pointerType: 'touch',
+    timestamp: 10000,
+  }), { kind: 'suppress' });
+});
+
+test('touch click fallback distinguishes legacy touch, real mouse, and accessibility', async () => {
+  const { TouchControlActivationGuard } = await terminalInputModule;
+  const activation = new TouchControlActivationGuard();
+  const controller = {};
+
+  activation.start(41, 'modifier-ctrl', controller, 0, 0);
+  activation.end(41, 'modifier-ctrl', 300);
+  assert.equal(activation.consumeClick({
+    action: 'modifier-ctrl',
+    detail: 0,
+    isControlTarget: true,
+    pointerId: -1,
+    pointerType: '',
+    timestamp: 301,
+  }), null);
+  assert.equal(activation.consumeClick({
+    action: 'modifier-ctrl',
+    detail: 1,
+    firesTouchEvents: false,
+    isControlTarget: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    timestamp: 302,
+  }), null);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-ctrl',
+    detail: 1,
+    isControlTarget: true,
+    pointerId: null,
+    pointerType: '',
+    timestamp: 303,
+  }), { kind: 'activate', action: 'modifier-ctrl', context: controller });
+
+  activation.start(42, 'modifier-alt', controller, 0, 0);
+  activation.end(42, 'modifier-alt', 400);
+  assert.deepEqual(activation.consumeClick({
+    action: 'modifier-alt',
+    detail: 0,
+    isControlTarget: true,
+    pointerId: 42,
+    pointerType: 'touch',
+    timestamp: 400,
+  }), { kind: 'activate', action: 'modifier-alt', context: controller });
+
+  activation.start(43, 'modifier-shift', controller, 50, 60);
+  activation.end(43, 'modifier-shift', 500, 50, 60);
+  assert.deepEqual(activation.consumeClick({
+    action: null,
+    clientX: 51,
+    clientY: 60,
+    detail: 1,
+    isControlTarget: false,
+    pointerId: null,
+    pointerType: '',
+    timestamp: 501,
+  }), { kind: 'activate', action: 'modifier-shift', context: controller });
 });

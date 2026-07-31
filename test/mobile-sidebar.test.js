@@ -150,49 +150,49 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
 
   assert.match(terminalScript, /import\('\/static\/js\/terminal-input\.mjs'\)/);
+  assert.match(terminalScript, /\bMobileTerminalFocusManager\b/);
   assert.match(terminalScript, /new TouchControlActivationGuard\(\)/);
   assert.match(terminalScript, /import\('\/static\/js\/clipboard-reader\.mjs'\)/);
   assert.match(terminalScript, /encodeMobileTerminalKey\(/);
   assert.match(terminalScript, /transformMobileTerminalInput\(/);
   assert.match(terminalScript, /this\.terminal\.modes\.applicationCursorKeysMode/);
-  assert.match(terminalScript, /this\.terminal\.input\(input\)/);
-  assert.doesNotMatch(
-    terminalScript,
-    /this\.terminal\.input\(input\);\s*this\.terminal\.focus\(\)/,
-  );
+  assert.match(terminalScript, /inputTerminalProgrammatically = \(data\)/);
+  assert.match(terminalScript, /this\.terminal\.input\(data\)/);
+  assert.match(terminalScript, /pasteTerminalProgrammatically = \(text\)/);
+  assert.match(terminalScript, /this\.terminal\.paste\(text\)/);
+  assert.match(terminalScript, /this\.programmaticInputDepth > 0 \? \{\} : this\.mobileModifiers/);
   assert.match(terminalScript, /readClipboardContent\(navigator\.clipboard\)/);
-  assert.match(terminalScript, /this\.terminal\.paste\(clipboardContent\.text\)/);
+  assert.match(terminalScript, /this\.pasteTerminalProgrammatically\(clipboardContent\.text\)/);
   assert.match(
     terminalScript,
-    /this\.uploadClipboardImage\(\s*clipboardContent\.image,\s*clipboardContent\.contentType,/s,
+    /await this\.uploadClipboardImage\(\s*clipboardContent\.image,\s*clipboardContent\.contentType,/s,
   );
-  const pasteHandler = terminalScript.slice(
-    terminalScript.indexOf('pasteClipboard = async'),
-    terminalScript.indexOf('copySelection =', terminalScript.indexOf('pasteClipboard = async')),
+  const pasteRequest = terminalScript.slice(
+    terminalScript.indexOf('requestClipboardPaste ='),
+    terminalScript.indexOf('applyClipboardContent ='),
   );
-  assert.doesNotMatch(pasteHandler, /this\.terminal\.focus\(\)/);
-  assert.match(
-    terminalScript,
-    /toggleMobileModifier = \(modifier\) => \{/,
+  assert.ok(
+    pasteRequest.indexOf('readClipboardContent(navigator.clipboard)')
+      < pasteRequest.indexOf('this.enqueueClipboardOperation'),
+    'clipboard permission must be requested synchronously before ordered application',
   );
+  assert.match(terminalScript, /this\.clipboardOperationQueue = this\.clipboardOperationQueue\s*\.then/);
+  assert.doesNotMatch(pasteRequest, /this\.terminal\.focus\(\)/);
+
   const modifierToggle = terminalScript.slice(
     terminalScript.indexOf('toggleMobileModifier ='),
     terminalScript.indexOf('clearMobileModifiers ='),
   );
-  const modifierActivation = modifierToggle.slice(
-    modifierToggle.indexOf('this.terminal.focus()'),
+  assert.match(modifierToggle, /this\.mobileModifiers\[modifier\] = !this\.mobileModifiers\[modifier\]/);
+  assert.ok(
+    modifierToggle.indexOf('this.mobileModifiers[modifier] =')
+      < modifierToggle.indexOf('updateMobileTerminalControls()'),
+    'ARIA state must update before keyboard focus moves',
   );
-  const modifierDeactivation = modifierToggle.slice(
-    0,
-    modifierToggle.indexOf('this.terminal.focus()'),
-  );
-  assert.match(modifierActivation, /this\.mobileModifiers\[modifier\] = true/);
-  assert.doesNotMatch(modifierDeactivation, /this\.terminal\.focus\(\)/);
-  assert.match(modifierDeactivation, /this\.terminal\.blur\(\)/);
-  assert.match(
-    modifierToggle,
-    /if \(modifier === 'shift'\) \{\s*this\.terminal\.blur\(\);\s*\} else \{\s*this\.terminal\.focus\(\);/s,
-  );
+  assert.match(modifierToggle, /if \(!manageKeyboard\) \{\s*return;/s);
+  assert.match(modifierToggle, /mobileModifiersNeedKeyboard\(this\.mobileModifiers\)/);
+  assert.match(modifierToggle, /this\.openMobileKeyboard\(\)/);
+  assert.match(modifierToggle, /this\.closeMobileKeyboard\(\)/);
   assert.match(
     terminalScript,
     /this\.mobileModifiers = \{ ctrl: false, shift: false, alt: false \}/,
@@ -206,40 +206,64 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
     terminalScript.indexOf('this.inputDisposable ='),
     terminalScript.indexOf('this.binaryDisposable ='),
   );
+  assert.ok(
+    inputHandler.indexOf('this.mobileFocus.shouldSuppressInput(data)')
+      < inputHandler.indexOf('transformMobileTerminalInput'),
+    'internal focus reports must be dropped before modifier transformation and send',
+  );
   assert.match(
     inputHandler,
-    /this\.send\([^;]+;\s*if \(transformedInput\.consumed\) \{[^}]*this\.clearMobileModifiers\(\);[^}]*this\.terminal\.blur\(\);/s,
+    /this\.send\([^;]+;\s*if \(transformedInput\.consumed\) \{[^}]*this\.clearMobileModifiers\(\);[^}]*this\.closeMobileKeyboard\(\);/s,
   );
+  assert.match(terminalScript, /resetMobileInput\(\{ closeKeyboard: mobileLayoutQuery\.matches \}\)/);
+  assert.match(terminalScript, /touchControlActivation\.invalidate\(\)/);
   assert.match(terminalScript, /mobileTerminalControls\.hidden = !hasActiveTerminal/);
   assert.match(terminalScript, /button\.disabled = !controlsEnabled/);
   assert.match(terminalScript, /mobileLayoutQuery\.addEventListener\('change'/);
 });
 
-test('mobile controls activate once per touch while retaining click fallback', () => {
+test('mobile controls preserve focus and activate one matched click per touch', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const controlHandlers = terminalScript.slice(
-    terminalScript.indexOf("mobileTerminalControls.addEventListener('pointerdown'"),
+    terminalScript.indexOf("document.addEventListener('pointerdown'"),
     terminalScript.indexOf("mobileLayoutQuery.addEventListener('change'"),
   );
 
-  assert.match(controlHandlers, /mobileTerminalControls\.addEventListener\('pointerdown'/);
+  assert.match(controlHandlers, /document\.addEventListener\('pointerdown'/);
+  assert.match(controlHandlers, /document\.addEventListener\('pointermove'/);
   assert.match(controlHandlers, /document\.addEventListener\('pointerup'/);
   assert.match(controlHandlers, /document\.addEventListener\('pointercancel'/);
-  assert.match(controlHandlers, /mobileTerminalControls\.addEventListener\('click'/);
+  assert.match(controlHandlers, /document\.addEventListener\('mousedown'/);
+  assert.match(controlHandlers, /document\.addEventListener\('click'/);
   assert.match(
     controlHandlers,
-    /touchControlActivation\.start\(event\.pointerId, mobileControlAction\(event\.target\)\)/,
+    /touchControlActivation\.start\(\s*event\.pointerId,\s*action,\s*activeController,\s*event\.clientX,\s*event\.clientY,/s,
   );
+  const pointerDown = controlHandlers.slice(
+    0,
+    controlHandlers.indexOf("document.addEventListener('pointermove'"),
+  );
+  assert.match(pointerDown, /event\.preventDefault\(\)/);
+  assert.match(controlHandlers, /touchControlActivation\.move\(event\.pointerId/);
+  assert.match(controlHandlers, /document\.elementFromPoint\(event\.clientX, event\.clientY\)/);
   assert.match(
     controlHandlers,
-    /touchControlActivation\.end\([\s\S]*event\.pointerId,[\s\S]*mobileControlAction\(event\.target\),[\s\S]*event\.timeStamp/,
+    /touchControlActivation\.end\(\s*event\.pointerId,\s*mobileControlTargetAction\(releaseTarget\),\s*event\.timeStamp,/s,
   );
-  assert.match(controlHandlers, /touchControlActivation\.cancel\(event\.pointerId\)/);
+  const pointerUp = controlHandlers.slice(
+    controlHandlers.indexOf("document.addEventListener('pointerup'"),
+    controlHandlers.indexOf("document.addEventListener('pointercancel'"),
+  );
+  assert.doesNotMatch(pointerUp, /event\.preventDefault\(\)/);
+  assert.match(controlHandlers, /touchControlActivation\.cancel\(event\.pointerId, event\.timeStamp\)/);
+  assert.match(controlHandlers, /touchControlActivation\.consumeClick\(\{/);
+  assert.match(controlHandlers, /event\.stopPropagation\(\)/);
   assert.match(
     controlHandlers,
-    /touchControlActivation\.shouldSuppressClick\(event\.timeStamp, event\.detail\)/,
+    /activateMobileControl\(touchClick\.action, touchClick\.context, \{ manageKeyboard: true \}\)/,
   );
-  assert.match(controlHandlers, /event\.preventDefault\(\);[\s\S]*activateMobileControl\(action\)/);
+  assert.match(controlHandlers, /const isNonPointingActivation = event\.detail === 0/);
+  assert.match(controlHandlers, /manageKeyboard: !isNonPointingActivation/);
 });
 
 test('terminal uses compact mobile text and refits across the breakpoint', () => {
@@ -307,7 +331,7 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
   );
   assert.match(
     touchHandlers,
-    /if \(outcome === 'tap' && this\.ready\)[\s\S]*this\.terminal\.textarea[\s\S]*document\.activeElement === textarea[\s\S]*this\.terminal\.blur\(\);[\s\S]*this\.terminal\.focus\(\);/,
+    /if \(outcome === 'tap' && this\.ready\) \{\s*this\.mobileFocus\.focusFromTerminalTap\(\);\s*\}/,
   );
   assert.match(touchHandlers, /this\.armTouchScrollClickSuppression\(\)/);
   assert.doesNotMatch(touchHandlers, /this\.terminal\.input\(/);
