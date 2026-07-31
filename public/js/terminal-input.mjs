@@ -69,12 +69,12 @@ export class TouchScrollGesture {
 
   end(pointerId) {
     if (this.pointerId === null || pointerId !== this.pointerId) {
-      return false;
+      return null;
     }
 
-    const recognized = this.axis !== 'pending';
+    const outcome = this.axis === 'pending' ? 'tap' : 'gesture';
     this.reset();
-    return recognized;
+    return outcome;
   }
 
   cancel(pointerId = this.pointerId) {
