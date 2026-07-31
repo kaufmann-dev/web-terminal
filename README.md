@@ -236,10 +236,12 @@ or control unrelated native Wayland windows.
   including when combined with Shift; Shift alone keeps it closed for combinations such as
   Shift+Tab. Tapping an armed modifier toggles it off, and consuming a modifier clears all armed
   modifiers and closes the keyboard. Every physical touch activates its control exactly once,
-  while intentional repeated taps remain repeatable. The other controls leave terminal focus
-  unchanged and never summon the keyboard. Toolbar-managed keyboard transitions do not send focus
-  reports to terminal applications. A stationary tap on a ready terminal opens or reopens the
-  software keyboard on the first tap. A one-finger vertical drag scrolls xterm's retained
+  while intentional repeated taps remain repeatable. Momentary controls briefly blink after a
+  successful activation; modifier controls instead retain their armed styling. The other controls
+  leave terminal focus unchanged and never summon the keyboard. Toolbar-managed keyboard
+  transitions do not send focus reports to terminal applications. A stationary tap on a ready
+  terminal opens or reopens the software keyboard on the first tap. A one-finger vertical drag
+  scrolls xterm's retained
   normal-screen history directly, without momentum or sending mouse or key input to
   alternate-screen programs; pinch-to-zoom remains available.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief

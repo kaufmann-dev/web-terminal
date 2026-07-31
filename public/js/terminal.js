@@ -441,17 +441,16 @@
     };
 
     toggleMobileModifier = (modifier, { manageKeyboard = true } = {}) => {
-      this.mobileModifiers[modifier] = !this.mobileModifiers[modifier];
-      updateMobileTerminalControls();
-      if (!manageKeyboard) {
+      const updateModifier = () => {
+        this.mobileModifiers[modifier] = !this.mobileModifiers[modifier];
+        updateMobileTerminalControls();
+        return mobileModifiersNeedKeyboard(this.mobileModifiers);
+      };
+      if (manageKeyboard) {
+        this.mobileFocus.transitionKeyboard(updateModifier);
         return;
       }
-
-      if (mobileModifiersNeedKeyboard(this.mobileModifiers)) {
-        this.openMobileKeyboard();
-      } else {
-        this.closeMobileKeyboard();
-      }
+      updateModifier();
     };
 
     clearMobileModifiers = () => {
@@ -1260,7 +1259,23 @@
   ) => {
     if (action && controller && controller === activeController) {
       controller.handleMobileControl(action, options);
+      return true;
     }
+    return false;
+  };
+  const showMobileControlFeedback = (target, action) => {
+    const button = mobileControlButton(target);
+    if (
+      !button
+      || button.disabled
+      || button.dataset.terminalControl !== action
+      || button.dataset.terminalModifier
+    ) {
+      return;
+    }
+    button.classList.remove('is-feedback-active');
+    void button.offsetWidth;
+    button.classList.add('is-feedback-active');
   };
   document.addEventListener('pointerdown', (event) => {
     if (!event.isPrimary) {
@@ -1330,8 +1345,15 @@
     if (touchClick) {
       event.preventDefault();
       event.stopPropagation();
-      if (touchClick.kind === 'activate') {
-        activateMobileControl(touchClick.action, touchClick.context, { manageKeyboard: true });
+      if (
+        touchClick.kind === 'activate'
+        && activateMobileControl(
+          touchClick.action,
+          touchClick.context,
+          { manageKeyboard: true },
+        )
+      ) {
+        showMobileControlFeedback(event.target, touchClick.action);
       }
       return;
     }
@@ -1345,10 +1367,19 @@
     if (isNonPointingActivation) {
       touchControlActivation.reset();
     }
-    activateMobileControl(action, activeController, {
+    if (activateMobileControl(action, activeController, {
       manageKeyboard: !isNonPointingActivation,
-    });
+    })) {
+      showMobileControlFeedback(event.target, action);
+    }
   }, true);
+  const clearMobileControlFeedback = (event) => {
+    if (event.animationName === 'mobile-terminal-key-feedback') {
+      mobileControlButton(event.target)?.classList.remove('is-feedback-active');
+    }
+  };
+  mobileTerminalControls.addEventListener('animationend', clearMobileControlFeedback);
+  mobileTerminalControls.addEventListener('animationcancel', clearMobileControlFeedback);
   mobileLayoutQuery.addEventListener('change', (event) => {
     touchControlActivation.invalidate();
     if (activeController) {
