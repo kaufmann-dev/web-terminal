@@ -226,6 +226,10 @@ test('mobile logout is available only inside the open session sidebar', () => {
   assert.doesNotMatch(mobileLogoutStyles[0], /(?:^|\s)(?:height|line-height):/);
   assert.match(
     mobileStyles,
+    /\.mobile-logout-btn\s*\{[^}]*height:\s*32px;/s,
+  );
+  assert.match(
+    mobileStyles,
     /\.sessions-open \.mobile-logout-btn\s*\{[^}]*display:\s*inline-flex;/s,
   );
   assert.match(terminalScript, /document\.querySelectorAll\('\[data-logout\]'\)/);

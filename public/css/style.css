@@ -625,6 +625,10 @@ body.dark {
     transform: translateX(0);
   }
 
+  .mobile-logout-btn {
+    height: 32px;
+  }
+
   .sessions-open .mobile-logout-btn {
     display: inline-flex;
   }
