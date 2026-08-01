@@ -218,10 +218,12 @@ test('mobile logout is available only inside the open session sidebar', () => {
 
   assert.match(header, /id="logout-btn"[^>]*data-logout/);
   assert.match(sidebar, /id="mobile-logout-btn"[^>]*data-logout/);
-  assert.match(
-    stylesheet,
-    /\.mobile-logout-btn\s*\{[^}]*display:\s*none;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*height:\s*32px;[^}]*line-height:\s*1;/s,
-  );
+  const mobileLogoutStyles = stylesheet.match(/\.mobile-logout-btn\s*\{[^}]*\}/s);
+  assert.ok(mobileLogoutStyles, 'expected mobile Logout styles');
+  assert.match(mobileLogoutStyles[0], /display:\s*none;/);
+  assert.match(mobileLogoutStyles[0], /align-items:\s*center;/);
+  assert.match(mobileLogoutStyles[0], /justify-content:\s*center;/);
+  assert.doesNotMatch(mobileLogoutStyles[0], /(?:^|\s)(?:height|line-height):/);
   assert.match(
     mobileStyles,
     /\.sessions-open \.mobile-logout-btn\s*\{[^}]*display:\s*inline-flex;/s,
