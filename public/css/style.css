@@ -354,8 +354,6 @@ body.dark {
   display: none;
   align-items: center;
   justify-content: center;
-  height: 32px;
-  line-height: 1;
 }
 
 .session-sidebar h1 {
