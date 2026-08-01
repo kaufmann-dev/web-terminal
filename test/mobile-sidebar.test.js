@@ -218,7 +218,10 @@ test('mobile logout is available only inside the open session sidebar', () => {
 
   assert.match(header, /id="logout-btn"[^>]*data-logout/);
   assert.match(sidebar, /id="mobile-logout-btn"[^>]*data-logout/);
-  assert.match(stylesheet, /\.mobile-logout-btn\s*\{[^}]*display:\s*none;/s);
+  assert.match(
+    stylesheet,
+    /\.mobile-logout-btn\s*\{[^}]*display:\s*none;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*height:\s*32px;[^}]*line-height:\s*1;/s,
+  );
   assert.match(
     mobileStyles,
     /\.sessions-open \.mobile-logout-btn\s*\{[^}]*display:\s*inline-flex;/s,
@@ -231,6 +234,10 @@ test('mobile logout is available only inside the open session sidebar', () => {
   assert.match(
     terminalScript,
     /for \(const button of logoutButtons\) \{\s*button\.addEventListener\('click', logout\);/s,
+  );
+  assert.match(
+    terminalView,
+    /<p class="session-name-hint">Lowercase letters, numbers and hyphens are allowed\.<\/p>/,
   );
 });
 
