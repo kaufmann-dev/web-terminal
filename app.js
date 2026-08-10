@@ -59,11 +59,12 @@ function createTerminalEnvironment({
     XDG_DATA_HOME: path.join(terminalHome, '.local', 'share'),
     XDG_CACHE_HOME: path.join(terminalHome, '.cache'),
     PATH: [
-      path.join(__dirname, 'node_modules', '.bin'),
       path.join(terminalHome, '.local', 'bin'),
+      path.join(__dirname, 'node_modules', '.bin'),
       '/usr/local/bin',
       process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
     ].join(path.delimiter),
+    NPM_CONFIG_PREFIX: path.join(terminalHome, '.local'),
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     EDITOR: process.env.EDITOR || 'micro',
