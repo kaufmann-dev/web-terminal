@@ -238,7 +238,7 @@ test('WebSocket input activity is debounced and heartbeat expiry closes only the
   assert.equal((await getStoredSessions(service.sessionStore)).length, 0);
 });
 
-test('terminal PATH includes locally installed image commands', () => {
+test('terminal uses a persistent user npm prefix ahead of bundled image commands', () => {
   const originalPath = process.env.PATH;
   process.env.PATH = '/opt/toolchain/bin:/usr/bin';
   try {
@@ -247,11 +247,12 @@ test('terminal PATH includes locally installed image commands', () => {
       terminalWorkdir: '/terminal-workdir',
     });
     assert.deepEqual(environment.PATH.split(path.delimiter).slice(0, 4), [
-      path.join(__dirname, '..', 'node_modules', '.bin'),
       '/terminal-home/.local/bin',
+      path.join(__dirname, '..', 'node_modules', '.bin'),
       '/usr/local/bin',
       '/opt/toolchain/bin',
     ]);
+    assert.equal(environment.NPM_CONFIG_PREFIX, '/terminal-home/.local');
   } finally {
     process.env.PATH = originalPath;
   }
@@ -492,6 +493,18 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   assert.match(podmanContainers, /^rootless_port_forwarder = "rootlessport"$/m);
 
   assert.match(startupScript, /\{\{\.Host\.DatabaseBackend\}\}/);
+  assert.match(
+    startupScript,
+    /readonly TERMINAL_PATH="\$TERMINAL_HOME_VALUE\/\.local\/bin:\$APP_ROOT\/node_modules\/\.bin:/,
+  );
+  assert.match(
+    startupScript,
+    /readonly NPM_CONFIG_PREFIX_VALUE="\$TERMINAL_HOME_VALUE\/\.local"/,
+  );
+  assert.match(
+    startupScript,
+    /"NPM_CONFIG_PREFIX=\$NPM_CONFIG_PREFIX_VALUE"/,
+  );
   assert.match(startupScript, /\{\{\.Host\.NetworkBackend\}\}/);
   assert.match(startupScript, /\{\{\.Host\.RootlessNetworkCmd\}\}/);
   assert.match(startupScript, /\{\{\.Host\.RootlessPortForwarder\}\}/);

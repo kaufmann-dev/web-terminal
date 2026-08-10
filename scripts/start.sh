@@ -17,7 +17,8 @@ readonly XDG_RUNTIME_DIR_VALUE="/tmp/web-terminal-runtime-$RUNTIME_UID"
 readonly REGISTRY_AUTH_FILE_VALUE="$XDG_CONFIG_HOME_VALUE/containers/auth.json"
 readonly PODMAN_API_SOCKET="$XDG_RUNTIME_DIR_VALUE/podman/podman.sock"
 readonly DOCKER_HOST_VALUE="unix://$PODMAN_API_SOCKET"
-readonly TERMINAL_PATH="$APP_ROOT/node_modules/.bin:$TERMINAL_HOME_VALUE/.local/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+readonly TERMINAL_PATH="$TERMINAL_HOME_VALUE/.local/bin:$APP_ROOT/node_modules/.bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+readonly NPM_CONFIG_PREFIX_VALUE="$TERMINAL_HOME_VALUE/.local"
 readonly WEB_TERMINAL_STATE_DIR="$TERMINAL_HOME_VALUE/.local/state/web-terminal"
 readonly OWNERSHIP_MIGRATION_MARKER="$WEB_TERMINAL_STATE_DIR/uid-1000-v1"
 readonly PODMAN_CONTAINERS_CONF="/etc/containers/web-terminal-containers.conf"
@@ -69,6 +70,7 @@ run_in_terminal_environment() {
     "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR_VALUE" \
     "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE_VALUE" \
     "PATH=$TERMINAL_PATH" \
+    "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX_VALUE" \
     "${terminal_identity_environment[@]}" \
     "EDITOR=${EDITOR:-micro}" \
     "VISUAL=${VISUAL:-micro}" \

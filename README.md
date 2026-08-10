@@ -147,10 +147,11 @@ The terminal includes:
 - `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
-The browser terminal PATH starts with `/app/node_modules/.bin` and `~/.local/bin`, explicitly
+The browser terminal PATH starts with `~/.local/bin` and `/app/node_modules/.bin`, explicitly
 includes `/usr/local/bin` for Git Wrangler and the stable Node command links, and then preserves the
-native CentOS image PATH. Locked npm commands, user scripts stored on `/code`, Git Wrangler, and DNF
-packages are all callable.
+native CentOS image PATH. npm's global prefix is `~/.local`, so user-installed commands stored on
+`/code` override locked image commands and survive redeployments. Locked npm commands remain
+available as fallbacks alongside Git Wrangler and DNF packages.
 
 Nixpacks can inspect or emit build contexts for other projects, and the bundled Podman can build
 and run them directly. This application itself is built by its Dockerfile and has no Nix runtime.
@@ -197,8 +198,15 @@ receives the native `/etc/fonts` Fontconfig configuration automatically, so ordi
 `agent-browser open`, `snapshot`, and `close` commands work. Use persistent profile or state
 options only when a task needs browser login state to survive.
 
-Do not reinstall Codex or OpenCode with a runtime installer. Their exact versions are already in
-the deployment image and available immediately as `codex` and `opencode`.
+Codex and OpenCode have exact versions in the deployment image and are available immediately as
+`codex` and `opencode`. To manually install newer releases into the persistent user prefix, run:
+
+```bash
+npm install --global @openai/codex@latest opencode-ai@latest
+```
+
+The user-installed commands take precedence over the image copies. Run
+`npm uninstall --global @openai/codex opencode-ai` to return to the bundled versions.
 
 For an X11-only GUI command, start it with `xwfb-run`; the wrapper creates a dedicated headless
 Cage/Xwayland session. xdotool can automate X11 clients launched in that session. It cannot inspect
@@ -321,8 +329,9 @@ documented for Coolify.
   `TERMINAL_WORKDIR` and `TERMINAL_HOME` are absolute, writable directories.
 - **Sessions disappeared after deployment:** This is expected when the application process or
   container restarts; only files stored on a persistent volume survive redeployment.
-- **`codex: command not found`:** Redeploy the latest image and run `command -v codex`. Do not use
-  the standalone installer; the bundled command comes from `/app/node_modules/.bin`.
+- **`codex: command not found`:** Run `command -v codex`. A user-installed copy comes from
+  `~/.local/bin`; the bundled fallback comes from `/app/node_modules/.bin`. Redeploy the latest
+  image if neither is available.
 - **Agent-browser reports a Fontconfig error or loses Chromium:** Redeploy the latest image and
   verify `FONTCONFIG_FILE=/etc/fonts/fonts.conf`, `FONTCONFIG_PATH=/etc/fonts`, and
   `command -v chromium-browser`. Do not run agent-browser's browser installer.
