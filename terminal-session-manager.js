@@ -210,6 +210,7 @@ class TerminalSessionManager {
       socket,
       loginSessionId,
       ready: false,
+      restoreBufferedBytes: 0,
     };
     session.client = client;
 
@@ -231,6 +232,7 @@ class TerminalSessionManager {
       if (!this._sendBinary(session, client, Buffer.from(snapshot, 'utf8'))) {
         return;
       }
+      client.restoreBufferedBytes = socket.bufferedAmount;
       if (!this._sendJson(session, client, { type: 'ready' })) {
         return;
       }
@@ -428,7 +430,20 @@ class TerminalSessionManager {
     if (session.client !== client || socket.readyState !== 1) {
       return false;
     }
-    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
+
+    // A bounded reconnect snapshot can itself exceed the live-output limit. Preserve that
+    // one-time backlog as an allowance until it drains, while still capping newer output.
+    if (socket.bufferedAmount <= MAX_BUFFERED_BYTES) {
+      client.restoreBufferedBytes = 0;
+    } else if (client.restoreBufferedBytes > 0) {
+      client.restoreBufferedBytes = Math.min(
+        client.restoreBufferedBytes,
+        socket.bufferedAmount,
+      );
+    }
+
+    const bufferedLimit = MAX_BUFFERED_BYTES + client.restoreBufferedBytes;
+    if (socket.bufferedAmount > bufferedLimit) {
       this._closeClient(
         session,
         client,

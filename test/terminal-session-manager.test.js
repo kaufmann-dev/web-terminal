@@ -6,6 +6,7 @@ const test = require('node:test');
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
 const {
+  MAX_BUFFERED_BYTES,
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
   isValidTerminalSize,
@@ -59,16 +60,20 @@ class FakePty {
 }
 
 class FakeSocket extends EventEmitter {
-  constructor() {
+  constructor({ retainBufferedWrites = false } = {}) {
     super();
     this.readyState = 1;
     this.bufferedAmount = 0;
     this.sent = [];
     this.closed = null;
+    this.retainBufferedWrites = retainBufferedWrites;
   }
 
   send(data, options = {}) {
     this.sent.push({ data, binary: Boolean(options.binary) });
+    if (this.retainBufferedWrites) {
+      this.bufferedAmount += Buffer.byteLength(data);
+    }
   }
 
   close(code, reason) {
@@ -154,6 +159,34 @@ test('orders PTY output, restores snapshots, and streams live bytes', async () =
     binaryMessages(socket).slice(1).map((data) => data.toString('utf8')),
     ['A', 'B'],
   );
+  await manager.deleteSession('main');
+});
+
+test('large reconnect snapshots do not trigger the live-output backpressure limit', async () => {
+  const { manager, ptys } = createFakeManager();
+  manager.createSession('main');
+  const session = manager.sessions.get('main');
+  const snapshot = 'x'.repeat(MAX_BUFFERED_BYTES + 1);
+  session.serializeAddon.serialize = () => snapshot;
+
+  const socket = new FakeSocket({ retainBufferedWrites: true });
+  assert.equal(await manager.attachClient('main', socket, 'login-1', 80, 24), true);
+  assert.equal(socket.closed, null);
+  assert.deepEqual(
+    socket.sent.filter((message) => !message.binary).map((message) => JSON.parse(message.data)),
+    [{ type: 'snapshot' }, { type: 'ready' }],
+  );
+  assert.equal(binaryMessages(socket)[0].toString('utf8'), snapshot);
+
+  socket.bufferedAmount = 0;
+  ptys[0].emitData('after restore');
+  await session.queue;
+  assert.equal(socket.closed, null);
+
+  socket.bufferedAmount = MAX_BUFFERED_BYTES + 1;
+  ptys[0].emitData('too much live output');
+  await session.queue;
+  assert.equal(socket.closed.code, SOCKET_CLOSE_CODES.CLIENT_TOO_SLOW);
   await manager.deleteSession('main');
 });
 
