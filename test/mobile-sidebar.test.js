@@ -17,6 +17,16 @@ function getMobileStyles(stylesheet) {
   return stylesheet.slice(start + mobileMediaQuery.length, end);
 }
 
+test('session-name input uses an iOS-safe font size', () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const terminalStyles = stylesheet.slice(stylesheet.indexOf('/* Terminal */'));
+
+  assert.match(
+    terminalStyles,
+    /\.session-form input\s*\{[^}]*font-size:\s*16px;/s,
+  );
+});
+
 test('mobile sidebar has no shadow while closed or open', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const mobileStyles = getMobileStyles(stylesheet);
