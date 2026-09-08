@@ -268,6 +268,7 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     OIDC_CLIENT_SECRET: 'secret-client',
     OIDC_PRIVATE_EXTENSION: 'private-value',
     SESSION_SECRET: 'secret-session',
+    ELEVENLABS_API_KEY: 'secret-voice',
     FONTCONFIG_FILE: '/etc/fonts/fonts.conf',
     FONTCONFIG_PATH: '/etc/fonts',
     LIBGL_DRIVERS_PATH: '/usr/lib64/dri',
@@ -321,6 +322,8 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(Object.hasOwn(environment, 'OIDC_CLIENT_SECRET'), false);
     assert.equal(Object.hasOwn(environment, 'OIDC_PRIVATE_EXTENSION'), false);
     assert.equal(Object.hasOwn(environment, 'SESSION_SECRET'), false);
+    assert.equal(Object.hasOwn(environment, 'ELEVENLABS_API_KEY'), false);
+    assert.equal(process.env.ELEVENLABS_API_KEY, 'secret-voice');
   } finally {
     for (const [name, value] of Object.entries(originals)) {
       if (value === undefined) {

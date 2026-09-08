@@ -15,12 +15,14 @@
     },
     { readClipboardContent },
     { bindTerminalSessionNameNormalization },
+    { VoiceRecorder, bindVoiceControls },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
     import('/static/js/terminal-input.mjs'),
     import('/static/js/clipboard-reader.mjs'),
     import('/static/js/session-name.mjs'),
+    import('/static/js/voice-recorder.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -64,6 +66,21 @@
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
   let mobileViewportSyncFrame = null;
+
+  const voice = new VoiceRecorder({
+    getTarget: () => activeController?.ready && !activeController.disposed
+      && activeController.socket?.readyState === WebSocket.OPEN
+      ? { controller: activeController, connection: activeController.socket } : null,
+    submit: (audio, signal) => apiRequest('/api/voice/transcriptions', {
+      method: 'POST', headers: { 'Content-Type': audio.type, 'CSRF-Token': csrfToken },
+      body: audio, signal,
+    }),
+    render: () => {},
+  });
+  voice.render = bindVoiceControls(document, voice);
+  voice.update();
+  window.addEventListener('pagehide', () => voice.cancel());
+  window.addEventListener('beforeunload', () => voice.cancel());
 
   function applyMobileViewportOffset() {
     mobileViewportSyncFrame = null;
@@ -110,6 +127,7 @@
     const response = await fetch(url, options);
 
     if (response.status === 401) {
+      voice.cancel();
       window.location.href = '/';
       throw new ApiError('Your login session has expired.', 401);
     }
@@ -153,6 +171,7 @@
   }
 
   function updateMobileTerminalControls() {
+    voice.update();
     const hasActiveTerminal = Boolean(activeController && !activeController.disposed);
     const controlsEnabled = hasActiveTerminal && activeController.ready;
     for (const button of mobileTerminalButtons) {
@@ -1026,6 +1045,7 @@
   }
 
   function disposeActiveController() {
+    voice.cancel();
     if (activeController) {
       activeController.dispose();
       activeController = null;
@@ -1234,6 +1254,7 @@
   }
 
   async function logout() {
+    voice.cancel();
     for (const button of logoutButtons) {
       button.disabled = true;
     }
@@ -1267,6 +1288,14 @@
       if (!csrfToken) {
         throw new Error('Unable to initialize request protection.');
       }
+
+      apiRequest('/api/voice').then((config) => {
+        voice.config = config;
+        voice.update();
+      }).catch(() => {
+        voice.config = { configured: false };
+        voice.update();
+      });
 
       const requestedSession = new URL(window.location.href).searchParams.get('session');
       await refreshSessions({ createDefault: true, preferredSession: requestedSession });
@@ -1454,6 +1483,7 @@
 
   window.addEventListener('online', reconnectActiveSessionNow);
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden) voice.cancel();
     touchControlActivation.invalidate();
     if (!document.hidden) {
       requestMobileViewportSync();

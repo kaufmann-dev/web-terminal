@@ -585,6 +585,48 @@ body.dark {
   display: none;
 }
 
+.voice-controls {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 64px;
+  gap: 4px;
+  height: 44px;
+  min-width: 0;
+  align-items: center;
+}
+
+.terminal-header > .voice-controls {
+  flex: 0 0 320px;
+  margin-left: auto;
+}
+
+.terminal-header-main { overflow: hidden; }
+.terminal-title { white-space: nowrap; }
+.mobile-terminal-controls > .voice-controls { grid-column: 1 / -1; }
+
+.voice-button {
+  height: 44px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-button:disabled { color: var(--muted); cursor: default; }
+.voice-button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
+.voice-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+[data-state="error"] .voice-status { color: var(--error); }
+
 @media (max-width: 720px) {
   .login-container {
     padding: 16px;
@@ -658,7 +700,7 @@ body.dark {
     display: grid;
     flex: 0 0 auto;
     grid-template-columns: repeat(8, minmax(0, 1fr));
-    grid-template-rows: repeat(2, 44px);
+    grid-template-rows: repeat(3, 44px);
     gap: 4px;
     width: 100%;
     min-width: 0;

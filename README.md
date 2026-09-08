@@ -82,6 +82,9 @@ Required:
 
 Optional:
 
+- `ELEVENLABS_API_KEY` — optional ElevenLabs key for Scribe v2 voice dictation. Keep it in the
+  application environment; it is excluded from PTY and chezmoi environments. Without it the app
+  starts normally with voice controls disabled.
 - `NODE_ENV` — defaults to `production`.
 - `TERMINAL_WORKDIR` — defaults to `/code`, where new terminal sessions start.
 - `TERMINAL_HOME` — defaults to `TERMINAL_WORKDIR`; controls `~` and persisted tool state.
@@ -90,8 +93,9 @@ Coolify supplies `PORT` automatically. Do not set a fixed application port.
 If you override it outside Coolify, use port 1024 or higher because the application runs as a
 non-root user.
 
-Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. Copy the generated client ID, client secret,
-and exact discovery issuer into the corresponding variables without exposing their values. Remove
+Keep `OIDC_CLIENT_SECRET`, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` secret. Copy the generated
+client ID, client secret, and exact discovery issuer into the corresponding variables without
+exposing their values. Remove
 `OIDC_ALLOWED_SUBJECT` from existing deployments; it is no longer supported.
 
 ### 3. Mount persistent storage
@@ -223,9 +227,10 @@ or control unrelated native Wayland windows.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
-  clipboard-image uploads, and accepted terminal input or paste extend the idle deadline. Polling,
-  CSRF retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health
-  checks, pushed updates, and merely leaving a tab open do not.
+  clipboard-image uploads, accepted transcription submissions, and accepted terminal input or paste
+  extend the idle deadline. Polling, voice availability checks, transcription processing, CSRF
+  retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health checks,
+  pushed updates, and merely leaving a tab open do not.
 - **Logout** destroys the local session and its retained ID token before navigating to the
   provider's RP-Initiated Logout endpoint. It may end provider-wide SSO when that is the provider's
   policy. Idle or absolute expiry destroys only the local session; the next access starts a new
@@ -241,7 +246,8 @@ or control unrelated native Wayland windows.
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
   control grid follows that top offset without moving or resizing the terminal. The mobile header
-  is removed, and 16 controls fill two non-scrolling rows of eight equal-width buttons. The first
+  is removed. An always-visible voice row sits above 16 controls in two non-scrolling rows of
+  eight equal-width buttons. All three rows are 44px high with 4px gaps and 6px outer padding. The first
   button opens the session sidebar, where Logout appears while the sidebar is open. The remaining
   buttons provide one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
   `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or Alt
@@ -258,6 +264,24 @@ or control unrelated native Wayland windows.
   scrolls xterm's retained
   normal-screen history directly, without momentum or sending mouse or key input to
   alternate-screen programs; pinch-to-zoom remains available.
+- **Mic** starts dictation; **Stop** sends the recording to ElevenLabs Scribe v2 and inserts cleaned
+  text once into the terminal where recording began. Press **Enter** yourself to execute. Scribe
+  detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks
+  and tabs become spaces and terminal control characters are removed. There is no transcript
+  editor or second processing call. Empty results show “No speech detected”.
+- Voice controls appear in the desktop header and the mobile voice row. They require a connected
+  terminal, HTTPS (or a secure localhost context), browser microphone permission, MediaRecorder,
+  and configured credentials. WebM/Opus, MP4/AAC, MP4, or Ogg/Opus is selected at runtime without
+  transcoding. Controls preserve the software keyboard's visibility and ignore armed modifiers.
+  **Cancel** discards recording or transcription. Hiding/leaving the page, logging out, changing
+  sessions, or disconnecting cancels pending work and releases the microphone; results never
+  replay after reconnecting.
+- Recordings automatically stop and submit at five minutes; recordings over 10 MiB are discarded.
+  Only one transcription per login session may run at a time, with a 60-second provider timeout
+  and no automatic retries. Web Terminal keeps audio in memory only for the operation and does
+  not save recordings or log transcripts. Audio is sent to ElevenLabs, whose own retention rules
+  apply; cancellation does not guarantee that already-submitted provider processing or billing
+  stops. See the [Scribe API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert).
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to

@@ -36,7 +36,7 @@ require_absolute_path() {
 }
 
 run_in_terminal_environment() {
-  local -a unset_environment=(-u SESSION_SECRET)
+  local -a unset_environment=(-u SESSION_SECRET -u ELEVENLABS_API_KEY)
   local -a podman_environment=()
   local -a terminal_identity_environment=()
   local environment_name
