@@ -39,7 +39,6 @@
   const createSessionBtn = document.getElementById('create-session-btn');
   const sessionList = document.getElementById('session-list');
   const sessionStatus = document.getElementById('session-status');
-  const activeSessionLabel = document.getElementById('active-session-label');
   const terminalHost = document.getElementById('terminal-host');
   const connectionStatus = document.getElementById('connection-status');
   const clipboardStatus = document.getElementById('clipboard-status');
@@ -1056,7 +1055,6 @@
   function showEmptyTerminal(message) {
     disposeActiveController();
     activeSessionName = null;
-    activeSessionLabel.textContent = '';
     terminalHost.hidden = true;
     setConnectionStatus('');
     setClipboardStatus('');
@@ -1074,7 +1072,6 @@
     if (activeSessionName !== name || !activeController) {
       disposeActiveController();
       activeSessionName = name;
-      activeSessionLabel.textContent = `/ ${name}`;
       terminalPlaceholder.hidden = true;
       terminalHost.hidden = false;
       activeController = new TerminalController(name, () => {

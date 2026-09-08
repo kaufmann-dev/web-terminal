@@ -59,7 +59,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles,
-    /\.terminal-header\s*\{[^}]*display:\s*none;[^}]*\}/s,
+    /\.sidebar-voice\s*\{[^}]*display:\s*none;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
@@ -157,7 +157,7 @@ test('mobile control group exposes a session toggle and fifteen terminal keys', 
   assert.ok(controlsMatch, 'expected the mobile terminal control group');
   assert.ok(
     controlsMatch.index > mainStart && controlsMatch.index < sidebarStart,
-    'controls must be the first content below the header',
+    'controls must be the first content in the main layout',
   );
   assert.match(controlsMatch[1], /\brole="group"/);
   assert.match(controlsMatch[1], /\baria-label="Terminal and session controls"/);
@@ -213,49 +213,21 @@ test('mobile control group exposes a session toggle and fifteen terminal keys', 
   }
 });
 
-test('mobile logout is available only inside the open session sidebar', () => {
+test('desktop and mobile share one sidebar and logout control without a top bar', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
-  const mobileStyles = getMobileStyles(stylesheet);
-  const header = terminalView.slice(
-    terminalView.indexOf('<header class="terminal-header">'),
-    terminalView.indexOf('<main class="terminal-main">'),
-  );
   const sidebar = terminalView.slice(
     terminalView.indexOf('<aside id="session-sidebar"'),
     terminalView.indexOf('<button id="sidebar-backdrop"'),
   );
-
-  assert.match(header, /id="logout-btn"[^>]*data-logout/);
-  assert.match(sidebar, /id="mobile-logout-btn"[^>]*data-logout/);
-  const mobileLogoutStyles = stylesheet.match(/\.mobile-logout-btn\s*\{[^}]*\}/s);
-  assert.ok(mobileLogoutStyles, 'expected mobile Logout styles');
-  assert.match(mobileLogoutStyles[0], /display:\s*none;/);
-  assert.match(mobileLogoutStyles[0], /align-items:\s*center;/);
-  assert.match(mobileLogoutStyles[0], /justify-content:\s*center;/);
-  assert.doesNotMatch(mobileLogoutStyles[0], /(?:^|\s)(?:height|line-height):/);
-  assert.match(
-    mobileStyles,
-    /\.mobile-logout-btn\s*\{[^}]*height:\s*32px;/s,
-  );
-  assert.match(
-    mobileStyles,
-    /\.sessions-open \.mobile-logout-btn\s*\{[^}]*display:\s*inline-flex;/s,
-  );
+  assert.doesNotMatch(terminalView, /<header|active-session-label|mobile-logout-btn/);
+  assert.equal([...terminalView.matchAll(/data-logout/g)].length, 1);
+  assert.match(sidebar, /id="logout-btn"[^>]*data-logout/);
+  assert.match(sidebar, /class="sidebar-voice"/);
+  assert.match(stylesheet, /\.btn-logout\s*\{[^}]*height:\s*32px;/s);
   assert.match(terminalScript, /document\.querySelectorAll\('\[data-logout\]'\)/);
-  assert.match(
-    terminalScript,
-    /sidebarToggle\.setAttribute\('aria-label', toggleLabel\);/,
-  );
-  assert.match(
-    terminalScript,
-    /for \(const button of logoutButtons\) \{\s*button\.addEventListener\('click', logout\);/s,
-  );
-  assert.match(
-    terminalView,
-    /<p class="session-name-hint">Lowercase letters, numbers and hyphens are allowed\.<\/p>/,
-  );
+  assert.match(terminalScript, /button\.addEventListener\('click', logout\)/);
 });
 
 test('mobile arrow controls use one consistent hardcoded SVG path', () => {
