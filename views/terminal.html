@@ -13,18 +13,6 @@
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="dark terminal-body">
-  <header class="terminal-header">
-    <div class="terminal-header-main">
-      <span class="terminal-title">terminal.kaufmann.dev</span>
-      <span id="active-session-label" class="active-session-label"></span>
-    </div>
-    <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
-        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
-        <span class="voice-status" data-voice-status>Checking voice availability…</span>
-        <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
-      </div>
-    <button id="logout-btn" class="btn-logout" type="button" data-logout title="Logout">Logout</button>
-  </header>
   <main class="terminal-main">
     <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal and session controls">
       <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
@@ -72,7 +60,7 @@
       <div class="session-sidebar-header">
         <h1>Sessions</h1>
         <div class="session-sidebar-actions">
-          <button id="mobile-logout-btn" class="btn-logout mobile-logout-btn" type="button" data-logout title="Logout">Logout</button>
+          <button id="logout-btn" class="btn-logout" type="button" data-logout title="Logout">Logout</button>
           <button id="sidebar-close" class="btn-icon sidebar-close" type="button" title="Hide terminal sessions">
             <span aria-hidden="true">×</span>
             <span class="sr-only">Hide terminal sessions</span>
@@ -91,6 +79,13 @@
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
       <p id="session-status" class="session-status" role="status" aria-live="polite"></p>
+      <div class="sidebar-voice">
+        <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
+          <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
+          <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
+          <span class="voice-status" data-voice-status>Checking voice availability…</span>
+        </div>
+      </div>
     </aside>
 
     <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Hide terminal sessions"></button>

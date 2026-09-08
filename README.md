@@ -220,7 +220,9 @@ or control unrelated native Wayland windows.
 
 - The first visit creates a session named `main`. Use the sidebar to create and switch between
   named sessions. Names contain 1–32 letters, numbers, or hyphens, start with a letter or number,
-  and convert uppercase letters to lowercase automatically.
+  and convert uppercase letters to lowercase automatically. Desktop uses a full-height terminal
+  beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
+  Logout button; mobile opens the sidebar with the menu button.
 - The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
   Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
@@ -245,10 +247,11 @@ or control unrelated native Wayland windows.
 - At widths of 720px or less, the terminal uses 12px text and follows the browser chrome with
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
-  control grid follows that top offset without moving or resizing the terminal. The mobile header
-  is removed. An always-visible voice row sits above 16 controls in two non-scrolling rows of
-  eight equal-width buttons. All three rows are 44px high with 4px gaps and 6px outer padding. The first
-  button opens the session sidebar, where Logout appears while the sidebar is open. The remaining
+  control grid follows that top offset without moving or resizing the terminal. An always-visible
+  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. Mic and
+  Cancel each match one button column, with status text spanning the six columns between them.
+  All three rows are 44px high with 4px gaps and 6px outer padding. The first button in the second
+  row opens the session sidebar, where Logout appears while the sidebar is open. The remaining
   buttons provide one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
   `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or Alt
   opens or reopens the software keyboard, including when combined with Shift. Shift
@@ -269,7 +272,7 @@ or control unrelated native Wayland windows.
   detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks
   and tabs become spaces and terminal control characters are removed. There is no transcript
   editor or second processing call. Empty results show “No speech detected”.
-- Voice controls appear in the desktop header and the mobile voice row. They require a connected
+- Voice controls sit at the bottom of the desktop sidebar and in the mobile voice row. They require a connected
   terminal, HTTPS (or a secure localhost context), browser microphone permission, MediaRecorder,
   and configured credentials. WebM/Opus, MP4/AAC, MP4, or Ogg/Opus is selected at runtime without
   transcoding. Controls preserve the software keyboard's visibility and ignore armed modifiers.
