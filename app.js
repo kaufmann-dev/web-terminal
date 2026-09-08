@@ -2,6 +2,8 @@
 
 require('dotenv').config({ quiet: true });
 
+const { AUDIO_TYPES, MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
+  cleanTranscript, createTranscriptionService } = require('./voice-transcription');
 const http = require('http');
 const path = require('path');
 const express = require('express');
@@ -92,6 +94,7 @@ function createTerminalEnvironment({
     }
   }
   delete terminalEnvironment.SESSION_SECRET;
+  delete terminalEnvironment.ELEVENLABS_API_KEY;
   delete terminalEnvironment.LC_ALL;
   return terminalEnvironment;
 }
@@ -201,6 +204,7 @@ function createWebTerminal(options = {}) {
   const configuredPublicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN;
   const configuredIssuerUrl = options.oidcIssuerUrl ?? process.env.OIDC_ISSUER_URL;
   const config = {
+    elevenlabsApiKey: options.elevenlabsApiKey ?? process.env.ELEVENLABS_API_KEY,
     oidcIssuerUrl: normalizeIssuerUrl(configuredIssuerUrl),
     oidcClientId: options.oidcClientId ?? process.env.OIDC_CLIENT_ID,
     oidcClientSecret: options.oidcClientSecret ?? process.env.OIDC_CLIENT_SECRET,
@@ -276,8 +280,6 @@ function createWebTerminal(options = {}) {
     crossOriginEmbedderPolicy: false,
   }));
   app.use(compression());
-  app.use(express.urlencoded({ extended: true }));
-  app.use(express.json());
 
   const sessionStore = new MemoryStore({
     checkPeriod: 60 * 60 * 1000,
@@ -327,6 +329,10 @@ function createWebTerminal(options = {}) {
   });
 
   const loginSockets = new Map();
+  const voiceRequests = new Map();
+  const transcribe = options.transcribe || createTranscriptionService({
+    apiKey: config.elevenlabsApiKey,
+  });
 
   function trackLoginSocket(loginSessionId, socket) {
     let sockets = loginSockets.get(loginSessionId);
@@ -344,6 +350,7 @@ function createWebTerminal(options = {}) {
   }
 
   function closeLoginSockets(loginSessionId, code, reason) {
+    voiceRequests.get(loginSessionId)?.abort();
     const sockets = loginSockets.get(loginSessionId);
     if (!sockets) {
       return;
@@ -546,6 +553,74 @@ function createWebTerminal(options = {}) {
     res.json({ csrfToken: generateCsrfToken(req, res) });
   });
 
+  app.get('/api/voice', requireApiAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store').json({
+      configured: Boolean(config.elevenlabsApiKey?.trim()),
+      maxBytes: MAX_VOICE_BYTES,
+      maxDurationMs: MAX_VOICE_DURATION_MS,
+    });
+  });
+
+  app.post('/api/voice/transcriptions', requireApiAuth, doubleCsrfProtection,
+    (req, res, next) => {
+      if (!config.elevenlabsApiKey?.trim()) {
+        return res.status(503).json({ error: 'Voice dictation is not configured.' });
+      }
+      const mimeType = (req.get('content-type') || '').toLowerCase();
+      if (!/^audio\/(?:webm|mp4|ogg)(?:\s*;\s*codecs=(?:"[a-z0-9., -]+"|[a-z0-9.,-]+))?$/.test(mimeType)
+        || !AUDIO_TYPES[mimeType.split(';')[0].trim()]) {
+        return res.status(415).json({ error: 'Use WebM, MP4, or Ogg audio.' });
+      }
+      if (voiceRequests.has(req.sessionID)) {
+        return res.status(429).json({ error: 'A transcription is already in progress.' });
+      }
+      const abort = new AbortController();
+      voiceRequests.set(req.sessionID, abort);
+      req.voiceAbort = abort;
+      const release = () => {
+        abort.abort();
+        if (voiceRequests.get(req.sessionID) === abort) voiceRequests.delete(req.sessionID);
+      };
+      req.once('aborted', release);
+      res.once('close', release);
+      res.once('finish', release);
+      next();
+    },
+    express.raw({ type: () => true, limit: MAX_VOICE_BYTES, inflate: false }),
+    async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      try {
+        if (!Buffer.isBuffer(req.body) || !req.body.length) {
+          return res.status(400).json({ error: 'Record some audio first.' });
+        }
+        if (!recordHttpActivity(req)) {
+          return res.status(401).json({ error: 'Authentication required.' });
+        }
+        // Persist the submission timestamp now, before background provider work.
+        await saveRequestSession(req);
+        req.voiceAbort.signal.throwIfAborted();
+        const audio = req.body;
+        req.body = undefined;
+        const text = await transcribe({ audio,
+          mimeType: req.get('content-type').toLowerCase(), signal: req.voiceAbort.signal });
+        if (!req.voiceAbort.signal.aborted) res.json({ text: cleanTranscript(text) });
+      } catch (err) {
+        if (!req.voiceAbort.signal.aborted) {
+          res.status(err instanceof VoiceError ? err.status : 502).json({
+            error: err instanceof VoiceError ? err.message : 'Transcription provider unavailable.',
+          });
+        } else if (!res.destroyed) {
+          res.status(409).json({ error: 'Transcription canceled.' });
+        }
+      } finally {
+        req.body = undefined;
+      }
+    });
+
+  // General body parsers follow the fully protected raw voice route.
+  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json());
+
   app.get('/api/terminal-sessions', requireApiAuth, (req, res) => {
     res.json({ sessions: sessionManager.listSessions() });
   });
@@ -657,6 +732,13 @@ function createWebTerminal(options = {}) {
   app.use((err, req, res, next) => {
     if (err === invalidCsrfTokenError) {
       return res.status(403).json({ error: 'Invalid CSRF token.' });
+    }
+    if (req.route?.path === '/api/voice/transcriptions') {
+      req.body = undefined;
+      return res.status(err.type === 'entity.too.large' ? 413 : 400).json({
+        error: err.type === 'entity.too.large'
+          ? 'Recording exceeds the 10 MiB limit.' : 'Invalid audio upload.',
+      });
     }
     if (err && err.type === 'entity.too.large' && req.path === '/api/clipboard-images') {
       return res.status(413).json({ error: 'Clipboard image exceeds the 10 MiB limit.' });
@@ -1008,6 +1090,7 @@ function createWebTerminal(options = {}) {
             socket.close(1012, 'Server shutting down.');
           }
         }
+        for (const abort of voiceRequests.values()) abort.abort();
         webSocketServer.close();
       }
       if (server && server.listening) {

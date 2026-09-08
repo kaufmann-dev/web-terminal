@@ -25,6 +25,8 @@ npm ci
 ```bash
 node --check app.js
 node --check terminal-session-manager.js
+node --check voice-transcription.js
+node --check public/js/voice-recorder.mjs
 node --check public/js/terminal.js
 node --test test/*.test.js
 ```
@@ -61,7 +63,7 @@ node --test test/*.test.js
   seconds. Natural shell exit removes the session.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
-- Keep all `OIDC_*` variables and `SESSION_SECRET` out of terminal and chezmoi environments.
+- Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.
   Express must retain them.
 - Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also
   process-local. Do not configure multiple application replicas without replacing both designs.

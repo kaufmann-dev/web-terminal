@@ -18,10 +18,20 @@
       <span class="terminal-title">terminal.kaufmann.dev</span>
       <span id="active-session-label" class="active-session-label"></span>
     </div>
+    <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
+        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
+        <span class="voice-status" data-voice-status>Checking voice availability…</span>
+        <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
+      </div>
     <button id="logout-btn" class="btn-logout" type="button" data-logout title="Logout">Logout</button>
   </header>
   <main class="terminal-main">
     <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal and session controls">
+      <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
+        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
+        <span class="voice-status" data-voice-status>Checking voice availability…</span>
+        <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
+      </div>
       <button id="sidebar-toggle" class="mobile-terminal-key sidebar-toggle" type="button" aria-controls="session-sidebar" aria-expanded="false" aria-label="Show terminal sessions" title="Show terminal sessions">
         <span class="sidebar-toggle-icon" aria-hidden="true"></span>
       </button>
@@ -95,6 +105,7 @@
     </section>
 
   </main>
+  <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>
   <script src="/static/js/terminal.js"></script>
 </body>
 </html>

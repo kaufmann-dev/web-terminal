@@ -90,7 +90,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   assert.match(mobileStyles, /\.terminal-main\s*\{[^}]*flex-direction:\s*column;/s);
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-controls\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\);[^}]*grid-template-rows:\s*repeat\(2, 44px\);/s,
+    /\.mobile-terminal-controls\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\);[^}]*grid-template-rows:\s*repeat\(3, 44px\);/s,
   );
   assert.match(
     mobileStyles,
@@ -152,7 +152,7 @@ test('mobile control group exposes a session toggle and fifteen terminal keys', 
   const mainStart = terminalView.indexOf('<main class="terminal-main">');
   const sidebarStart = terminalView.indexOf('<aside id="session-sidebar"');
   const controlsMatch = terminalView.match(
-    /<div id="mobile-terminal-controls"([^>]*)>([\s\S]*?)<\/div>/,
+    /<div id="mobile-terminal-controls"([^>]*)>([\s\S]*?)<\/div>\s*<aside/,
   );
   assert.ok(controlsMatch, 'expected the mobile terminal control group');
   assert.ok(
@@ -163,7 +163,8 @@ test('mobile control group exposes a session toggle and fifteen terminal keys', 
   assert.match(controlsMatch[1], /\baria-label="Terminal and session controls"/);
   assert.doesNotMatch(controlsMatch[1], /\bhidden\b/);
 
-  const buttons = [...controlsMatch[2].matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
+  const buttons = [...controlsMatch[2].matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+    .filter((button) => button[1].includes('mobile-terminal-key'));
   assert.equal(buttons.length, 16);
   assert.match(buttons[0][1], /\bid="sidebar-toggle"/);
   assert.match(buttons[0][1], /\baria-controls="session-sidebar"/);
