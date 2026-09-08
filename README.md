@@ -222,7 +222,7 @@ or control unrelated native Wayland windows.
   named sessions. Names contain 1–32 letters, numbers, or hyphens, start with a letter or number,
   and convert uppercase letters to lowercase automatically. Desktop uses a full-height terminal
   beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
-  Logout button; mobile opens the sidebar with the menu button.
+  Logout button; mobile opens the sidebar with the menu button and closes it by tapping outside.
 - The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
   Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
@@ -250,7 +250,8 @@ or control unrelated native Wayland windows.
   control grid follows that top offset without moving or resizing the terminal. An always-visible
   voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. Mic and
   Cancel each match one button column, with status text spanning the six columns between them.
-  All three rows are 44px high with 4px gaps and 6px outer padding. The first button in the second
+  All three rows are 44px high in an edge-to-edge grid with 1px internal dividers and a bottom
+  border, without individual button borders or outer padding. The first button in the second
   row opens the session sidebar, where Logout appears while the sidebar is open. The remaining
   buttons provide one-shot `Ctrl`/`Shift`/`Alt` modifiers, adaptive text-or-image paste, `Esc`,
   `Tab`, `Enter`, consistent SVG arrow keys, `Home`, `End`, `PgUp`, and `PgDn`. Arming Ctrl or Alt

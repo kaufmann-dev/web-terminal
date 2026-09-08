@@ -94,7 +94,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-controls\s*\{[^}]*gap:\s*4px;[^}]*width:\s*100%;[^}]*padding:\s*6px;[^}]*overflow:\s*hidden;/s,
+    /\.mobile-terminal-controls\s*\{[^}]*gap:\s*1px;[^}]*width:\s*100%;[^}]*padding:\s*0;[^}]*overflow:\s*hidden;/s,
   );
   assert.doesNotMatch(
     mobileStyles,
@@ -111,7 +111,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles,
-    /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*var\(--accent\);/s,
+    /\.mobile-terminal-key\[aria-pressed="true"\]\s*\{[^}]*color:\s*var\(--accent-bright\);/s,
   );
   assert.match(
     mobileStyles,
@@ -131,7 +131,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles.slice(finePointerStylesStart),
-    /\.mobile-terminal-key:active\s*\{[^}]*border-color:\s*var\(--accent\);/s,
+    /\.mobile-terminal-key:active\s*\{[^}]*color:\s*var\(--accent-bright\);/s,
   );
   assert.match(
     mobileStyles,
