@@ -32,7 +32,6 @@
   const logoutButtons = document.querySelectorAll('[data-logout]');
   const sidebar = document.getElementById('session-sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  const sidebarClose = document.getElementById('sidebar-close');
   const sidebarBackdrop = document.getElementById('sidebar-backdrop');
   const sessionForm = document.getElementById('session-form');
   const sessionNameInput = document.getElementById('session-name');
@@ -1306,7 +1305,6 @@
   sidebarToggle.addEventListener('click', () => {
     setSidebarOpen(!document.body.classList.contains('sessions-open'));
   });
-  sidebarClose.addEventListener('click', () => setSidebarOpen(false));
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
   sessionForm.addEventListener('submit', createSession);
   for (const button of logoutButtons) {

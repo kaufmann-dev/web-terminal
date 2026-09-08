@@ -183,8 +183,7 @@ body.dark {
 
 .btn-primary:focus-visible,
 .btn-session-create:focus-visible,
-.btn-logout:focus-visible,
-.btn-icon:focus-visible {
+.btn-logout:focus-visible {
   outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
 }
@@ -226,28 +225,7 @@ body.dark {
   overflow: hidden;
 }
 
-.btn-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid transparent;
-  cursor: pointer;
-  font-size: 18px;
-}
-
-.btn-icon:hover {
-  background: var(--panel);
-  color: var(--accent-bright);
-  border-color: var(--border);
-}
-
-.sidebar-toggle,
-.sidebar-close {
+.sidebar-toggle {
   display: none;
 }
 
@@ -619,8 +597,7 @@ body.dark {
     flex-direction: column;
   }
 
-  .sidebar-toggle,
-  .sidebar-close {
+  .sidebar-toggle {
     display: inline-flex;
   }
 
@@ -667,17 +644,31 @@ body.dark {
     flex: 0 0 auto;
     grid-template-columns: repeat(8, minmax(0, 1fr));
     grid-template-rows: repeat(3, 44px);
-    gap: 4px;
+    gap: 1px;
     width: 100%;
     min-width: 0;
-    padding: 6px;
+    padding: 0;
+    border-bottom: 1px solid var(--border);
     overflow: hidden;
-    background: var(--panel-raised);
+    background: var(--border);
     transform: translateY(var(--mobile-visual-viewport-offset-top, 0));
+  }
+
+  .mobile-terminal-controls > .voice-controls {
+    grid-template-columns: subgrid;
+    gap: 1px;
+  }
+
+  .mobile-terminal-controls .voice-status {
+    align-self: stretch;
+    padding: 0 8px;
+    background: var(--panel);
+    line-height: 44px;
   }
 
   .voice-button {
     padding: 0;
+    border: 0;
     font-family: "JetBrains Mono", monospace;
     font-size: clamp(9px, 2.6vw, 12px);
     font-weight: 600;
@@ -694,7 +685,7 @@ body.dark {
     padding: 0 2px;
     background: var(--panel);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 0;
     cursor: pointer;
     font-family: "JetBrains Mono", monospace;
     font-size: clamp(9px, 2.6vw, 12px);
@@ -708,7 +699,6 @@ body.dark {
   .mobile-terminal-key[aria-pressed="true"] {
     background: var(--border);
     color: var(--accent-bright);
-    border-color: var(--accent);
   }
 
   .mobile-terminal-key.is-feedback-active {
@@ -735,20 +725,17 @@ body.dark {
   .mobile-terminal-key:disabled {
     color: var(--muted);
     cursor: default;
-    opacity: 0.45;
   }
 
   @media (hover: hover) and (pointer: fine) {
     .mobile-terminal-key:active {
       background: var(--border);
       color: var(--accent-bright);
-      border-color: var(--accent);
     }
 
     .mobile-terminal-key:disabled:active {
       background: var(--panel);
       color: var(--muted);
-      border-color: var(--border);
     }
   }
 }
@@ -757,13 +744,11 @@ body.dark {
   from {
     background: var(--border);
     color: var(--accent-bright);
-    border-color: var(--accent);
   }
 
   to {
     background: var(--panel);
     color: var(--text);
-    border-color: var(--border);
   }
 }
 
