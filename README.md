@@ -229,6 +229,8 @@ or control unrelated native Wayland windows.
   and convert uppercase letters to lowercase automatically. Desktop uses a full-height terminal
   beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
   Logout button; mobile opens the sidebar with the menu button and closes it by tapping outside.
+  Session actions show errors beside the creation form; routine progress and success messages
+  are omitted. The desktop sidebar ends with the microphone controls.
 - The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
   Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.

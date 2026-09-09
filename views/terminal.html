@@ -71,10 +71,10 @@
           <button id="create-session-btn" class="btn-session-create" type="submit">Add</button>
         </div>
         <p class="session-name-hint">Lowercase letters, numbers and hyphens are allowed.</p>
+        <p id="session-error" class="session-error" role="alert" hidden></p>
       </form>
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
-      <p id="session-status" class="session-status" role="status" aria-live="polite"></p>
       <div class="sidebar-voice">
         <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
           <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
