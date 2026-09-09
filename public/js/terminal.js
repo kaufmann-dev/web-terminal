@@ -37,7 +37,7 @@
   const sessionNameInput = document.getElementById('session-name');
   const createSessionBtn = document.getElementById('create-session-btn');
   const sessionList = document.getElementById('session-list');
-  const sessionStatus = document.getElementById('session-status');
+  const sessionError = document.getElementById('session-error');
   const terminalHost = document.getElementById('terminal-host');
   const connectionStatus = document.getElementById('connection-status');
   const clipboardStatus = document.getElementById('clipboard-status');
@@ -146,9 +146,9 @@
     return data;
   }
 
-  function setStatus(message, isError = false) {
-    sessionStatus.textContent = message;
-    sessionStatus.classList.toggle('is-error', isError);
+  function setSessionError(message) {
+    sessionError.textContent = message;
+    sessionError.hidden = !message;
   }
 
   function setConnectionStatus(message, isError = false) {
@@ -1075,7 +1075,7 @@
       terminalHost.hidden = false;
       activeController = new TerminalController(name, () => {
         window.setTimeout(() => {
-          refreshSessions().catch((err) => setStatus(err.message, true));
+          refreshSessions().catch((err) => setSessionError(err.message));
         }, 0);
       });
       updateMobileTerminalControls();
@@ -1184,14 +1184,14 @@
     const name = normalizeSessionNameInput().trim();
 
     if (!sessionNamePattern.test(name)) {
-      setStatus('Use 1-32 letters, numbers, or hyphens.', true);
+      setSessionError('Use 1-32 letters, numbers, or hyphens.');
       sessionNameInput.focus();
       return;
     }
 
     mutationInProgress = true;
     createSessionBtn.disabled = true;
-    setStatus(`Creating ${name}…`);
+    setSessionError('');
     renderSessions();
 
     try {
@@ -1205,9 +1205,8 @@
       });
       sessionNameInput.value = '';
       await refreshSessions({ preferredSession: name });
-      setStatus(`Created ${name}.`);
     } catch (err) {
-      setStatus(err.message, true);
+      setSessionError(err.message);
     } finally {
       mutationInProgress = false;
       createSessionBtn.disabled = false;
@@ -1225,7 +1224,7 @@
 
     mutationInProgress = true;
     createSessionBtn.disabled = true;
-    setStatus(`Deleting ${name}…`);
+    setSessionError('');
     renderSessions();
 
     try {
@@ -1238,9 +1237,8 @@
         showEmptyTerminal('Selecting another terminal session…');
       }
       await refreshSessions();
-      setStatus(`Deleted ${name}.`);
     } catch (err) {
-      setStatus(err.message, true);
+      setSessionError(err.message);
       await refreshSessions().catch(() => {});
     } finally {
       mutationInProgress = false;
@@ -1251,6 +1249,7 @@
 
   async function logout() {
     voice.cancel();
+    setSessionError('');
     for (const button of logoutButtons) {
       button.disabled = true;
     }
@@ -1267,9 +1266,9 @@
         window.location.href = data.redirect;
         return;
       }
-      setStatus('Logout failed. Please try again.', true);
+      setSessionError('Logout failed. Please try again.');
     } catch (err) {
-      setStatus('Logout failed. Please try again.', true);
+      setSessionError('Logout failed. Please try again.');
     }
     for (const button of logoutButtons) {
       button.disabled = false;
@@ -1295,9 +1294,9 @@
 
       const requestedSession = new URL(window.location.href).searchParams.get('session');
       await refreshSessions({ createDefault: true, preferredSession: requestedSession });
-      setStatus('');
+      setSessionError('');
     } catch (err) {
-      setStatus(err.message || 'Unable to load terminal sessions.', true);
+      setSessionError(err.message || 'Unable to load terminal sessions.');
       showEmptyTerminal('Terminal sessions are unavailable.');
     }
   }
@@ -1491,21 +1490,21 @@
   window.addEventListener('focus', () => {
     requestMobileViewportSync();
     if (!mutationInProgress) {
-      refreshSessions().catch((err) => setStatus(err.message, true));
+      refreshSessions().catch((err) => setSessionError(err.message));
     }
   });
 
   window.setInterval(() => {
     if (!document.hidden && !mutationInProgress) {
-      refreshSessions().catch((err) => setStatus(err.message, true));
+      refreshSessions().catch((err) => setSessionError(err.message));
     }
   }, refreshIntervalMs);
 
   await initialize();
 })().catch((err) => {
-  const status = document.getElementById('session-status');
+  const sessionError = document.getElementById('session-error');
   const placeholder = document.getElementById('terminal-placeholder-message');
-  status.textContent = err.message || 'Unable to initialize the terminal.';
-  status.classList.add('is-error');
+  sessionError.textContent = err.message || 'Unable to initialize the terminal.';
+  sessionError.hidden = false;
   placeholder.textContent = 'Terminal initialization failed.';
 });

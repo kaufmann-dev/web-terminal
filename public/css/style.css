@@ -419,29 +419,17 @@ body.dark {
   color: var(--error);
 }
 
-.session-list-empty,
-.session-status {
+.session-list-empty {
   margin: 0;
+  padding: 8px 6px;
   color: var(--muted);
   font-size: 11px;
 }
 
-.session-list-empty {
-  padding: 8px 6px;
-}
-
-.session-status {
-  min-height: 29px;
-  padding: 10px 4px 0;
-  border-top: 1px solid var(--border);
-}
-
-.session-status:empty {
-  display: none;
-}
-
-.session-status.is-error {
+.session-error {
+  margin: 8px 0 0;
   color: var(--error);
+  font-size: 11px;
 }
 
 .sidebar-backdrop {
