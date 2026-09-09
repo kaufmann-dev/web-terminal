@@ -97,6 +97,8 @@ COPY . .
 
 RUN bash scripts/install-git-wrangler.sh \
     && bash scripts/install-nixpacks.sh \
+    && bash scripts/install-muse-code.sh \
+    && /usr/local/bin/muse --version \
     && bash scripts/install-rootless-podman.sh
 
 ENV NODE_ENV=production

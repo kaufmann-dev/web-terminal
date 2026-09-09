@@ -142,6 +142,7 @@ The terminal includes:
 - Node.js 24 (the current LTS line), npm, npx, and pnpm 11.18.0
 - Vitest 4.1.10
 - `codex` 0.146.0 and `opencode` 1.18.9
+- Muse Code (`muse`) 1.1.1-R2514.1, installed from Meta's checksum-verified Linux binary
 - `agent-browser` 0.33.1 with headless Chromium and native Fontconfig
 - `xwfb-run` with Cage for isolated Xwayland displays, plus xdotool 4.20260303.1 for controlling
   X11 clients inside those displays
@@ -152,10 +153,10 @@ The terminal includes:
 - focused process, network, and DNS diagnostics
 
 The browser terminal PATH starts with `~/.local/bin` and `/app/node_modules/.bin`, explicitly
-includes `/usr/local/bin` for Git Wrangler and the stable Node command links, and then preserves the
-native CentOS image PATH. npm's global prefix is `~/.local`, so user-installed commands stored on
-`/code` override locked image commands and survive redeployments. Locked npm commands remain
-available as fallbacks alongside Git Wrangler and DNF packages.
+includes `/usr/local/bin` for Muse Code, Git Wrangler, and the stable Node command links, and then
+preserves the native CentOS image PATH. npm's global prefix is `~/.local`, so user-installed
+commands stored on `/code` override locked image commands and survive redeployments. Locked npm
+commands remain available as fallbacks alongside Git Wrangler, Muse Code, and DNF packages.
 
 Nixpacks can inspect or emit build contexts for other projects, and the bundled Podman can build
 and run them directly. This application itself is built by its Dockerfile and has no Nix runtime.
@@ -193,6 +194,7 @@ Authenticate the tools you use:
 gh auth login
 codex login
 opencode auth login
+muse login
 git-wrangler init
 ```
 
@@ -211,6 +213,10 @@ npm install --global @openai/codex@latest opencode-ai@latest
 
 The user-installed commands take precedence over the image copies. Run
 `npm uninstall --global @openai/codex opencode-ai` to return to the bundled versions.
+
+Run `muse` inside a project directory to start Muse Code. Its pinned native binary is installed
+at image build time for x86_64 or ARM64, verified against Meta's release checksum, and checked with
+`muse --version`. Redeploy an image with an updated installer pin to update the bundled version.
 
 For an X11-only GUI command, start it with `xwfb-run`; the wrapper creates a dedicated headless
 Cage/Xwayland session. xdotool can automate X11 clients launched in that session. It cannot inspect
