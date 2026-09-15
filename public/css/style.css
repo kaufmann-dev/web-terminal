@@ -513,7 +513,7 @@ body.dark {
 
 .sidebar-uploads {
   flex: 0 0 auto;
-  padding: 12px 4px;
+  padding: 12px 4px 8px;
   border-top: 1px solid var(--border);
 }
 
@@ -527,11 +527,28 @@ body.dark {
   font: inherit;
   cursor: pointer;
   touch-action: manipulation;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
 .upload-button { width: 100%; }
 .upload-button:disabled,
 .upload-dialog button:disabled { color: var(--muted); cursor: default; }
+
+@media (hover: hover) {
+  .upload-button:hover:not(:disabled),
+  .upload-dialog button:hover:not(:disabled),
+  .sidebar-voice .voice-button:hover:not(:disabled) {
+    background: var(--panel-raised);
+    color: var(--accent-bright);
+    border-color: var(--accent);
+  }
+}
+
+.sidebar-uploads .upload-button {
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 500;
+}
 .upload-button:focus-visible,
 .upload-dialog :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
 
@@ -591,21 +608,22 @@ body.dark {
 
 .sidebar-voice {
   flex: 0 0 auto;
-  padding: 12px 4px 0;
-  border-top: 1px solid var(--border);
+  padding: 0 4px 4px;
 }
 
 .sidebar-voice .voice-controls {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: 44px 20px;
-  gap: 6px;
-  height: 70px;
+  grid-template-rows: 38px auto;
+  gap: 8px;
+  height: auto;
 }
 
 .sidebar-voice .voice-status {
   grid-column: 1 / -1;
   grid-row: 2;
+  min-height: 18px;
   font-size: 11px;
+  text-align: center;
 }
 
 .voice-button {
@@ -620,6 +638,13 @@ body.dark {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.sidebar-voice .voice-button {
+  height: 38px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .voice-button:disabled { color: var(--muted); cursor: default; }
@@ -636,9 +661,21 @@ body.dark {
 @media (max-width: 720px) {
   .upload-dialog {
     width: 100%;
-    max-height: calc(100dvh - 16px);
-    margin: auto;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: 0;
+    inset: 0;
   }
+
+  .upload-dialog-body { flex: 1 1 auto; }
+  .upload-path-row button { flex: 0 0 auto; }
+  .upload-breadcrumbs button { min-height: 40px; }
+  .upload-folders { max-height: 36dvh; min-height: 132px; }
+  #upload-choose { width: 100%; }
+  .upload-footer-actions { flex-direction: column; align-items: stretch; }
+  .upload-footer-actions button { width: 100%; }
 
   .upload-file-heading { flex-wrap: wrap; }
   .upload-file input, .upload-filename { flex-basis: calc(100% - 90px); }
