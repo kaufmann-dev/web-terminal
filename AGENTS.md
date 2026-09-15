@@ -26,7 +26,9 @@ npm ci
 node --check app.js
 node --check terminal-session-manager.js
 node --check voice-transcription.js
+node --check file-upload-store.js
 node --check public/js/voice-recorder.mjs
+node --check public/js/file-uploads.mjs
 node --check public/js/terminal.js
 node --test test/*.test.js
 ```

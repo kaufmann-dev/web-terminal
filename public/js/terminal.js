@@ -16,6 +16,7 @@
     { readClipboardContent },
     { bindTerminalSessionNameNormalization },
     { VoiceRecorder, bindVoiceControls },
+    { bindFileUploads },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
@@ -23,6 +24,7 @@
     import('/static/js/clipboard-reader.mjs'),
     import('/static/js/session-name.mjs'),
     import('/static/js/voice-recorder.mjs'),
+    import('/static/js/file-uploads.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -80,6 +82,15 @@
   window.addEventListener('pagehide', () => voice.cancel());
   window.addEventListener('beforeunload', () => voice.cancel());
 
+  const uploads = bindFileUploads({
+    document,
+    apiRequest,
+    getCsrfToken: () => csrfToken,
+    closeSidebar: () => setSidebarOpen(false),
+    isMobile: () => mobileLayoutQuery.matches,
+    onAuthExpired: () => { window.location.href = '/'; },
+  });
+
   function applyMobileViewportOffset() {
     mobileViewportSyncFrame = null;
     if (!mobileLayoutQuery.matches) {
@@ -126,6 +137,7 @@
 
     if (response.status === 401) {
       voice.cancel();
+      uploads.cancel();
       window.location.href = '/';
       throw new ApiError('Your login session has expired.', 401);
     }
@@ -1249,6 +1261,7 @@
 
   async function logout() {
     voice.cancel();
+    uploads.cancel();
     setSessionError('');
     for (const button of logoutButtons) {
       button.disabled = true;
@@ -1283,6 +1296,7 @@
       if (!csrfToken) {
         throw new Error('Unable to initialize request protection.');
       }
+      uploads.enable();
 
       apiRequest('/api/voice').then((config) => {
         voice.config = config;
