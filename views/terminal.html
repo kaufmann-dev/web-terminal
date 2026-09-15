@@ -75,6 +75,9 @@
       </form>
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
+      <div class="sidebar-uploads">
+        <button id="upload-open" class="upload-button" type="button" disabled>Upload</button>
+      </div>
       <div class="sidebar-voice">
         <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
           <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
@@ -96,6 +99,36 @@
     </section>
 
   </main>
+  <dialog id="upload-dialog" class="upload-dialog" aria-labelledby="upload-title">
+    <div class="upload-dialog-header">
+      <h2 id="upload-title">Upload files</h2>
+      <button id="upload-close" type="button" autofocus>Close</button>
+    </div>
+    <div class="upload-dialog-body">
+      <form id="upload-path-form">
+        <fieldset id="upload-destination-fields">
+          <legend>Destination folder</legend>
+          <div class="upload-path-row">
+            <input id="upload-directory" aria-label="Destination folder path" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Workspace path">
+            <button type="submit">Go</button>
+          </div>
+          <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Destination breadcrumbs"></nav>
+          <div id="upload-folders" class="upload-folders" aria-label="Server folders"></div>
+        </fieldset>
+      </form>
+      <p id="upload-error" class="upload-error" role="alert" hidden></p>
+      <button id="upload-choose" type="button">Choose files</button>
+      <input id="upload-files" type="file" multiple hidden>
+      <ul id="upload-file-list" class="upload-file-list" aria-label="Selected files"></ul>
+    </div>
+    <div class="upload-dialog-footer">
+      <p id="upload-summary" role="status" aria-live="polite"></p>
+      <div class="upload-footer-actions">
+        <button id="upload-cancel" type="button" hidden>Cancel remaining</button>
+        <button id="upload-submit" type="button" disabled>Upload</button>
+      </div>
+    </div>
+  </dialog>
   <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>
   <script src="/static/js/terminal.js"></script>
 </body>

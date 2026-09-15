@@ -131,8 +131,11 @@ included programs from current CentOS Stream 10 packages or the repository lockf
 deployment; tool credentials and personal state remain on `/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
-proxy must preserve WebSocket upgrades. `PUBLIC_ORIGIN` must exactly match the origin shown in the
-browser address bar. Startup deliberately fails before listening if `/dev/fuse`, `/dev/net/tun`,
+proxy must preserve WebSocket upgrades. Any proxy or CDN body-size limit must allow a 100 MiB
+request to `/api/uploads`, and request timeouts must accommodate uploads over slower connections.
+Configure these in the Coolify proxy or upstream CDN when applicable. `PUBLIC_ORIGIN` must exactly
+match the origin shown in the browser address bar. Startup deliberately fails before listening if
+`/dev/fuse`, `/dev/net/tun`,
 user namespaces, or the rootless Podman configuration is unavailable.
 
 ## Included Commands
@@ -237,8 +240,9 @@ or control unrelated native Wayland windows.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
-  clipboard-image uploads, accepted transcription submissions, and accepted terminal input or paste
-  extend the idle deadline. Polling, voice availability checks, transcription processing, CSRF
+  clipboard-image uploads, accepted file-upload submissions, accepted transcription submissions,
+  and accepted terminal input or paste extend the idle deadline. Folder browsing, upload progress,
+  polling, voice availability checks, transcription processing, CSRF
   retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health checks,
   pushed updates, and merely leaving a tab open do not.
 - **Logout** destroys the local session and its retained ID token before navigating to the
@@ -302,6 +306,26 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
+- **Upload** is in the session sidebar on desktop and mobile. Choose one or more local files,
+  browse or type an existing server folder inside `TERMINAL_WORKDIR`, then click **Upload**.
+  Desktop users can also drop files onto the terminal to open the upload dialog. The destination
+  starts at the workspace root and the last valid folder is remembered in the browser tab.
+  Absolute paths and paths relative to the workspace are accepted. Hidden directories are listed;
+  directory symlinks are omitted from the list but can be entered if they resolve inside the workspace.
+- Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
+  sequentially with one active upload per login session. The dialog shows progress and saved paths;
+  closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
+  A filename conflict fails that file without overwriting anything; edit its filename and click
+  **Retry**. Successful files remain saved if another file fails. **Dismiss** only removes the
+  result from the dialog. **Cancel remaining** stops the active transfer and queued files.
+- Uploaded files remain until manually deleted and survive redeployment only on a mounted persistent
+  volume. They are not served through browser download or static routes. Refreshing or leaving the
+  page, logout, session expiry, and graceful shutdown cancel unfinished transfers and remove their
+  temporary files. A forced process termination can leave hidden `.web-terminal-upload-*.part`
+  files in the destination; remove those manually when no uploads are running. Interrupted transfers
+  do not resume automatically. If a connection fails after the server saved a file, check the
+  destination before retrying. Folder uploads, folder creation, and automatic archive extraction
+  are not provided; upload a ZIP file when needed.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
   locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab

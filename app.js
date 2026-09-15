@@ -6,6 +6,7 @@ const { AUDIO_TYPES, MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
   cleanTranscript, createTranscriptionService } = require('./voice-transcription');
 const http = require('http');
 const path = require('path');
+const { FileUploadStore, UploadError, uploadError } = require('./file-upload-store');
 const express = require('express');
 const session = require('express-session');
 const MemoryStore = require('memorystore')(session);
@@ -250,6 +251,7 @@ function createWebTerminal(options = {}) {
   }
 
   const terminalEnvironment = createTerminalEnvironment(config);
+  const fileUploadStore = new FileUploadStore({ directory: config.terminalWorkdir });
   const clipboardImageStore = options.clipboardImageStore || new ClipboardImageStore({
     directory: config.clipboardImageDirectory,
   });
@@ -330,6 +332,8 @@ function createWebTerminal(options = {}) {
 
   const loginSockets = new Map();
   const voiceRequests = new Map();
+  const uploadRequests = new Map();
+  const uploadTasks = new Set();
   const transcribe = options.transcribe || createTranscriptionService({
     apiKey: config.elevenlabsApiKey,
   });
@@ -351,6 +355,7 @@ function createWebTerminal(options = {}) {
 
   function closeLoginSockets(loginSessionId, code, reason) {
     voiceRequests.get(loginSessionId)?.abort();
+    uploadRequests.get(loginSessionId)?.abort();
     const sockets = loginSockets.get(loginSessionId);
     if (!sockets) {
       return;
@@ -617,7 +622,67 @@ function createWebTerminal(options = {}) {
       }
     });
 
-  // General body parsers follow the fully protected raw voice route.
+  app.get('/api/upload-directories', requireApiAuth, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      return res.json(await fileUploadStore.list(req.query.path));
+    } catch (error) {
+      const failure = uploadError(error);
+      return res.status(failure.status).json({ error: failure.message });
+    }
+  });
+
+  app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (req.get('content-type') !== 'application/octet-stream' || req.get('content-encoding')) {
+      return res.status(415).json({ error: 'Send an uncompressed file as application/octet-stream.' });
+    }
+    const loginSessionId = req.sessionID;
+    if (uploadRequests.has(loginSessionId)) {
+      return res.status(409).json({ error: 'Another upload is running. Wait for it to finish and retry.' });
+    }
+    const abort = new AbortController();
+    uploadRequests.set(loginSessionId, abort);
+    let finish;
+    const task = new Promise((resolve) => { finish = resolve; });
+    uploadTasks.add(task);
+    let deadlineTimer;
+    try {
+      const result = await fileUploadStore.save(req, {
+        directory: req.query.directory,
+        filename: req.query.filename,
+        signal: abort.signal,
+        onAccepted: async () => {
+          if (!recordHttpActivity(req)) throw new UploadError(401, 'Your login session has expired.');
+          await saveRequestSession(req);
+          deadlineTimer = setTimeout(() => abort.abort(new UploadError(401, 'Your login session has expired.')),
+            Math.max(0, getApplicationSessionDeadline(req.session) - now()));
+          deadlineTimer.unref();
+        },
+        beforePublish: async () => {
+          await new Promise((resolve, reject) => req.session.reload((error) => (
+            error ? reject(new UploadError(401, 'Your login session has expired.')) : resolve()
+          )));
+          if (!isApplicationSessionActive(req.session, now())) {
+            throw new UploadError(401, 'Your login session has expired.');
+          }
+          abort.signal.throwIfAborted();
+        },
+      });
+      return res.status(201).json(result);
+    } catch (error) {
+      const failure = uploadError(error);
+      if (!res.destroyed) res.status(failure.status).json({ error: failure.message });
+    } finally {
+      clearTimeout(deadlineTimer);
+      req.resume();
+      uploadRequests.delete(loginSessionId);
+      uploadTasks.delete(task);
+      finish();
+    }
+  });
+
+  // General body parsers follow the protected streaming and raw routes.
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json());
 
@@ -1083,6 +1148,8 @@ function createWebTerminal(options = {}) {
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
       }
+      for (const abort of uploadRequests.values()) abort.abort();
+      await Promise.all(uploadTasks);
       await sessionManager.shutdown();
       if (webSocketServer) {
         for (const socket of webSocketServer.clients) {
