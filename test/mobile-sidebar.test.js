@@ -488,3 +488,47 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
     /if \(!mobileLayoutQuery\.matches\) \{\s*this\.terminal\.focus\(\);\s*\}/,
   );
 });
+
+test('mobile upload dialog is always fullscreen with stacked footer actions', () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const mobileStyles = getMobileStyles(stylesheet);
+
+  assert.match(
+    mobileStyles,
+    /\.upload-dialog\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*height:\s*100dvh;[^}]*max-height:\s*100dvh;[^}]*margin:\s*0;[^}]*border:\s*0;[^}]*inset:\s*0;[^}]*\}/s,
+  );
+  assert.match(
+    mobileStyles,
+    /\.upload-dialog-body\s*\{[^}]*flex:\s*1 1 auto;[^}]*\}/s,
+  );
+  assert.match(
+    mobileStyles,
+    /\.upload-footer-actions\s*\{[^}]*flex-direction:\s*column;[^}]*\}/s,
+  );
+  assert.match(
+    mobileStyles,
+    /\.upload-footer-actions button\s*\{[^}]*width:\s*100%;[^}]*\}/s,
+  );
+});
+
+test('sidebar upload and voice actions share one divider with hover feedback', () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
+
+  assert.match(
+    desktopStyles,
+    /\.sidebar-uploads\s*\{[^}]*border-top:\s*1px solid var\(--border\);/s,
+  );
+  assert.doesNotMatch(
+    desktopStyles,
+    /\.sidebar-voice\s*\{[^}]*border-top:/s,
+  );
+  assert.match(
+    desktopStyles,
+    /\.sidebar-voice \.voice-status\s*\{[^}]*text-align:\s*center;/s,
+  );
+  assert.match(
+    desktopStyles,
+    /@media \(hover: hover\) \{[\s\S]*\.upload-dialog button:hover:not\(:disabled\)[\s\S]*color:\s*var\(--accent-bright\);/s,
+  );
+});
