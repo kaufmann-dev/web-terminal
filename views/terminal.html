@@ -106,27 +106,44 @@
       <button id="upload-close" type="button" autofocus>Close</button>
     </div>
     <div class="upload-dialog-body">
-      <form id="upload-path-form">
+      <p id="upload-error" class="upload-error" role="alert" hidden></p>
+      <section class="upload-section" aria-labelledby="upload-files-label">
+        <h3 id="upload-files-label" class="upload-section-label">Files</h3>
+        <button id="upload-choose" class="upload-dropzone" type="button">
+          <svg class="upload-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path>
+          </svg>
+          <span class="upload-dropzone-desktop">Drop files here or <span class="upload-dropzone-link">browse</span></span>
+          <span class="upload-dropzone-touch">Choose files</span>
+        </button>
+        <input id="upload-files" type="file" multiple hidden>
+        <ul id="upload-file-list" class="upload-file-list" aria-label="Selected files"></ul>
+      </section>
+      <form id="upload-path-form" class="upload-section">
         <fieldset id="upload-destination-fields">
-          <legend>Destination folder</legend>
-          <div class="upload-path-row">
-            <input id="upload-directory" aria-label="Destination folder path" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Workspace path">
+          <legend class="upload-section-label">Destination</legend>
+          <div id="upload-location" class="upload-location">
+            <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Destination folder"></nav>
+            <button id="upload-edit-path" class="upload-icon-button" type="button" aria-label="Type a folder path" title="Type a folder path">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="upload-path-editor" class="upload-path-row" hidden>
+            <input id="upload-directory" aria-label="Destination folder path" type="text" enterkeyhint="go" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Folder path inside the workspace">
             <button type="submit">Go</button>
           </div>
-          <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Destination breadcrumbs"></nav>
+          <input id="upload-folder-filter" class="upload-folder-filter" type="search" aria-label="Filter folders" placeholder="Filter folders" autocomplete="off" autocapitalize="none" spellcheck="false" hidden>
           <div id="upload-folders" class="upload-folders" aria-label="Server folders"></div>
         </fieldset>
       </form>
-      <p id="upload-error" class="upload-error" role="alert" hidden></p>
-      <button id="upload-choose" type="button">Choose files</button>
-      <input id="upload-files" type="file" multiple hidden>
-      <ul id="upload-file-list" class="upload-file-list" aria-label="Selected files"></ul>
     </div>
     <div class="upload-dialog-footer">
       <p id="upload-summary" role="status" aria-live="polite"></p>
       <div class="upload-footer-actions">
         <button id="upload-cancel" type="button" hidden>Cancel remaining</button>
-        <button id="upload-submit" type="button" disabled>Upload</button>
+        <button id="upload-submit" class="btn-dialog-primary" type="button" disabled>Upload</button>
       </div>
     </div>
   </dialog>
@@ -140,7 +157,7 @@
       <section id="jobs-list-view" aria-label="Scheduled job list">
         <div class="jobs-toolbar">
           <p id="jobs-summary" class="jobs-muted" role="status" aria-live="polite"></p>
-          <button id="jobs-new" type="button">New job</button>
+          <button id="jobs-new" class="btn-dialog-primary" type="button">New job</button>
         </div>
         <ul id="jobs-list" class="jobs-list"></ul>
       </section>
@@ -172,7 +189,7 @@
         <label class="jobs-checkbox"><input id="job-enabled" type="checkbox" checked> Enabled</label>
         <div class="upload-footer-actions">
           <button id="job-cancel" type="button">Cancel</button>
-          <button id="job-save" type="submit">Create job</button>
+          <button id="job-save" class="btn-dialog-primary" type="submit">Create job</button>
         </div>
       </form>
       <section id="jobs-runs-view" aria-labelledby="jobs-runs-title" hidden>
