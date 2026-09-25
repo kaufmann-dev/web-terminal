@@ -76,9 +76,9 @@ test('the sidebar exposes a jobs dialog beside uploads', () => {
   const script = fs.readFileSync(path.join(projectRoot, 'public', 'js', 'terminal.js'), 'utf8');
   assert.match(
     view,
-    /<div class="sidebar-uploads">\s*<button id="upload-open"[^>]*>Upload<\/button>\s*<button id="jobs-open" class="upload-button" type="button" disabled>Jobs<\/button>/,
+    /<div class="sidebar-actions">\s*<button id="upload-open" class="sidebar-action"[^>]*>Upload<\/button>\s*<button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs<\/button>/,
   );
-  assert.match(view, /<dialog id="jobs-dialog" class="upload-dialog jobs-dialog"/);
+  assert.match(view, /<dialog id="jobs-dialog" class="app-dialog jobs-dialog"/);
   assert.match(script, /import\('\/static\/js\/scheduled-jobs\.mjs'\)/);
   assert.match(script, /uploads\.enable\(\);\s*scheduledJobs\.enable\(\);/);
 });
@@ -137,7 +137,7 @@ test('the jobs dialog has a list, an empty state, a detail view, and an editor',
   const view = fs.readFileSync(path.join(projectRoot, 'views', 'terminal.html'), 'utf8');
   const dialog = view.slice(view.indexOf('<dialog id="jobs-dialog"'));
   for (const id of [
-    'jobs-list-view', 'jobs-empty', 'jobs-empty-new', 'jobs-list', 'jobs-new', 'jobs-detail-view',
+    'jobs-list-view', 'jobs-empty', 'jobs-list', 'jobs-new', 'jobs-detail-view', 'jobs-runs-empty',
     'jobs-detail-back', 'jobs-detail-title', 'jobs-detail-command', 'jobs-detail-meta', 'jobs-detail-run',
     'jobs-detail-toggle', 'jobs-detail-edit', 'jobs-detail-delete', 'jobs-runs', 'jobs-editor', 'job-save',
   ]) {

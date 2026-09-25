@@ -78,3 +78,36 @@ test('upload dialog markup puts files first and keeps a single destination path 
   assert.match(dialog, /id="upload-directory"[^>]*enterkeyhint="go"/);
   assert.match(dialog, /<button id="upload-submit" class="btn-dialog-primary"/);
 });
+
+test('upload and job dialogs share one dialog structure and component set', () => {
+  const view = fs.readFileSync(path.join(projectRoot, 'views', 'terminal.html'), 'utf8');
+  const dialogMarkup = (id) => {
+    const start = view.indexOf(`<dialog id="${id}"`);
+    return view.slice(start, view.indexOf('</dialog>', start));
+  };
+  for (const id of ['upload-dialog', 'jobs-dialog']) {
+    const dialog = dialogMarkup(id);
+    assert.match(dialog, new RegExp(`^<dialog id="${id}" class="app-dialog `), id);
+    for (const part of ['app-dialog-header', 'app-dialog-body', 'app-dialog-error', 'app-dialog-footer',
+      'app-dialog-status', 'app-dialog-actions', 'app-dialog-label', 'app-list', 'btn-dialog-primary', 'dashed-panel']) {
+      assert.match(dialog, new RegExp(`class="[^"]*\\b${part}\\b`), `${id} uses ${part}`);
+    }
+    const footer = dialog.slice(dialog.indexOf('app-dialog-footer'));
+    assert.match(footer, /class="btn-dialog-primary"/, `${id} keeps its primary action in the footer`);
+    assert.doesNotMatch(dialog, /class="[^"]*\bupload-(?:dialog-|footer|section|error|button)/, id);
+  }
+  const stylesheet = fs.readFileSync(path.join(projectRoot, 'public', 'css', 'style.css'), 'utf8');
+  assert.doesNotMatch(stylesheet, /\.(?:jobs-status|jobs-hint|upload-section-label|upload-footer-actions|sidebar-uploads)\b/);
+});
+
+test('upload file rows use the shared status badge vocabulary', async () => {
+  const { describeUploadStatus, MAX_UPLOAD_BYTES } = await import('../public/js/file-uploads.mjs');
+  const file = { size: 200 };
+  assert.equal(describeUploadStatus({ status: 'pending', file }), null);
+  assert.deepEqual(describeUploadStatus({ status: 'uploading', loaded: 50, file }), { label: 'Uploading 25%', tone: 'running' });
+  assert.deepEqual(describeUploadStatus({ status: 'uploading', loaded: 200, file }), { label: 'Saving', tone: 'running' });
+  assert.deepEqual(describeUploadStatus({ status: 'saved', file }), { label: 'Saved', tone: 'success' });
+  assert.deepEqual(describeUploadStatus({ status: 'error', file }), { label: 'Failed', tone: 'error' });
+  assert.deepEqual(describeUploadStatus({ status: 'error', file: { size: MAX_UPLOAD_BYTES + 1 } }), { label: 'Too large', tone: 'error' });
+  assert.deepEqual(describeUploadStatus({ status: 'cancelled', file }), { label: 'Cancelled', tone: 'idle' });
+});

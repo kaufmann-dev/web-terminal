@@ -275,7 +275,7 @@ or control unrelated native Wayland windows.
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
   control grid follows that top offset without moving or resizing the terminal. An always-visible
-  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. Mic and
+  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. The microphone
   Cancel each match one button column, with status text spanning the six columns between them.
   All three rows are 44px high in an edge-to-edge grid with 1px internal dividers and a bottom
   border, without individual button borders or outer padding. The first button in the second
@@ -295,7 +295,7 @@ or control unrelated native Wayland windows.
   scrolls xterm's retained
   normal-screen history directly, without momentum or sending mouse or key input to
   alternate-screen programs; pinch-to-zoom remains available.
-- **Mic** starts dictation; **Stop** sends the recording to ElevenLabs Scribe v2 and inserts cleaned
+- The microphone button starts dictation; while recording it becomes a red stop button, which sends the recording to ElevenLabs Scribe v2 and inserts cleaned
   text once into the terminal where recording began. Press **Enter** yourself to execute. Scribe
   detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks
   and tabs become spaces and terminal control characters are removed. There is no transcript

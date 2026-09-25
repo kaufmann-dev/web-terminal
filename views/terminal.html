@@ -16,7 +16,14 @@
   <main class="terminal-main">
     <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal and session controls">
       <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
-        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
+        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
+          <svg class="voice-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3"></path>
+          </svg>
+          <svg class="voice-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="7" y="7" width="10" height="10"></rect>
+          </svg>
+        </button>
         <span class="voice-status" data-voice-status>Checking voice availability…</span>
         <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
       </div>
@@ -75,13 +82,20 @@
       </form>
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
-      <div class="sidebar-uploads">
-        <button id="upload-open" class="upload-button" type="button" disabled>Upload</button>
-        <button id="jobs-open" class="upload-button" type="button" disabled>Jobs</button>
+      <div class="sidebar-actions">
+        <button id="upload-open" class="sidebar-action" type="button" disabled>Upload</button>
+        <button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs</button>
       </div>
       <div class="sidebar-voice">
         <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
-          <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" disabled>Mic</button>
+          <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
+            <svg class="voice-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3"></path>
+            </svg>
+            <svg class="voice-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="7" y="7" width="10" height="10"></rect>
+            </svg>
+          </button>
           <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
           <span class="voice-status" data-voice-status>Checking voice availability…</span>
         </div>
@@ -100,16 +114,16 @@
     </section>
 
   </main>
-  <dialog id="upload-dialog" class="upload-dialog" aria-labelledby="upload-title">
-    <div class="upload-dialog-header">
+  <dialog id="upload-dialog" class="app-dialog upload-dialog" aria-labelledby="upload-title">
+    <div class="app-dialog-header">
       <h2 id="upload-title">Upload files</h2>
       <button id="upload-close" type="button" autofocus>Close</button>
     </div>
-    <div class="upload-dialog-body">
-      <p id="upload-error" class="upload-error" role="alert" hidden></p>
-      <section class="upload-section" aria-labelledby="upload-files-label">
-        <h3 id="upload-files-label" class="upload-section-label">Files</h3>
-        <button id="upload-choose" class="upload-dropzone" type="button">
+    <div class="app-dialog-body">
+      <p id="upload-error" class="app-dialog-error" role="alert" hidden></p>
+      <section class="app-dialog-section" aria-labelledby="upload-files-label">
+        <h3 id="upload-files-label" class="app-dialog-label">Files</h3>
+        <button id="upload-choose" class="dashed-panel upload-dropzone" type="button">
           <svg class="upload-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path>
           </svg>
@@ -117,14 +131,14 @@
           <span class="upload-dropzone-touch">Choose files</span>
         </button>
         <input id="upload-files" type="file" multiple hidden>
-        <ul id="upload-file-list" class="upload-file-list" aria-label="Selected files"></ul>
+        <ul id="upload-file-list" class="app-list upload-file-list" aria-label="Selected files"></ul>
       </section>
-      <form id="upload-path-form" class="upload-section">
+      <form id="upload-path-form" class="app-dialog-section">
         <fieldset id="upload-destination-fields">
-          <legend class="upload-section-label">Destination</legend>
+          <legend class="app-dialog-label">Destination</legend>
           <div id="upload-location" class="upload-location">
             <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Destination folder"></nav>
-            <button id="upload-edit-path" class="upload-icon-button" type="button" aria-label="Type a folder path" title="Type a folder path">
+            <button id="upload-edit-path" class="icon-button" type="button" aria-label="Type a folder path" title="Type a folder path">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"></path>
               </svg>
@@ -135,85 +149,98 @@
             <button type="submit">Go</button>
           </div>
           <input id="upload-folder-filter" class="upload-folder-filter" type="search" aria-label="Filter folders" placeholder="Filter folders" autocomplete="off" autocapitalize="none" spellcheck="false" hidden>
-          <div id="upload-folders" class="upload-folders" aria-label="Server folders"></div>
+          <div id="upload-folders" class="app-list upload-folders" aria-label="Server folders"></div>
         </fieldset>
       </form>
     </div>
-    <div class="upload-dialog-footer">
-      <p id="upload-summary" role="status" aria-live="polite"></p>
-      <div class="upload-footer-actions">
+    <div class="app-dialog-footer">
+      <p id="upload-summary" class="app-dialog-status" role="status" aria-live="polite"></p>
+      <div class="app-dialog-actions">
         <button id="upload-cancel" type="button" hidden>Cancel remaining</button>
         <button id="upload-submit" class="btn-dialog-primary" type="button" disabled>Upload</button>
       </div>
     </div>
   </dialog>
-  <dialog id="jobs-dialog" class="upload-dialog jobs-dialog" aria-labelledby="jobs-title">
-    <div class="upload-dialog-header">
+  <dialog id="jobs-dialog" class="app-dialog jobs-dialog" aria-labelledby="jobs-title">
+    <div class="app-dialog-header">
       <h2 id="jobs-title">Scheduled jobs</h2>
       <button id="jobs-close" type="button">Close</button>
     </div>
-    <div class="upload-dialog-body">
-      <p id="jobs-error" class="upload-error" role="alert" hidden></p>
+    <div class="app-dialog-body">
+      <p id="jobs-error" class="app-dialog-error" role="alert" hidden></p>
       <section id="jobs-list-view" aria-label="Scheduled job list">
-        <div id="jobs-toolbar" class="jobs-toolbar">
-          <p id="jobs-summary" class="jobs-muted" role="status" aria-live="polite"></p>
-          <button id="jobs-new" class="btn-dialog-primary" type="button">New job</button>
-        </div>
-        <div id="jobs-empty" class="jobs-empty" hidden>
+        <div id="jobs-empty" class="dashed-panel jobs-empty" hidden>
           <p class="jobs-empty-title">No scheduled jobs yet</p>
-          <p class="jobs-muted">Jobs run a Bash command in the background on a cron schedule, for example a nightly backup or a cleanup every Sunday.</p>
-          <button id="jobs-empty-new" class="btn-dialog-primary" type="button">Create a job</button>
+          <p>Jobs run a Bash command in the background on a cron schedule, for example a nightly backup or a cleanup every Sunday. Use <strong>New job</strong> to create one.</p>
         </div>
-        <ul id="jobs-list" class="jobs-list"></ul>
+        <ul id="jobs-list" class="app-list jobs-list"></ul>
       </section>
-      <section id="jobs-detail-view" class="jobs-detail" aria-labelledby="jobs-detail-title" hidden>
-        <button id="jobs-detail-back" class="jobs-back" type="button">‹ All jobs</button>
+      <section id="jobs-detail-view" aria-labelledby="jobs-detail-title" hidden>
+        <button id="jobs-detail-back" class="btn-link jobs-back" type="button">‹ All jobs</button>
         <div class="jobs-detail-header">
           <h3 id="jobs-detail-title"></h3>
           <span id="jobs-detail-status"></span>
         </div>
-        <pre id="jobs-detail-command" class="jobs-command" aria-label="Command"></pre>
+        <pre id="jobs-detail-command" class="code-block jobs-command" aria-label="Command"></pre>
         <dl id="jobs-detail-meta" class="jobs-meta"></dl>
         <div class="jobs-detail-actions">
-          <button id="jobs-detail-run" class="btn-dialog-primary" type="button">Run now</button>
           <button id="jobs-detail-toggle" type="button">Pause</button>
           <button id="jobs-detail-edit" type="button">Edit</button>
           <button id="jobs-detail-delete" class="btn-dialog-danger" type="button">Delete</button>
         </div>
-        <h4 class="upload-section-label">Recent runs</h4>
-        <ul id="jobs-runs" class="jobs-runs" aria-label="Recent runs"></ul>
+        <section class="app-dialog-section" aria-labelledby="jobs-runs-label">
+          <h4 id="jobs-runs-label" class="app-dialog-label">Recent runs</h4>
+          <ul id="jobs-runs" class="app-list jobs-runs" aria-labelledby="jobs-runs-label"></ul>
+          <p id="jobs-runs-empty" class="dashed-panel jobs-runs-empty" hidden>No runs yet. Use <strong>Run now</strong> to test the command.</p>
+        </section>
       </section>
       <form id="jobs-editor" class="jobs-editor" hidden novalidate>
-        <label for="job-name">Name</label>
-        <input id="job-name" type="text" maxlength="64" autocomplete="off" required>
-        <label for="job-command">Command</label>
-        <textarea id="job-command" rows="5" maxlength="8192" autocomplete="off" autocapitalize="none" spellcheck="false" required></textarea>
-        <p class="jobs-hint">Runs with Bash in the terminal's start folder, using the terminal environment. Output is kept for the last 20 runs.</p>
-        <div class="jobs-field-row">
-          <div class="jobs-field">
-            <label for="job-preset">Schedule</label>
-            <select id="job-preset">
-              <option value="">Custom</option>
-            </select>
-          </div>
-          <div class="jobs-field">
-            <label for="job-schedule">Cron expression</label>
-            <input id="job-schedule" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="0 3 * * *" required>
-          </div>
+        <div class="app-dialog-field">
+          <label class="app-dialog-label" for="job-name">Name</label>
+          <input id="job-name" type="text" maxlength="64" autocomplete="off" required>
         </div>
-        <p class="jobs-hint">minute · hour · day of month · month · day of week</p>
-        <label for="job-timezone">Timezone</label>
-        <input id="job-timezone" type="text" list="job-timezones" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        <datalist id="job-timezones"></datalist>
-        <div id="job-preview" class="jobs-preview" aria-live="polite"></div>
-        <label for="job-timeout">Timeout in minutes (0 = none)</label>
-        <input id="job-timeout" type="number" min="0" max="10080" step="1" inputmode="numeric" value="0">
-        <label class="jobs-checkbox"><input id="job-enabled" type="checkbox" checked> Enabled</label>
-        <div class="upload-footer-actions">
-          <button id="job-cancel" type="button">Cancel</button>
-          <button id="job-save" class="btn-dialog-primary" type="submit">Create job</button>
+        <div class="app-dialog-field">
+          <label class="app-dialog-label" for="job-command">Command</label>
+          <textarea id="job-command" rows="5" maxlength="8192" autocomplete="off" autocapitalize="none" spellcheck="false" required></textarea>
+          <p class="app-dialog-hint">Runs with Bash in the terminal's start folder, using the terminal environment. Output is kept for the last 20 runs.</p>
         </div>
+        <div class="app-dialog-field">
+          <div class="jobs-field-row">
+            <div>
+              <label class="app-dialog-label" for="job-preset">Schedule</label>
+              <select id="job-preset">
+                <option value="">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="app-dialog-label" for="job-schedule">Cron expression</label>
+              <input id="job-schedule" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="0 3 * * *" required>
+            </div>
+          </div>
+          <p class="app-dialog-hint">minute · hour · day of month · month · day of week</p>
+        </div>
+        <div class="app-dialog-field">
+          <label class="app-dialog-label" for="job-timezone">Timezone</label>
+          <input id="job-timezone" type="text" list="job-timezones" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+          <datalist id="job-timezones"></datalist>
+          <div id="job-preview" class="jobs-preview" aria-live="polite"></div>
+        </div>
+        <div class="app-dialog-field">
+          <label class="app-dialog-label" for="job-timeout">Timeout in minutes</label>
+          <input id="job-timeout" type="number" min="0" max="10080" step="1" inputmode="numeric" value="0">
+          <p class="app-dialog-hint">0 means no timeout.</p>
+        </div>
+        <label class="app-dialog-checkbox"><input id="job-enabled" type="checkbox" checked> Enabled</label>
       </form>
+    </div>
+    <div class="app-dialog-footer">
+      <p id="jobs-summary" class="app-dialog-status" role="status" aria-live="polite"></p>
+      <div class="app-dialog-actions">
+        <button id="jobs-new" class="btn-dialog-primary" type="button">New job</button>
+        <button id="jobs-detail-run" class="btn-dialog-primary" type="button" hidden>Run now</button>
+        <button id="job-cancel" type="button" hidden>Cancel</button>
+        <button id="job-save" class="btn-dialog-primary" type="submit" form="jobs-editor" hidden>Create job</button>
+      </div>
     </div>
   </dialog>
   <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>
