@@ -556,6 +556,17 @@ body.dark {
   .upload-dialog .upload-location .upload-icon-button:hover:not(:disabled) {
     border-color: var(--border);
   }
+
+  .upload-dialog .jobs-row:hover:not(:disabled),
+  .upload-dialog .jobs-run:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .upload-dialog .btn-dialog-danger:hover:not(:disabled) {
+    background: rgb(255 107 107 / 8%);
+    color: var(--error);
+    border-color: var(--error);
+  }
 }
 
 .sidebar-uploads .upload-button {
@@ -646,25 +657,47 @@ body.dark {
 .upload-error { color: var(--error); }
 .upload-file progress { width: 100%; height: 4px; margin-top: 6px; accent-color: var(--accent); }
 .jobs-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.jobs-toolbar p, .jobs-toolbar h3 { min-width: 0; flex: 1; margin: 0; }
-.jobs-toolbar h3 { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-toolbar[hidden] { display: none; }
+.jobs-toolbar p { min-width: 0; flex: 1; margin: 0; }
 .jobs-muted, .jobs-hint { color: var(--muted); }
 .jobs-hint { margin: 4px 0 0; font-size: 11px; }
-.jobs-list, .jobs-runs { list-style: none; margin: 0; padding: 0; }
-.jobs-item { padding: 12px 0; border-top: 1px solid var(--border); }
-.jobs-item[data-enabled="false"] .jobs-item-name { color: var(--muted); }
-.jobs-item-heading { display: flex; align-items: center; gap: 8px; }
-.jobs-item-name { min-width: 0; flex: 1; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.jobs-item-meta { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
-.jobs-item-meta code, .jobs-item-command { font-family: "JetBrains Mono", monospace; font-size: 12px; }
-.jobs-item-command { display: block; margin-top: 6px; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.jobs-item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.jobs-item-actions button { min-height: 36px; }
-.jobs-status { flex-shrink: 0; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
+.jobs-empty { padding: 28px 16px; border: 1px dashed var(--border); text-align: center; }
+.jobs-empty[hidden] { display: none; }
+.jobs-empty p { max-width: 420px; margin: 0 auto 16px; }
+.jobs-empty .jobs-empty-title { margin-bottom: 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+.jobs-list, .jobs-runs { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); }
+.jobs-list[hidden] { display: none; }
+.jobs-item { display: flex; align-items: center; }
+.jobs-item + .jobs-item, .jobs-run-item + .jobs-run-item { border-top: 1px solid var(--border); }
+.upload-dialog .jobs-row { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: stretch; gap: 3px; min-height: 0; padding: 10px 12px; background: transparent; border: 0; text-align: left; }
+.jobs-row-heading { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.jobs-row-name { min-width: 0; flex: 1; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-item[data-enabled="false"] .jobs-row-name { color: var(--muted); }
+.jobs-row-meta { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.upload-dialog .jobs-quick { flex: 0 0 auto; min-width: 64px; min-height: 36px; margin-right: 12px; }
+.jobs-status { flex-shrink: 0; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
 .jobs-status[data-tone="success"] { border-color: var(--accent); color: var(--accent-bright); }
 .jobs-status[data-tone="running"] { border-color: var(--accent-bright); color: var(--accent-bright); }
 .jobs-status[data-tone="warning"] { border-color: #b58b2a; color: #f0c05a; }
 .jobs-status[data-tone="error"] { border-color: var(--error); color: var(--error); }
+.upload-dialog .jobs-back { min-height: 32px; margin: 0 0 8px -2px; padding: 0 2px; background: transparent; color: var(--muted); border: 0; }
+.jobs-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.jobs-detail-header h3 { min-width: 0; flex: 1; margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.jobs-command { max-height: 160px; margin: 0 0 12px; padding: 10px 12px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.jobs-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0 0 16px; }
+.jobs-meta dt { color: var(--muted); }
+.jobs-meta dd { margin: 0; overflow-wrap: anywhere; }
+.jobs-meta code { color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+.jobs-meta .jobs-meta-cron { display: block; margin-top: 2px; }
+.jobs-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.jobs-detail-actions .btn-dialog-danger { margin-left: auto; }
+.upload-dialog .btn-dialog-danger { color: var(--error); }
+.upload-dialog .jobs-run { display: flex; width: 100%; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; background: transparent; border: 0; text-align: left; }
+.jobs-run-chevron { flex: 0 0 auto; color: var(--muted); font-size: 16px; line-height: 1; transition: transform 120ms ease; }
+.jobs-run[aria-expanded="true"] .jobs-run-chevron { transform: rotate(90deg); }
+.jobs-run-time { flex: 0 0 auto; }
+.jobs-run-detail { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-runs-empty { padding: 12px; color: var(--muted); }
 .jobs-editor { display: flex; flex-direction: column; }
 .jobs-editor > label, .jobs-field > label { display: block; margin: 12px 0 6px; }
 .jobs-editor > label:first-child { margin-top: 0; }
@@ -673,6 +706,7 @@ body.dark {
 .jobs-editor textarea,
 .jobs-editor select,
 .jobs-editor input[type="number"] { width: 100%; min-height: 44px; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); font: inherit; font-size: 16px; }
+.jobs-editor input[type="number"] { max-width: 160px; }
 .jobs-editor textarea { min-height: 112px; resize: vertical; font-family: "JetBrains Mono", monospace; font-size: 13px; }
 .jobs-editor #job-schedule { font-family: "JetBrains Mono", monospace; }
 .jobs-editor > .jobs-checkbox { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
@@ -681,11 +715,8 @@ body.dark {
 .jobs-preview p { margin: 0 0 4px; }
 .jobs-preview ol { margin: 0; padding-left: 20px; }
 .jobs-preview[data-state="error"] { color: var(--error); }
-.jobs-dialog .jobs-run { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; padding: 8px 10px; text-align: left; }
-.jobs-run[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-raised); }
-.jobs-run-time { flex: 1; min-width: 0; }
-.jobs-run .jobs-muted { flex-basis: 100%; font-size: 11px; }
-.jobs-log { max-height: 50dvh; margin: 12px 0 0; padding: 10px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain; }
+.jobs-log { max-height: 40dvh; margin: 0 12px 12px; padding: 10px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain; }
+.jobs-log-empty { color: var(--muted); }
 .upload-dragging::after { content: 'Drop files to upload'; position: absolute; inset: 12px; z-index: 6; display: grid; place-items: center; background: var(--panel); color: var(--text); border: 2px dashed var(--accent-bright); pointer-events: none; }
 
 .voice-controls {
@@ -778,7 +809,10 @@ body.dark {
   .upload-footer-actions { flex-direction: column; align-items: stretch; }
   .upload-footer-actions button { width: 100%; }
   .jobs-field-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .jobs-item-actions button { flex: 1 1 calc(33% - 6px); }
+  .jobs-detail-actions button { flex: 1 1 calc(50% - 8px); }
+  .jobs-detail-actions .btn-dialog-danger { margin-left: 0; }
+  .jobs-run-time { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jobs-run-detail { display: none; }
   .jobs-editor textarea { font-size: 16px; }
 
   .login-container {

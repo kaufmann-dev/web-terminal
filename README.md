@@ -347,15 +347,21 @@ or control unrelated native Wayland windows.
   destination before retrying. Folder uploads, folder creation, and automatic archive extraction
   are not provided; upload a ZIP file when needed.
 - **Jobs** is next to **Upload** in the session sidebar and manages scheduled background commands.
-  **New job** asks for a name, a Bash command, a five-field cron expression (`minute hour
+  The list shows each job's schedule in words (for example "Weekdays at 09:00 · Europe/Vienna"),
+  when it runs next, when it last ran, and its last result, with a **Run** or **Stop** button.
+  Click a job to open its details: the command, schedule and raw cron expression, next run,
+  timeout, the actions **Run now**/**Stop**, **Pause**/**Resume**, **Edit**, and **Delete**, and its
+  recent runs. Expand a run to see its output, which follows along while the run is active.
+- **New job** asks for a name, a Bash command, a five-field cron expression (`minute hour
   day-of-month month day-of-week`, or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`), an
   IANA timezone that defaults to the browser's, and an optional timeout in minutes. Presets fill
-  common schedules, and the editor previews the next five run times in the job's timezone.
+  common schedules, and the editor describes the schedule and previews the next five run times in
+  the job's timezone.
 - Each run executes `bash -c <command>` in `TERMINAL_WORKDIR` as the terminal user with the terminal
   environment, so the same PATH, tools, `DOCKER_HOST`, and dotfiles-managed credentials are
   available; `WEB_TERMINAL_JOB_ID` and `WEB_TERMINAL_JOB_NAME` identify the job. Runs have no TTY or
   stdin and do not appear in any terminal session. Combined stdout and stderr is kept per run, up to
-  1 MiB, for the last 20 runs of each job; **History** shows runs and their output.
+  1 MiB, for the last 20 runs of each job.
 - A job never overlaps itself: when its schedule fires while the previous run is still active, the
   new run is recorded as skipped. **Run now** starts a manual run and is refused while a run is
   active. **Stop**, a reached timeout, and **Delete** send SIGTERM to every process in the run's

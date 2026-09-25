@@ -155,11 +155,33 @@
     <div class="upload-dialog-body">
       <p id="jobs-error" class="upload-error" role="alert" hidden></p>
       <section id="jobs-list-view" aria-label="Scheduled job list">
-        <div class="jobs-toolbar">
+        <div id="jobs-toolbar" class="jobs-toolbar">
           <p id="jobs-summary" class="jobs-muted" role="status" aria-live="polite"></p>
           <button id="jobs-new" class="btn-dialog-primary" type="button">New job</button>
         </div>
+        <div id="jobs-empty" class="jobs-empty" hidden>
+          <p class="jobs-empty-title">No scheduled jobs yet</p>
+          <p class="jobs-muted">Jobs run a Bash command in the background on a cron schedule, for example a nightly backup or a cleanup every Sunday.</p>
+          <button id="jobs-empty-new" class="btn-dialog-primary" type="button">Create a job</button>
+        </div>
         <ul id="jobs-list" class="jobs-list"></ul>
+      </section>
+      <section id="jobs-detail-view" class="jobs-detail" aria-labelledby="jobs-detail-title" hidden>
+        <button id="jobs-detail-back" class="jobs-back" type="button">‹ All jobs</button>
+        <div class="jobs-detail-header">
+          <h3 id="jobs-detail-title"></h3>
+          <span id="jobs-detail-status"></span>
+        </div>
+        <pre id="jobs-detail-command" class="jobs-command" aria-label="Command"></pre>
+        <dl id="jobs-detail-meta" class="jobs-meta"></dl>
+        <div class="jobs-detail-actions">
+          <button id="jobs-detail-run" class="btn-dialog-primary" type="button">Run now</button>
+          <button id="jobs-detail-toggle" type="button">Pause</button>
+          <button id="jobs-detail-edit" type="button">Edit</button>
+          <button id="jobs-detail-delete" class="btn-dialog-danger" type="button">Delete</button>
+        </div>
+        <h4 class="upload-section-label">Recent runs</h4>
+        <ul id="jobs-runs" class="jobs-runs" aria-label="Recent runs"></ul>
       </section>
       <form id="jobs-editor" class="jobs-editor" hidden novalidate>
         <label for="job-name">Name</label>
@@ -192,15 +214,6 @@
           <button id="job-save" class="btn-dialog-primary" type="submit">Create job</button>
         </div>
       </form>
-      <section id="jobs-runs-view" aria-labelledby="jobs-runs-title" hidden>
-        <div class="jobs-toolbar">
-          <button id="jobs-runs-back" type="button">Back</button>
-          <h3 id="jobs-runs-title"></h3>
-          <button id="jobs-runs-refresh" type="button">Refresh</button>
-        </div>
-        <ul id="jobs-runs" class="jobs-runs" aria-label="Run history"></ul>
-        <pre id="jobs-log" class="jobs-log" tabindex="0" aria-label="Run output" hidden></pre>
-      </section>
     </div>
   </dialog>
   <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>
