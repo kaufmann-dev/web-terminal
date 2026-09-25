@@ -86,6 +86,96 @@ export function formatDateTime(value, timeZone) {
   }
 }
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SHORT_DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const NICKNAME_DESCRIPTIONS = {
+  '@hourly': 'Every hour',
+  '@daily': 'Every day at 00:00',
+  '@midnight': 'Every day at 00:00',
+  '@weekly': 'Every Sunday at 00:00',
+  '@monthly': 'Monthly on day 1 at 00:00',
+  '@yearly': 'Every year on January 1 at 00:00',
+  '@annually': 'Every year on January 1 at 00:00',
+};
+
+const isWithin = (field, max, min = 0) => /^\d+$/.test(field) && Number(field) >= min && Number(field) <= max;
+const twoDigits = (value) => String(Number(value)).padStart(2, '0');
+
+function describeDays(field) {
+  if (field === '1-5') return 'Weekdays';
+  if (['0,6', '6,0', '6,7'].includes(field)) return 'Weekends';
+  const parts = field.split(',');
+  const labels = [];
+  for (const part of parts) {
+    const range = /^(\d)-(\d)$/.exec(part);
+    if (range && Number(range[1]) < Number(range[2]) && Number(range[2]) <= 7) {
+      labels.push(`${SHORT_DAY_NAMES[Number(range[1]) % 7]}–${SHORT_DAY_NAMES[Number(range[2]) % 7]}`);
+    } else if (isWithin(part, 7)) {
+      labels.push(parts.length === 1 ? DAY_NAMES[Number(part) % 7] : SHORT_DAY_NAMES[Number(part) % 7]);
+    } else {
+      return null;
+    }
+  }
+  return `Every ${labels.join(', ')}`;
+}
+
+// Describe common cron shapes in words; anything else is shown as the raw expression.
+export function describeSchedule(schedule) {
+  const normalized = normalizeSchedule(schedule).toLowerCase();
+  if (NICKNAME_DESCRIPTIONS[normalized]) return NICKNAME_DESCRIPTIONS[normalized];
+  const fields = normalized.split(' ');
+  if (fields.length !== 5) return null;
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
+  if (month !== '*') return null;
+  const everyDay = dayOfMonth === '*' && dayOfWeek === '*';
+
+  if (hour === '*' && everyDay) {
+    if (minute === '*') return 'Every minute';
+    const step = /^\*\/(\d+)$/.exec(minute);
+    if (step) return Number(step[1]) === 1 ? 'Every minute' : `Every ${Number(step[1])} minutes`;
+    if (isWithin(minute, 59)) return Number(minute) === 0 ? 'Every hour' : `Every hour at :${twoDigits(minute)}`;
+    return null;
+  }
+  if (!isWithin(minute, 59)) return null;
+  const hourStep = /^\*\/(\d+)$/.exec(hour);
+  if (hourStep && everyDay) {
+    const every = Number(hourStep[1]) === 1 ? 'Every hour' : `Every ${Number(hourStep[1])} hours`;
+    return Number(minute) === 0 ? every : `${every} at :${twoDigits(minute)}`;
+  }
+  if (!isWithin(hour, 23)) return null;
+  const time = `${twoDigits(hour)}:${twoDigits(minute)}`;
+  if (everyDay) return `Every day at ${time}`;
+  if (dayOfMonth === '*') {
+    const days = describeDays(dayOfWeek);
+    return days ? `${days} at ${time}` : null;
+  }
+  if (dayOfWeek === '*' && isWithin(dayOfMonth, 31, 1)) return `Monthly on day ${Number(dayOfMonth)} at ${time}`;
+  return null;
+}
+
+export function formatRelativeTime(value, now = Date.now(), locale = undefined) {
+  const difference = Date.parse(value) - now;
+  if (!Number.isFinite(difference)) return '';
+  const seconds = Math.abs(difference) / 1000;
+  if (seconds < 45) return difference >= 0 ? 'in a moment' : 'just now';
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  const sign = difference < 0 ? -1 : 1;
+  for (const [unit, unitSeconds, limit] of [
+    ['minute', 60, 60], ['hour', 3600, 24], ['day', 86400, 30], ['month', 2592000, 12],
+  ]) {
+    const amount = Math.max(1, Math.round(seconds / unitSeconds));
+    if (amount < limit) return format.format(sign * amount, unit);
+  }
+  return format.format(sign * Math.max(1, Math.round(seconds / 31536000)), 'year');
+}
+
+export function formatTimeout(timeoutSeconds) {
+  if (!timeoutSeconds) return 'None';
+  const minutes = Math.round(timeoutSeconds / 60);
+  if (minutes < 60 || minutes % 60) return `${minutes} min`;
+  return `${minutes / 60} h`;
+}
+
 export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSidebar, isMobile, onAuthExpired }) {
   const window = document.defaultView;
   const get = (id) => document.getElementById(id);
@@ -96,6 +186,16 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   const listView = get('jobs-list-view');
   const list = get('jobs-list');
   const summary = get('jobs-summary');
+  const detailView = get('jobs-detail-view');
+  const detailTitle = get('jobs-detail-title');
+  const detailStatus = get('jobs-detail-status');
+  const detailCommand = get('jobs-detail-command');
+  const detailMeta = get('jobs-detail-meta');
+  const detailRun = get('jobs-detail-run');
+  const detailToggle = get('jobs-detail-toggle');
+  const detailEdit = get('jobs-detail-edit');
+  const detailDelete = get('jobs-detail-delete');
+  const runsList = get('jobs-runs');
   const editor = get('jobs-editor');
   const nameInput = get('job-name');
   const commandInput = get('job-command');
@@ -107,18 +207,20 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   const enabledInput = get('job-enabled');
   const preview = get('job-preview');
   const saveButton = get('job-save');
-  const runsView = get('jobs-runs-view');
-  const runsTitle = get('jobs-runs-title');
-  const runsList = get('jobs-runs');
-  const logOutput = get('jobs-log');
+  const cancelButton = get('job-cancel');
+  const newButton = get('jobs-new');
+  const runsEmpty = get('jobs-runs-empty');
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   let configured = false;
   let view = 'list';
   let jobs = [];
+  let detailJob = null;
+  let expandedRunId = null;
+  let expandLatestRun = false;
+  const logs = new Map();
   let editingJob = null;
-  let runsJob = null;
-  let selectedRunId = null;
+  let editorReturn = 'list';
   let busy = false;
   let pollTimer = null;
   let refreshSequence = 0;
@@ -132,8 +234,8 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     if (className) node.className = className;
     return node;
   };
-  const button = (text, action, label) => {
-    const node = element('button', text);
+  const button = (text, action, className, label) => {
+    const node = element('button', text, className);
     node.type = 'button';
     node.disabled = busy;
     if (label) node.setAttribute('aria-label', label);
@@ -143,13 +245,15 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   const setError = (message = '') => {
     error.textContent = message;
     error.hidden = !message;
+    if (message) error.scrollIntoView({ block: 'nearest' });
   };
   const statusBadge = (run) => {
     const { label, tone } = describeRunStatus(run);
-    const badge = element('span', label, 'jobs-status');
+    const badge = element('span', label, 'status-badge');
     badge.dataset.tone = tone;
     return badge;
   };
+  const scheduleText = (job) => `${describeSchedule(job.schedule) ?? job.schedule} · ${job.timezone}`;
   const mutate = (method, url, body) => apiRequest(url, {
     method,
     headers: { 'Content-Type': 'application/json', 'CSRF-Token': getCsrfToken() },
@@ -165,45 +269,54 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   function showView(nextView) {
     view = nextView;
     listView.hidden = view !== 'list';
+    detailView.hidden = view !== 'detail';
     editor.hidden = view !== 'editor';
-    runsView.hidden = view !== 'runs';
-    title.textContent = view === 'editor'
-      ? (editingJob ? 'Edit job' : 'New job')
-      : 'Scheduled jobs';
+    title.textContent = view === 'editor' ? (editingJob ? 'Edit job' : 'New job') : 'Scheduled jobs';
+    // Each view keeps its main action in the shared dialog footer, like the upload dialog.
+    newButton.hidden = view !== 'list';
+    detailRun.hidden = view !== 'detail';
+    cancelButton.hidden = view !== 'editor';
+    saveButton.hidden = view !== 'editor';
+    summary.textContent = '';
     setError();
+  }
+
+  function lastRunText(job) {
+    if (job.running) return 'Running now…';
+    return job.lastRun ? `Last run ${formatRelativeTime(job.lastRun.startedAt)}` : 'Not run yet';
   }
 
   function schedulePoll() {
     window.clearTimeout(pollTimer);
     pollTimer = null;
     if (!dialog.open || view === 'editor') return;
-    const anyRunning = jobs.some((job) => job.running);
+    const anyRunning = view === 'detail' ? detailJob?.running : jobs.some((job) => job.running);
     pollTimer = window.setTimeout(refresh, anyRunning ? 2000 : 10000);
   }
 
   async function refresh() {
     const sequence = ++refreshSequence;
     try {
-      if (view === 'runs' && runsJob) {
-        const { job } = await apiRequest(`/api/jobs/${runsJob.id}`);
-        if (sequence !== refreshSequence) return;
-        runsJob = job;
+      if (view === 'detail' && detailJob) {
+        const { job } = await apiRequest(`/api/jobs/${detailJob.id}`);
+        if (sequence !== refreshSequence || view !== 'detail') return;
+        detailJob = job;
         jobs = jobs.map((entry) => (entry.id === job.id ? job : entry));
-        renderRuns();
-        const selected = job.runs.find((run) => run.id === selectedRunId);
-        // Reload the output until it has been read after the run finished.
-        if (selected && (logOutput.dataset.runId !== selected.id || logOutput.dataset.complete !== 'true')) {
-          await loadLog(selected);
-        }
-      } else {
+        if (expandedRunId && !job.runs.some((run) => run.id === expandedRunId)) expandedRunId = null;
+        if (expandLatestRun && job.runs[0]) expandedRunId = job.runs[0].id;
+        expandLatestRun = false;
+        renderDetail();
+        await loadExpandedLog();
+      } else if (view === 'list') {
         const data = await apiRequest('/api/jobs');
-        if (sequence !== refreshSequence) return;
+        if (sequence !== refreshSequence || view !== 'list') return;
         jobs = data.jobs;
         renderList();
       }
     } catch (failure) {
       if (sequence !== refreshSequence) return;
-      if (failure.status === 404 && view === 'runs') {
+      if (failure.status === 404 && view === 'detail') {
+        detailJob = null;
         showView('list');
         refresh();
         return;
@@ -231,140 +344,187 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
 
   function renderCurrent() {
     if (view === 'list') renderList();
-    if (view === 'runs') renderRuns();
+    if (view === 'detail' && detailJob) renderDetail();
     saveButton.disabled = busy;
+  }
+
+  function runJob(job) {
+    return mutate('POST', `/api/jobs/${job.id}/runs`);
+  }
+
+  function stopJob(job) {
+    return mutate('POST', `/api/jobs/${job.id}/stop`);
   }
 
   function renderList() {
     list.replaceChildren();
     const running = jobs.filter((job) => job.running).length;
+    const paused = jobs.filter((job) => !job.enabled).length;
     summary.textContent = jobs.length
-      ? `${jobs.length} job${jobs.length === 1 ? '' : 's'}${running ? `, ${running} running` : ''}.`
-      : 'No scheduled jobs yet. Jobs run a Bash command in the background on a cron schedule.';
+      ? [`${jobs.length} job${jobs.length === 1 ? '' : 's'}`, running && `${running} running`, paused && `${paused} paused`]
+        .filter(Boolean).join(' · ')
+      : '';
+    list.hidden = !jobs.length;
+    get('jobs-empty').hidden = jobs.length > 0;
     for (const job of jobs) {
       const item = element('li', '', 'jobs-item');
       item.dataset.enabled = String(job.enabled);
-      const heading = element('div', '', 'jobs-item-heading');
-      const name = element('span', job.name, 'jobs-item-name');
-      name.title = job.name;
-      heading.append(name, statusBadge(job.running ? { status: 'running' } : job.lastRun));
-
-      const schedule = element('p', '', 'jobs-item-meta');
-      schedule.append(element('code', job.schedule), ` · ${job.timezone}`);
-      const next = element('p', job.enabled
-        ? `Next run: ${job.nextRunAt ? formatDateTime(job.nextRunAt) : 'none'}`
-        : 'Paused', 'jobs-item-meta');
-      const command = element('code', job.command.split('\n')[0], 'jobs-item-command');
-      command.title = job.command;
-
-      const actions = element('div', '', 'jobs-item-actions');
-      actions.append(
-        job.running
-          ? button('Stop', () => perform(async () => {
-            await mutate('POST', `/api/jobs/${job.id}/stop`);
-            await refresh();
-          }), `Stop ${job.name}`)
-          : button('Run now', () => perform(async () => {
-            await mutate('POST', `/api/jobs/${job.id}/runs`);
-            await refresh();
-          }), `Run ${job.name} now`),
-        button(job.enabled ? 'Pause' : 'Resume', () => perform(async () => {
-          await mutate('PATCH', `/api/jobs/${job.id}`, { enabled: !job.enabled });
-          await refresh();
-        }), `${job.enabled ? 'Pause' : 'Resume'} ${job.name}`),
-        button('Edit', () => openEditor(job), `Edit ${job.name}`),
-        button('History', () => openRuns(job), `Show run history for ${job.name}`),
-        button('Delete', () => {
-          const confirmed = window.confirm(
-            `Delete the job "${job.name}"? Its run history is removed and a running command is stopped.`,
-          );
-          if (!confirmed) return;
-          perform(async () => {
-            await mutate('DELETE', `/api/jobs/${job.id}`);
-            await refresh();
-          });
-        }, `Delete ${job.name}`),
+      const row = button('', () => openDetail(job), 'app-list-row jobs-row');
+      const body = element('span', '', 'jobs-row-body');
+      const heading = element('span', '', 'jobs-row-heading');
+      heading.append(element('span', job.name, 'jobs-row-name'), statusBadge(job.running ? { status: 'running' } : job.lastRun));
+      const timing = [job.enabled
+        ? (job.nextRunAt ? `Next ${formatRelativeTime(job.nextRunAt)}` : 'No upcoming run')
+        : 'Paused'];
+      if (job.lastRun && job.lastRun.status !== 'running') timing.push(`last ran ${formatRelativeTime(job.lastRun.startedAt)}`);
+      body.append(
+        heading,
+        element('span', scheduleText(job), 'jobs-row-meta'),
+        element('span', timing.join(' · '), 'jobs-row-meta'),
       );
-      item.append(heading, command, schedule, next, actions);
+      const chevron = element('span', '›', 'app-list-chevron');
+      chevron.setAttribute('aria-hidden', 'true');
+      row.append(body, chevron);
+      row.title = job.nextRunAt && job.enabled ? `Next run: ${formatDateTime(job.nextRunAt)}` : '';
+      const quick = job.running
+        ? button('Stop', () => perform(async () => { await stopJob(job); await refresh(); }), 'btn-compact jobs-quick', `Stop ${job.name}`)
+        : button('Run', () => perform(async () => { await runJob(job); await refresh(); }), 'btn-compact jobs-quick', `Run ${job.name} now`);
+      item.append(row, quick);
       list.append(item);
     }
   }
 
-  function renderRuns() {
-    if (!runsJob) return;
-    runsTitle.textContent = runsJob.name;
-    runsList.replaceChildren();
-    if (!runsJob.runs?.length) {
-      runsList.append(element('li', 'This job has not run yet.', 'jobs-muted'));
-      logOutput.hidden = true;
-      return;
+  function renderDetail() {
+    const job = detailJob;
+    detailTitle.textContent = job.name;
+    detailStatus.replaceChildren(statusBadge(job.running ? { status: 'running' } : job.lastRun));
+    detailCommand.textContent = job.command;
+
+    detailMeta.replaceChildren();
+    const schedule = element('dd');
+    const description = describeSchedule(job.schedule);
+    if (description) {
+      schedule.append(`${description} · ${job.timezone}`, element('code', job.schedule, 'jobs-meta-cron'));
+    } else {
+      schedule.append(element('code', job.schedule), ` · ${job.timezone}`);
     }
-    for (const run of runsJob.runs) {
-      const item = element('li');
-      const entry = button('', () => {
-        selectedRunId = run.id;
+    const next = element('dd', job.enabled
+      ? (job.nextRunAt ? `${formatRelativeTime(job.nextRunAt)} · ${formatDateTime(job.nextRunAt)}` : 'No upcoming run')
+      : 'Paused');
+    for (const [label, value] of [
+      ['Schedule', schedule],
+      ['Next run', next],
+      ['Timeout', element('dd', formatTimeout(job.timeoutSeconds))],
+    ]) {
+      detailMeta.append(element('dt', label), value);
+    }
+
+    detailRun.textContent = job.running ? 'Stop' : 'Run now';
+    detailRun.classList.toggle('btn-dialog-primary', !job.running);
+    detailRun.setAttribute('aria-label', job.running ? `Stop ${job.name}` : `Run ${job.name} now`);
+    detailToggle.textContent = job.enabled ? 'Pause' : 'Resume';
+    for (const control of [detailRun, detailToggle, detailEdit, detailDelete]) control.disabled = busy;
+    summary.textContent = lastRunText(job);
+    renderRuns();
+  }
+
+  function renderRuns() {
+    const runs = detailJob.runs || [];
+    const previousLog = runsList.querySelector('.jobs-log');
+    const previousScroll = previousLog && {
+      runId: previousLog.dataset.runId,
+      top: previousLog.scrollTop,
+      atBottom: previousLog.scrollTop + previousLog.clientHeight >= previousLog.scrollHeight - 4,
+    };
+    runsList.replaceChildren();
+    runsEmpty.hidden = runs.length > 0;
+    for (const run of runs) {
+      const item = element('li', '', 'jobs-run-item');
+      const expanded = run.id === expandedRunId;
+      const toggle = button('', () => {
+        expandedRunId = expanded ? null : run.id;
         renderRuns();
-        loadLog(run);
-      });
-      entry.disabled = false;
-      entry.className = 'jobs-run';
-      entry.setAttribute('aria-pressed', String(run.id === selectedRunId));
-      const when = element('span', formatDateTime(run.startedAt), 'jobs-run-time');
-      const detail = element('span', [
+        loadExpandedLog();
+      }, 'app-list-row jobs-run');
+      toggle.disabled = false;
+      toggle.setAttribute('aria-expanded', String(expanded));
+      const chevron = element('span', '›', 'app-list-chevron jobs-run-chevron');
+      chevron.setAttribute('aria-hidden', 'true');
+      const time = element('span', formatDateTime(run.startedAt), 'jobs-run-time');
+      time.title = formatRelativeTime(run.startedAt);
+      const detail = [
         run.trigger === 'manual' ? 'Manual' : 'Scheduled',
         run.status === 'skipped' ? '' : formatDuration(run.startedAt, run.finishedAt),
         run.truncated ? 'output truncated' : '',
-      ].filter(Boolean).join(' · '), 'jobs-muted');
-      entry.append(when, statusBadge(run), detail);
-      item.append(entry);
+      ].filter(Boolean).join(' · ');
+      toggle.append(chevron, time, element('span', detail, 'jobs-run-detail'), statusBadge(run));
+      item.append(toggle);
+      if (expanded) {
+        const output = element('pre', '', 'code-block jobs-log');
+        output.id = `jobs-log-${run.id}`;
+        output.dataset.runId = run.id;
+        output.tabIndex = 0;
+        output.setAttribute('aria-label', 'Run output');
+        toggle.setAttribute('aria-controls', output.id);
+        const cached = logs.get(run.id);
+        if (cached?.text) {
+          output.textContent = cached.text;
+        } else {
+          output.classList.add('jobs-log-empty');
+          output.textContent = !cached ? 'Loading output…'
+            : run.status === 'running' ? 'Waiting for output…' : 'No output.';
+        }
+        item.append(output);
+        if (previousScroll?.runId === run.id) {
+          output.scrollTop = previousScroll.atBottom ? output.scrollHeight : previousScroll.top;
+        } else if (run.status === 'running') {
+          output.scrollTop = output.scrollHeight;
+        }
+      }
       runsList.append(item);
     }
-    logOutput.hidden = !selectedRunId;
   }
 
-  async function loadLog(run) {
-    if (!run) return;
+  async function loadExpandedLog() {
+    const job = detailJob;
+    const run = job?.runs?.find((entry) => entry.id === expandedRunId);
+    if (!run || logs.get(run.id)?.complete) return;
     if (run.status === 'skipped') {
-      logOutput.dataset.runId = run.id;
-      logOutput.dataset.complete = 'true';
-      logOutput.textContent = 'This run was skipped because the previous run was still running.';
+      logs.set(run.id, { text: 'Skipped because the previous run was still running.', complete: true });
+      renderRuns();
       return;
     }
     try {
-      const response = await window.fetch(`/api/jobs/${runsJob.id}/runs/${run.id}/log`);
+      const response = await window.fetch(`/api/jobs/${job.id}/runs/${run.id}/log`);
       if (response.status === 401) {
         onAuthExpired();
         return;
       }
       if (!response.ok) throw new Error('Unable to load the run output.');
       const text = await response.text();
-      if (selectedRunId !== run.id) return;
-      const atBottom = logOutput.scrollTop + logOutput.clientHeight >= logOutput.scrollHeight - 4;
-      logOutput.dataset.runId = run.id;
-      logOutput.dataset.complete = String(run.status !== 'running');
-      logOutput.textContent = text || (run.status === 'running' ? 'Waiting for output…' : 'No output.');
-      if (atBottom) logOutput.scrollTop = logOutput.scrollHeight;
+      logs.set(run.id, { text, complete: run.status !== 'running' });
+      if (detailJob === job && expandedRunId === run.id) renderRuns();
     } catch (failure) {
       setError(failure.message);
     }
   }
 
-  function openRuns(job) {
-    runsJob = { ...job, runs: [] };
-    selectedRunId = null;
-    logOutput.textContent = '';
-    delete logOutput.dataset.runId;
-    showView('runs');
-    renderRuns();
-    get('jobs-runs-back').focus({ preventScroll: true });
-    refresh().then(() => {
-      const firstRun = runsJob?.runs?.[0];
-      if (!selectedRunId && firstRun) {
-        selectedRunId = firstRun.id;
-        renderRuns();
-        loadLog(firstRun);
-      }
-    });
+  function openDetail(job) {
+    detailJob = { ...job, runs: job.runs || [] };
+    expandedRunId = null;
+    expandLatestRun = true;
+    logs.clear();
+    showView('detail');
+    renderDetail();
+    get('jobs-detail-back').focus({ preventScroll: true });
+    refresh();
+  }
+
+  function showList() {
+    detailJob = null;
+    showView('list');
+    renderList();
+    refresh();
   }
 
   function loadTimezones() {
@@ -381,6 +541,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   function openEditor(job = null) {
     loadTimezones();
     editingJob = job;
+    editorReturn = view === 'detail' ? 'detail' : 'list';
     nameInput.value = job?.name ?? '';
     commandInput.value = job?.command ?? '';
     scheduleInput.value = job?.schedule ?? '0 3 * * *';
@@ -393,6 +554,19 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     showView('editor');
     updatePreview(0);
     nameInput.focus({ preventScroll: true });
+  }
+
+  function closeEditor() {
+    editingJob = null;
+    if (editorReturn === 'detail' && detailJob) {
+      showView('detail');
+      renderDetail();
+      refresh();
+      detailEdit.focus({ preventScroll: true });
+    } else {
+      showList();
+      newButton.focus({ preventScroll: true });
+    }
   }
 
   function updatePreview(delay = 300) {
@@ -410,8 +584,12 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
         if (sequence !== previewSequence) return;
         const runs = element('ol');
         for (const run of data.nextRuns) runs.append(element('li', formatDateTime(run, data.timezone)));
+        const description = describeSchedule(data.schedule);
         preview.dataset.state = 'ok';
-        preview.replaceChildren(element('p', `Next runs (${data.timezone}):`), runs);
+        preview.replaceChildren(
+          element('p', `${description ? `${description}. ` : ''}Next runs (${data.timezone}):`),
+          runs,
+        );
       } catch (failure) {
         if (sequence !== previewSequence) return;
         preview.dataset.state = 'error';
@@ -424,9 +602,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     if (!configured) return;
     closeSidebar();
     if (!dialog.open) dialog.showModal();
-    showView('list');
-    renderList();
-    refresh();
+    showList();
   }
 
   opener.addEventListener('click', open);
@@ -437,18 +613,39 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     refreshSequence += 1;
     (isMobile() ? get('sidebar-toggle') : opener).focus({ preventScroll: true });
   });
-  get('jobs-new').addEventListener('click', () => openEditor());
-  get('job-cancel').addEventListener('click', () => {
-    showView('list');
-    refresh();
+  newButton.addEventListener('click', () => openEditor());
+  get('jobs-detail-back').addEventListener('click', () => {
+    showList();
+    newButton.focus({ preventScroll: true });
   });
-  get('jobs-runs-back').addEventListener('click', () => {
-    runsJob = null;
-    showView('list');
-    renderList();
-    refresh();
+  detailRun.addEventListener('click', () => perform(async () => {
+    const job = detailJob;
+    if (job.running) {
+      await stopJob(job);
+    } else {
+      const { run } = await runJob(job);
+      expandedRunId = run.id;
+      logs.delete(run.id);
+    }
+    await refresh();
+  }));
+  detailToggle.addEventListener('click', () => perform(async () => {
+    await mutate('PATCH', `/api/jobs/${detailJob.id}`, { enabled: !detailJob.enabled });
+    await refresh();
+  }));
+  detailEdit.addEventListener('click', () => openEditor(detailJob));
+  detailDelete.addEventListener('click', () => {
+    const job = detailJob;
+    const confirmed = window.confirm(
+      `Delete the job "${job.name}"? Its run history is removed and a running command is stopped.`,
+    );
+    if (!confirmed) return;
+    perform(async () => {
+      await mutate('DELETE', `/api/jobs/${job.id}`);
+      showList();
+    });
   });
-  get('jobs-runs-refresh').addEventListener('click', () => refresh());
+  cancelButton.addEventListener('click', closeEditor);
   presetSelect.addEventListener('change', () => {
     if (presetSelect.value) scheduleInput.value = presetSelect.value;
     updatePreview(0);
@@ -476,14 +673,15 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     }
     perform(async () => {
       if (editingJob) {
-        await mutate('PATCH', `/api/jobs/${editingJob.id}`, payload);
+        const { job } = await mutate('PATCH', `/api/jobs/${editingJob.id}`, payload);
+        detailJob = { ...detailJob, ...job };
+        editorReturn = 'detail';
+        closeEditor();
       } else {
-        await mutate('POST', '/api/jobs', payload);
+        const { job } = await mutate('POST', '/api/jobs', payload);
+        editingJob = null;
+        openDetail(job);
       }
-      editingJob = null;
-      showView('list');
-      await refresh();
-      get('jobs-new').focus({ preventScroll: true });
     });
   });
 

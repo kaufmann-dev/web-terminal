@@ -511,7 +511,7 @@ body.dark {
   display: none;
 }
 
-.sidebar-uploads {
+.sidebar-actions {
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -520,9 +520,9 @@ body.dark {
   border-top: 1px solid var(--border);
 }
 
-.upload-button,
-.upload-dialog button {
-  min-height: 44px;
+.sidebar-action,
+.app-dialog button {
+  min-height: 40px;
   padding: 0 12px;
   background: var(--panel);
   color: var(--text);
@@ -533,29 +533,55 @@ body.dark {
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
-.upload-button { width: 100%; }
-.upload-button:disabled,
-.upload-dialog button:disabled { color: var(--muted); cursor: default; }
+.sidebar-action {
+  width: 100%;
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sidebar-action:disabled,
+.app-dialog button:disabled { color: var(--muted); cursor: default; }
 
 @media (hover: hover) {
-  .upload-button:hover:not(:disabled),
-  .upload-dialog button:hover:not(:disabled),
+  .sidebar-action:hover:not(:disabled),
+  .app-dialog button:hover:not(:disabled),
   .sidebar-voice .voice-button:hover:not(:disabled) {
     background: var(--panel-raised);
     color: var(--accent-bright);
     border-color: var(--accent);
   }
+
+  .app-dialog .btn-dialog-primary:hover:not(:disabled) {
+    background: var(--accent-bright);
+    color: var(--bg);
+    border-color: var(--accent-bright);
+  }
+
+  .app-dialog .btn-dialog-danger:hover:not(:disabled) {
+    background: rgb(255 107 107 / 8%);
+    color: var(--error);
+    border-color: var(--error);
+  }
+
+  .app-dialog .app-list-row:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .app-dialog .icon-button:hover:not(:disabled) {
+    border-color: var(--border);
+  }
+
+  .app-dialog .btn-link:hover:not(:disabled) {
+    background: transparent;
+  }
 }
 
-.sidebar-uploads .upload-button {
-  min-height: 38px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.upload-button:focus-visible,
-.upload-dialog :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
+.sidebar-action:focus-visible,
+.app-dialog :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
 
-.upload-dialog {
+/* Dialog components shared by the upload and scheduled-job dialogs */
+.app-dialog {
   width: min(640px, calc(100% - 32px));
   max-width: none;
   max-height: calc(100dvh - 32px);
@@ -567,75 +593,132 @@ body.dark {
   overflow: hidden;
 }
 
-.upload-dialog[open] { display: flex; flex-direction: column; }
-.upload-dialog::backdrop { background: rgb(0 0 0 / 64%); }
-.upload-dialog-header,
-.upload-dialog-footer { flex: 0 0 auto; padding: 12px 16px; }
-.upload-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); }
-.upload-dialog h2 { margin: 0; font-size: 18px; }
-.upload-dialog-body { min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
-.upload-dialog-footer { border-top: 1px solid var(--border); }
-.upload-dialog-footer p { margin: 0 0 8px; color: var(--muted); }
-.upload-footer-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.upload-dialog fieldset { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
-.upload-dialog legend { margin-bottom: 8px; }
-.upload-path-row { display: flex; gap: 8px; }
-.upload-dialog input[type="text"],
-.upload-file input { min-width: 0; flex: 1; width: 100%; min-height: 44px; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); font: inherit; font-size: 16px; }
-.upload-breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.upload-breadcrumbs button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upload-folders { display: grid; max-height: 176px; margin-top: 8px; overflow-y: auto; color: var(--muted); overscroll-behavior: contain; }
-.upload-folders button { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upload-file-list { list-style: none; margin: 12px 0 0; padding: 0; }
-.upload-file { padding: 12px 0; border-top: 1px solid var(--border); }
-.upload-file-heading { display: flex; align-items: center; gap: 8px; }
+.app-dialog[open] { display: flex; flex-direction: column; }
+.app-dialog::backdrop { background: rgb(0 0 0 / 64%); }
+.app-dialog-header,
+.app-dialog-footer { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 12px 16px; }
+.app-dialog-header { justify-content: space-between; border-bottom: 1px solid var(--border); }
+.app-dialog h2 { margin: 0; font-size: 18px; }
+.app-dialog-body { min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+.app-dialog-footer { border-top: 1px solid var(--border); }
+.app-dialog-status { min-width: 0; flex: 1; margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.app-dialog-error { margin: 0 0 12px; color: var(--error); overflow-wrap: anywhere; }
+.app-dialog-section + .app-dialog-section { margin-top: 20px; }
+.app-dialog-label { display: block; margin: 0 0 8px; padding: 0; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.app-dialog-field + .app-dialog-field { margin-top: 16px; }
+.app-dialog-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.app-dialog fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.app-dialog input[type="text"],
+.app-dialog input[type="search"],
+.app-dialog input[type="number"],
+.app-dialog select,
+.app-dialog textarea { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); font: inherit; font-size: 14px; }
+.app-dialog textarea { min-height: 112px; resize: vertical; }
+.app-dialog input.input-compact { min-height: 32px; padding: 4px 8px; font-size: 13px; }
+.app-dialog-checkbox { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.app-dialog-checkbox input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.app-dialog .btn-dialog-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+.app-dialog .btn-dialog-primary:disabled { background: var(--panel); color: var(--muted); border-color: var(--border); font-weight: 500; }
+.app-dialog .btn-dialog-danger { color: var(--error); }
+.app-dialog .btn-compact { min-height: 32px; padding: 0 10px; }
+.app-dialog .btn-link { min-height: 32px; padding: 0; background: transparent; color: var(--muted); border: 0; }
+.app-dialog .icon-button { display: inline-grid; flex: 0 0 40px; width: 40px; place-items: center; padding: 0; background: transparent; color: var(--muted); border: 0; }
+.app-dialog .icon-button-compact { flex-basis: 32px; width: 32px; min-height: 32px; font-size: 18px; }
+.icon-button svg,
+.app-list-icon,
+.upload-dropzone-icon { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button svg { width: 18px; height: 18px; }
+.app-dialog .dashed-panel { background: var(--bg); color: var(--muted); border: 1px dashed var(--border); }
+.app-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); }
+.app-list:empty,
+.app-list[hidden] { display: none; }
+.app-list > * + * { border-top: 1px solid var(--border); }
+.app-dialog .app-list-row { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 10px; padding: 8px 12px; background: transparent; border: 0; text-align: left; }
+.app-list-icon { flex: 0 0 16px; width: 16px; height: 16px; color: var(--accent); }
+.app-list-chevron { flex: 0 0 auto; color: var(--muted); font-size: 16px; line-height: 1; }
+.app-list-note { margin: 0; padding: 10px 12px; color: var(--muted); }
+.status-badge { flex-shrink: 0; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.status-badge[data-tone="success"] { border-color: var(--accent); color: var(--accent-bright); }
+.status-badge[data-tone="running"] { border-color: var(--accent-bright); color: var(--accent-bright); }
+.status-badge[data-tone="warning"] { border-color: #b58b2a; color: #f0c05a; }
+.status-badge[data-tone="error"] { border-color: var(--error); color: var(--error); }
+.code-block { margin: 0; padding: 10px 12px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain; }
+
+/* Upload dialog */
+.upload-dialog .upload-dropzone { display: flex; width: 100%; min-height: 96px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; }
+.upload-dialog .upload-dropzone[data-dragging] { background: rgb(69 162 158 / 10%); color: var(--text); border-color: var(--accent-bright); }
+.upload-dialog .upload-dropzone:disabled { opacity: 0.6; }
+.upload-dropzone-icon { width: 24px; height: 24px; }
+.upload-dropzone-link { color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
+.upload-dropzone-touch { display: none; }
+.upload-file-list { margin-top: 8px; }
+.upload-file { padding: 8px 12px; }
+.upload-file-main { display: flex; align-items: center; gap: 8px; }
 .upload-filename { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upload-size { flex-shrink: 0; color: var(--muted); font-size: 11px; }
-.upload-file-message { margin: 6px 0 0; overflow-wrap: anywhere; color: var(--muted); }
-.upload-file[data-state="error"] .upload-file-message,
-.upload-error { color: var(--error); }
-.upload-file progress { width: 100%; height: 8px; accent-color: var(--accent); }
-.jobs-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.jobs-toolbar p, .jobs-toolbar h3 { min-width: 0; flex: 1; margin: 0; }
-.jobs-toolbar h3 { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.jobs-muted, .jobs-hint { color: var(--muted); }
-.jobs-hint { margin: 4px 0 0; font-size: 11px; }
-.jobs-list, .jobs-runs { list-style: none; margin: 0; padding: 0; }
-.jobs-item { padding: 12px 0; border-top: 1px solid var(--border); }
-.jobs-item[data-enabled="false"] .jobs-item-name { color: var(--muted); }
-.jobs-item-heading { display: flex; align-items: center; gap: 8px; }
-.jobs-item-name { min-width: 0; flex: 1; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.jobs-item-meta { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
-.jobs-item-meta code, .jobs-item-command { font-family: "JetBrains Mono", monospace; font-size: 12px; }
-.jobs-item-command { display: block; margin-top: 6px; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.jobs-item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.jobs-item-actions button { min-height: 36px; }
-.jobs-status { flex-shrink: 0; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
-.jobs-status[data-tone="success"] { border-color: var(--accent); color: var(--accent-bright); }
-.jobs-status[data-tone="running"] { border-color: var(--accent-bright); color: var(--accent-bright); }
-.jobs-status[data-tone="warning"] { border-color: #b58b2a; color: #f0c05a; }
-.jobs-status[data-tone="error"] { border-color: var(--error); color: var(--error); }
-.jobs-editor { display: flex; flex-direction: column; }
-.jobs-editor > label, .jobs-field > label { display: block; margin: 12px 0 6px; }
-.jobs-editor > label:first-child { margin-top: 0; }
+.upload-size { flex-shrink: 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.upload-file-message { margin: 4px 0 0; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.upload-file[data-state="error"] .upload-file-message { color: var(--error); }
+.upload-file progress { width: 100%; height: 4px; margin-top: 6px; accent-color: var(--accent); }
+.upload-location { display: flex; min-height: 40px; background: var(--bg); border: 1px solid var(--border); }
+.upload-location[hidden] { display: none; }
+.upload-location .icon-button { border-left: 1px solid var(--border); }
+.upload-breadcrumbs { display: flex; min-width: 0; flex: 1; align-items: center; gap: 2px; padding: 0 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.upload-breadcrumbs::-webkit-scrollbar { display: none; }
+.upload-breadcrumbs-clipped { mask-image: linear-gradient(to right, transparent, #000 32px); }
+.upload-dialog .upload-breadcrumb { flex: 0 0 auto; min-height: 30px; padding: 0 6px; background: transparent; border: 0; }
+.upload-breadcrumb-separator { color: var(--muted); }
+.upload-breadcrumb-current { flex: 0 0 auto; padding: 0 6px; font-weight: 600; }
+.upload-breadcrumb-placeholder { padding: 0 6px; color: var(--muted); }
+.upload-path-row { display: flex; gap: 8px; }
+.upload-path-row[hidden] { display: none; }
+.upload-path-row button { flex: 0 0 auto; }
+.upload-folder-filter { margin-top: 8px; }
+.upload-folders { max-height: 264px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.upload-folder-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Scheduled jobs dialog */
+.jobs-empty { padding: 28px 16px; text-align: center; }
+.jobs-empty[hidden] { display: none; }
+.jobs-empty p { max-width: 420px; margin: 0 auto; }
+.jobs-empty .jobs-empty-title { margin-bottom: 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+.jobs-item { display: flex; align-items: center; }
+.jobs-dialog .jobs-row { min-width: 0; flex: 1; }
+.jobs-row-body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.jobs-row-heading { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.jobs-row-name { min-width: 0; flex: 1; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-item[data-enabled="false"] .jobs-row-name { color: var(--muted); }
+.jobs-row-meta { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-dialog .jobs-quick { flex: 0 0 auto; min-width: 56px; margin-right: 12px; }
+.jobs-dialog .jobs-back { margin-bottom: 8px; }
+.jobs-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.jobs-detail-header h3 { min-width: 0; flex: 1; margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.jobs-command { max-height: 160px; margin-bottom: 12px; }
+.jobs-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0 0 16px; }
+.jobs-meta dt { color: var(--muted); }
+.jobs-meta dd { margin: 0; overflow-wrap: anywhere; }
+.jobs-meta code { color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+.jobs-meta .jobs-meta-cron { display: block; margin-top: 2px; }
+.jobs-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.jobs-detail-actions .btn-dialog-danger { margin-left: auto; }
+.jobs-detail-actions + .app-dialog-section { margin-top: 20px; }
+.jobs-run-chevron { transition: transform 120ms ease; }
+.jobs-run[aria-expanded="true"] .jobs-run-chevron { transform: rotate(90deg); }
+.jobs-run-time { flex: 0 0 auto; }
+.jobs-run-detail { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-log { max-height: 40dvh; margin: 0 12px 12px; }
+.jobs-log-empty { color: var(--muted); }
+.jobs-runs-empty { margin: 0; padding: 16px; text-align: center; }
 .jobs-field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-.jobs-field { min-width: 0; }
+.jobs-field-row > * { min-width: 0; }
 .jobs-editor textarea,
-.jobs-editor select,
-.jobs-editor input[type="number"] { width: 100%; min-height: 44px; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); font: inherit; font-size: 16px; }
-.jobs-editor textarea { min-height: 112px; resize: vertical; font-family: "JetBrains Mono", monospace; font-size: 13px; }
 .jobs-editor #job-schedule { font-family: "JetBrains Mono", monospace; }
-.jobs-editor > .jobs-checkbox { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
-.jobs-checkbox input { width: 18px; height: 18px; accent-color: var(--accent); }
+.jobs-editor textarea { font-size: 13px; }
+.jobs-editor input[type="number"] { max-width: 160px; }
 .jobs-preview { margin-top: 8px; color: var(--muted); }
 .jobs-preview p { margin: 0 0 4px; }
 .jobs-preview ol { margin: 0; padding-left: 20px; }
 .jobs-preview[data-state="error"] { color: var(--error); }
-.jobs-dialog .jobs-run { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; padding: 8px 10px; text-align: left; }
-.jobs-run[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-raised); }
-.jobs-run-time { flex: 1; min-width: 0; }
-.jobs-run .jobs-muted { flex-basis: 100%; font-size: 11px; }
-.jobs-log { max-height: 50dvh; margin: 12px 0 0; padding: 10px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain; }
 .upload-dragging::after { content: 'Drop files to upload'; position: absolute; inset: 12px; z-index: 6; display: grid; place-items: center; background: var(--panel); color: var(--text); border: 2px dashed var(--accent-bright); pointer-events: none; }
 
 .voice-controls {
@@ -692,6 +775,12 @@ body.dark {
 }
 
 .voice-button:disabled { color: var(--muted); cursor: default; }
+.voice-button[data-voice-action] { display: inline-flex; align-items: center; justify-content: center; }
+.voice-icon { display: block; width: 18px; height: 18px; fill: none; stroke: currentcolor; stroke-width: 2; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.voice-icon-stop { display: none; fill: currentcolor; stroke: none; }
+[data-state="recording"] .voice-icon-mic { display: none; }
+[data-state="recording"] .voice-icon-stop { display: block; }
+[data-state="recording"] [data-voice-action]:not(:disabled) { color: var(--error); }
 .voice-button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
 .voice-status {
   overflow: hidden;
@@ -703,7 +792,7 @@ body.dark {
 [data-state="error"] .voice-status { color: var(--error); }
 
 @media (max-width: 720px) {
-  .upload-dialog {
+  .app-dialog {
     width: 100%;
     max-width: 100%;
     height: 100dvh;
@@ -713,19 +802,34 @@ body.dark {
     inset: 0;
   }
 
-  .upload-dialog-body { flex: 1 1 auto; }
-  .upload-path-row button { flex: 0 0 auto; }
-  .upload-breadcrumbs button { min-height: 40px; }
-  .upload-folders { max-height: 36dvh; min-height: 132px; }
-  #upload-choose { width: 100%; }
-  .upload-footer-actions { flex-direction: column; align-items: stretch; }
-  .upload-footer-actions button { width: 100%; }
-  .jobs-field-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .jobs-item-actions button { flex: 1 1 calc(33% - 6px); }
-  .jobs-editor textarea { font-size: 16px; }
-
-  .upload-file-heading { flex-wrap: wrap; }
-  .upload-file input, .upload-filename { flex-basis: calc(100% - 90px); }
+  .app-dialog-body { flex: 1 1 auto; }
+  .app-dialog button,
+  .app-dialog .app-list-row { min-height: 44px; }
+  .app-dialog .btn-compact,
+  .app-dialog .btn-link { min-height: 40px; }
+  .app-dialog .icon-button { flex-basis: 44px; width: 44px; }
+  .app-dialog .icon-button-compact { flex-basis: 40px; width: 40px; min-height: 40px; }
+  .app-dialog input[type="text"],
+  .app-dialog input[type="search"],
+  .app-dialog input[type="number"],
+  .app-dialog select,
+  .app-dialog textarea { min-height: 44px; font-size: 16px; }
+  .app-dialog input.input-compact { min-height: 40px; font-size: 16px; }
+  .app-dialog textarea { min-height: 112px; }
+  .app-dialog-footer { flex-direction: column; align-items: stretch; }
+  .app-dialog-actions { flex-direction: column; align-items: stretch; }
+  .app-dialog-actions button { width: 100%; }
+  .upload-location { min-height: 44px; }
+  .upload-dialog .upload-breadcrumb { min-height: 40px; }
+  .upload-folders { max-height: 40dvh; }
+  .upload-dialog .upload-dropzone { min-height: 64px; flex-direction: row; }
+  .upload-dropzone-desktop { display: none; }
+  .upload-dropzone-touch { display: inline; }
+  .jobs-field-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .jobs-detail-actions button { flex: 1 1 calc(33% - 8px); }
+  .jobs-detail-actions .btn-dialog-danger { margin-left: 0; }
+  .jobs-run-time { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jobs-run-detail { display: none; }
 
   .login-container {
     padding: 16px;
@@ -850,6 +954,11 @@ body.dark {
 
   .mobile-terminal-key.is-feedback-active {
     animation: mobile-terminal-key-feedback 160ms ease-out;
+  }
+
+  .mobile-terminal-controls .voice-icon {
+    width: 20px;
+    height: 20px;
   }
 
   .mobile-terminal-key-icon {
