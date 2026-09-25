@@ -143,9 +143,9 @@ user namespaces, or the rootless Podman configuration is unavailable.
 The terminal includes:
 
 - Node.js 24 (the current LTS line), npm, npx, and pnpm 11.18.0
-- Vitest 4.1.10
-- `codex` 0.146.0 and `opencode` 1.18.9
-- Muse Code (`muse`) 1.1.1-R2514.1, installed from Meta's checksum-verified Linux binary
+- Vitest 4.1.11
+- `codex` 0.146.0, `opencode` 1.18.9, and Claude Code (`claude`) 2.1.282
+- Muse Code (`muse`) 1.4.0-R4161.1, installed from Meta's checksum-verified Linux binary
 - `agent-browser` 0.33.1 with headless Chromium and native Fontconfig
 - `xwfb-run` with Cage for isolated Xwayland displays, plus xdotool 4.20260303.1 for controlling
   X11 clients inside those displays
@@ -197,9 +197,10 @@ Authenticate the tools you use:
 gh auth login
 codex login
 opencode auth login
-muse login
 git-wrangler init
 ```
+
+Run `claude` or `muse` in a project directory to follow their first-run sign-in prompts.
 
 These logins persist below `/code` with the default volume. Git Wrangler Bash completion is
 available automatically. Agent-browser runs headlessly by default, and every managed terminal
@@ -207,19 +208,32 @@ receives the native `/etc/fonts` Fontconfig configuration automatically, so ordi
 `agent-browser open`, `snapshot`, and `close` commands work. Use persistent profile or state
 options only when a task needs browser login state to survive.
 
-Codex and OpenCode have exact versions in the deployment image and are available immediately as
-`codex` and `opencode`. To manually install newer releases into the persistent user prefix, run:
+Codex, OpenCode, and Claude Code have exact versions in the deployment image and are available
+immediately as `codex`, `opencode`, and `claude`. To manually install newer releases into the
+persistent user prefix, run:
 
 ```bash
-npm install --global @openai/codex@latest opencode-ai@latest
+npm install --global @openai/codex@latest opencode-ai@latest @anthropic-ai/claude-code@latest
 ```
 
 The user-installed commands take precedence over the image copies. Run
-`npm uninstall --global @openai/codex opencode-ai` to return to the bundled versions.
+`npm uninstall --global @openai/codex opencode-ai @anthropic-ai/claude-code` to return to the
+bundled versions.
 
-Run `muse` inside a project directory to start Muse Code. Its pinned native binary is installed
-at image build time for x86_64 or ARM64, verified against Meta's release checksum, and checked with
-`muse --version`. Redeploy an image with an updated installer pin to update the bundled version.
+Muse Code's pinned native binary is installed at image build time for x86_64 or ARM64, verified against
+Meta's release checksum, and checked with `muse --version`. The `@muse-code/sdk` npm package is for
+integrations and does not install the CLI. To
+update Muse Code in the running web terminal and keep that version across redeployments, run:
+
+```bash
+curl -fsSL https://dev.meta.ai/install.sh | bash
+hash -r
+muse --version
+```
+
+Meta's installer places the user copy in `~/.local/bin`, ahead of the bundled copy on PATH. Remove
+`~/.local/bin/muse` to return to the bundled version. Redeploy an image with an updated installer
+pin to update the bundled version.
 
 For an X11-only GUI command, start it with `xwfb-run`; the wrapper creates a dedicated headless
 Cage/Xwayland session. xdotool can automate X11 clients launched in that session. It cannot inspect
