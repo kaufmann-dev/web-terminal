@@ -255,7 +255,8 @@ or control unrelated native Wayland windows.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
   clipboard-image uploads, accepted file-upload submissions, accepted transcription submissions,
-  and accepted terminal input or paste extend the idle deadline. Folder browsing, upload progress,
+  scheduled-job changes and manual runs, and accepted terminal input or paste extend the idle
+  deadline. Folder browsing, upload progress, job list and log viewing, schedule previews,
   polling, voice availability checks, transcription processing, CSRF
   retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health checks,
   pushed updates, and merely leaving a tab open do not.
@@ -340,6 +341,27 @@ or control unrelated native Wayland windows.
   do not resume automatically. If a connection fails after the server saved a file, check the
   destination before retrying. Folder uploads, folder creation, and automatic archive extraction
   are not provided; upload a ZIP file when needed.
+- **Jobs** is next to **Upload** in the session sidebar and manages scheduled background commands.
+  **New job** asks for a name, a Bash command, a five-field cron expression (`minute hour
+  day-of-month month day-of-week`, or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`), an
+  IANA timezone that defaults to the browser's, and an optional timeout in minutes. Presets fill
+  common schedules, and the editor previews the next five run times in the job's timezone.
+- Each run executes `bash -c <command>` in `TERMINAL_WORKDIR` as the terminal user with the terminal
+  environment, so the same PATH, tools, `DOCKER_HOST`, and dotfiles-managed credentials are
+  available; `WEB_TERMINAL_JOB_ID` and `WEB_TERMINAL_JOB_NAME` identify the job. Runs have no TTY or
+  stdin and do not appear in any terminal session. Combined stdout and stderr is kept per run, up to
+  1 MiB, for the last 20 runs of each job; **History** shows runs and their output.
+- A job never overlaps itself: when its schedule fires while the previous run is still active, the
+  new run is recorded as skipped. **Run now** starts a manual run and is refused while a run is
+  active. **Stop**, a reached timeout, and **Delete** send SIGTERM to every process in the run's
+  Linux session and escalate survivors to SIGKILL after two seconds. Deleting a job also removes its
+  history and logs. **Pause** keeps the job but stops scheduling it. A run finishes when every
+  process holding its output has closed it, as with cron, so redirect the output of background
+  processes a job leaves behind (`nohup cmd >/dev/null 2>&1 &`).
+- Job definitions and logs are stored in `$TERMINAL_HOME/.local/state/web-terminal/jobs` and survive
+  redeployment on persistent storage. Schedules only fire while the application is running: runs
+  missed during downtime are not replayed, and runs active during a shutdown or restart are stopped
+  and recorded as interrupted.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
   locale so international characters such as `ß` work for typed and pasted input.
 - A named session accepts one browser client. Opening it in a newer tab replaces the older tab
@@ -347,8 +369,8 @@ or control unrelated native Wayland windows.
 - Deleting a terminal session is destructive: it sends SIGHUP to every process in the PTY's Linux
   session and escalates survivors to SIGKILL after two seconds.
 - A naturally exited shell disappears from the sidebar and can be recreated under the same name.
-- Terminal processes do not survive an application, container, or Coolify restart. Files under
-  persistent storage do survive.
+- Terminal processes and running jobs do not survive an application, container, or Coolify
+  restart. Files and scheduled job definitions under persistent storage do survive.
 - Run only one application replica because login state and terminal sessions are process-local.
 - Store repositories under `TERMINAL_WORKDIR`, for example `/code/projects/my-app`. They survive
   redeployments only when Coolify mounts persistent storage at that path.

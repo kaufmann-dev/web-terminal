@@ -7,6 +7,7 @@ const { AUDIO_TYPES, MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
 const http = require('http');
 const path = require('path');
 const { FileUploadStore, UploadError, uploadError } = require('./file-upload-store');
+const { JobError, ScheduledJobManager } = require('./scheduled-job-manager');
 const express = require('express');
 const session = require('express-session');
 const MemoryStore = require('memorystore')(session);
@@ -232,6 +233,8 @@ function createWebTerminal(options = {}) {
         'clipboard-images',
       ),
   };
+  config.jobStateDirectory = options.jobStateDirectory
+    ?? path.join(config.terminalHome, '.local', 'state', 'web-terminal', 'jobs');
 
   if (!configuredIssuerUrl || !config.oidcClientId || !config.oidcClientSecret
     || !config.sessionSecret || !configuredPublicOrigin) {
@@ -259,6 +262,11 @@ function createWebTerminal(options = {}) {
     terminalEnvironment,
     terminalWorkdir: config.terminalWorkdir,
     bashRcPath: path.join(__dirname, 'scripts', 'terminal.bashrc'),
+  });
+  const jobManager = options.jobManager || new ScheduledJobManager({
+    stateDirectory: config.jobStateDirectory,
+    terminalEnvironment,
+    terminalWorkdir: config.terminalWorkdir,
   });
   const now = options.now || Date.now;
   const suppliedOpenidClient = options.openidClient;
@@ -764,6 +772,73 @@ function createWebTerminal(options = {}) {
     },
   );
 
+  function sendJobError(res, err) {
+    if (err instanceof JobError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Scheduled job service error:', err.message);
+    return res.status(503).json({ error: 'Scheduled job service unavailable.' });
+  }
+
+  function jobRoute(handler) {
+    return async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      try {
+        return await handler(req, res);
+      } catch (err) {
+        return sendJobError(res, err);
+      }
+    };
+  }
+
+  app.get('/api/jobs', requireApiAuth, jobRoute((req, res) => (
+    res.json({ jobs: jobManager.list() })
+  )));
+
+  app.get('/api/jobs/schedule-preview', requireApiAuth, jobRoute((req, res) => (
+    res.json(jobManager.preview(req.query.schedule, req.query.timezone))
+  )));
+
+  app.post('/api/jobs', requireApiAuth, doubleCsrfProtection, jobRoute(async (req, res) => {
+    const job = await jobManager.create(req.body);
+    recordHttpActivity(req);
+    return res.status(201).json({ job });
+  }));
+
+  app.get('/api/jobs/:id', requireApiAuth, jobRoute((req, res) => (
+    res.json({ job: jobManager.get(req.params.id) })
+  )));
+
+  app.patch('/api/jobs/:id', requireApiAuth, doubleCsrfProtection, jobRoute(async (req, res) => {
+    const job = await jobManager.update(req.params.id, req.body);
+    recordHttpActivity(req);
+    return res.json({ job });
+  }));
+
+  app.delete('/api/jobs/:id', requireApiAuth, doubleCsrfProtection, jobRoute(async (req, res) => {
+    await jobManager.delete(req.params.id);
+    recordHttpActivity(req);
+    return res.status(204).end();
+  }));
+
+  app.post('/api/jobs/:id/runs', requireApiAuth, doubleCsrfProtection, jobRoute(async (req, res) => {
+    const run = await jobManager.runNow(req.params.id);
+    recordHttpActivity(req);
+    return res.status(202).json({ run });
+  }));
+
+  app.post('/api/jobs/:id/stop', requireApiAuth, doubleCsrfProtection, jobRoute(async (req, res) => {
+    const run = await jobManager.stop(req.params.id);
+    recordHttpActivity(req);
+    return res.json({ run });
+  }));
+
+  app.get('/api/jobs/:id/runs/:runId/log', requireApiAuth, jobRoute(async (req, res) => {
+    const log = await jobManager.readLog(req.params.id, req.params.runId);
+    res.type('text/plain; charset=utf-8');
+    return res.send(log);
+  }));
+
   app.get('/terminal', requireAuth, (req, res) => {
     recordHttpActivity(req);
     res.sendFile(path.join(__dirname, 'views', 'terminal.html'));
@@ -1012,6 +1087,7 @@ function createWebTerminal(options = {}) {
     }
 
     await clipboardImageStore.initialize();
+    await jobManager.initialize();
     openidClient = suppliedOpenidClient || await import('openid-client');
     oidcConfiguration = await openidClient.discovery(
       new URL(config.oidcIssuerUrl),
@@ -1150,7 +1226,7 @@ function createWebTerminal(options = {}) {
       }
       for (const abort of uploadRequests.values()) abort.abort();
       await Promise.all(uploadTasks);
-      await sessionManager.shutdown();
+      await Promise.all([sessionManager.shutdown(), jobManager.shutdown()]);
       if (webSocketServer) {
         for (const socket of webSocketServer.clients) {
           if (socket.readyState === 0 || socket.readyState === 1) {
@@ -1170,6 +1246,7 @@ function createWebTerminal(options = {}) {
   return {
     app,
     config,
+    jobManager,
     sessionManager,
     sessionStore,
     start,
