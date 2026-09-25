@@ -7,6 +7,7 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.282",
     "@fontsource/inter": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",
     "@openai/codex": "0.146.0",
@@ -27,7 +28,7 @@
     "opencode-ai": "1.18.9",
     "openid-client": "6.8.4",
     "pnpm": "11.18.0",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "ws": "8.21.1"
   },
   "engines": {
@@ -35,6 +36,7 @@
   },
   "private": true,
   "allowScripts": {
+    "@anthropic-ai/claude-code@2.1.282": true,
     "agent-browser@0.33.1": true,
     "node-pty@1.1.0": true,
     "opencode-ai@1.18.9": true

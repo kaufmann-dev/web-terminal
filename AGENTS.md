@@ -11,13 +11,15 @@ npm ci
 
 - Keep these terminal CLIs as exact production dependencies so `npm ci` installs them into the
   immutable image: `@openai/codex@0.146.0`, `opencode-ai@1.18.9`,
-  `agent-browser@0.33.1`, `pnpm@11.18.0`, and `vitest@4.1.10`. Do not replace them with runtime
-  installers or global npm installs. Exact dependency locks make an individual image reproducible;
+  `@anthropic-ai/claude-code@2.1.282`, `agent-browser@0.33.1`, `pnpm@11.18.0`, and
+  `vitest@4.1.11`. Do not replace them with runtime installers or global npm installs. Exact
+  dependency locks make an individual image reproducible;
   they are not promises to retain old releases. Advance them, their lockfile entries, and the
   documented versions when newer compatible stable releases are available.
-- Keep `allowScripts` limited to version-pinned approvals for `agent-browser`, `node-pty`, and
-  `opencode-ai`. Their installation scripts provide required native executables; update each
-  approval with its dependency version instead of allowing all dependency scripts.
+- Keep `allowScripts` limited to version-pinned approvals for `agent-browser`, `node-pty`,
+  `opencode-ai`, and `@anthropic-ai/claude-code`. Their installation scripts provide required native
+  executables; update each approval with its dependency version instead of allowing all dependency
+  scripts.
 
 - The repository has no lint, type-check, or build script. After JavaScript changes, run the
   applicable syntax checks and targeted Node tests:
@@ -88,15 +90,15 @@ node --test test/*.test.js
 - The floating CentOS Stream 10 base and `dnf update` intentionally take current distribution
   updates on each image rebuild. Install system tools, Chromium, Fontconfig, Mesa, uv, Podman, and
   build dependencies natively with DNF; do not add a Nix runtime or Nix store paths.
-- Git Wrangler v0.12.0, Nixpacks v1.41.0, Muse Code 1.1.1-R2514.1, and xdotool v4.20260303.1 are
+- Git Wrangler v0.12.0, Nixpacks v1.41.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
   the current checksum-verified artifact releases. Their installers must support the documented architectures,
   reject unknown artifacts, and be advanced when newer compatible stable releases exist. Nixpacks
   is a bundled terminal command for working on other projects, not this application's build pack
   or system package manager.
 - Install Muse Code's checksum-verified x86_64 or ARM64 Linux binary at `/usr/local/bin/muse`
   during the image build and verify it with `muse --version`. Keep its version and architecture
-  checksums pinned in `scripts/install-muse-code.sh`; users authenticate with `muse login` after
-  deployment.
+  checksums pinned in `scripts/install-muse-code.sh`; users authenticate on the first `muse` run
+  after deployment.
 - Chromium and the native `/etc/fonts` configuration support `agent-browser`; do not use
   agent-browser's runtime browser installer. Keep `FONTCONFIG_FILE`, `FONTCONFIG_PATH`, and
   `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment.
