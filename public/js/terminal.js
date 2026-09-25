@@ -17,6 +17,7 @@
     { bindTerminalSessionNameNormalization },
     { VoiceRecorder, bindVoiceControls },
     { bindFileUploads },
+    { bindScheduledJobs },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
@@ -25,6 +26,7 @@
     import('/static/js/session-name.mjs'),
     import('/static/js/voice-recorder.mjs'),
     import('/static/js/file-uploads.mjs'),
+    import('/static/js/scheduled-jobs.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -83,6 +85,14 @@
   window.addEventListener('beforeunload', () => voice.cancel());
 
   const uploads = bindFileUploads({
+    document,
+    apiRequest,
+    getCsrfToken: () => csrfToken,
+    closeSidebar: () => setSidebarOpen(false),
+    isMobile: () => mobileLayoutQuery.matches,
+    onAuthExpired: () => { window.location.href = '/'; },
+  });
+  const scheduledJobs = bindScheduledJobs({
     document,
     apiRequest,
     getCsrfToken: () => csrfToken,
@@ -1297,6 +1307,7 @@
         throw new Error('Unable to initialize request protection.');
       }
       uploads.enable();
+      scheduledJobs.enable();
 
       apiRequest('/api/voice').then((config) => {
         voice.config = config;

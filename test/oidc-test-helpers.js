@@ -113,6 +113,7 @@ function oidcServiceOptions(overrides = {}) {
     terminalHome: process.cwd(),
     openidClient: createFakeOpenidClient(),
     clipboardImageStore: { initialize: async () => {} },
+    jobManager: { initialize: async () => {}, shutdown: async () => {}, list: () => [] },
     ...overrides,
   };
 }
