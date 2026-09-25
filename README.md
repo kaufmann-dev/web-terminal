@@ -152,7 +152,7 @@ The terminal includes:
 - rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
 - Python 3 with PyYAML, plus Nixpacks 1.41.0 and uv for Python projects
 - `gh`, `git-wrangler` 0.12.0, Git, SSH, and `git-filter-repo`
-- `chezmoi`, `micro`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
+- `chezmoi`, `micro`, `bat`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
 The browser terminal PATH starts with `~/.local/bin` and `/app/node_modules/.bin`, explicitly
