@@ -450,10 +450,12 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
 
   assert.equal(packageJson.engines.node, '24.x');
   assert.equal(packageJson.dependencies['@openai/codex'], '0.146.0');
+  assert.equal(packageJson.dependencies['@anthropic-ai/claude-code'], '2.1.282');
   assert.equal(packageJson.dependencies['agent-browser'], '0.33.1');
   assert.equal(packageJson.dependencies['opencode-ai'], '1.18.9');
   assert.equal(packageJson.dependencies.pnpm, '11.18.0');
   assert.deepEqual(packageJson.allowScripts, {
+    [`@anthropic-ai/claude-code@${packageJson.dependencies['@anthropic-ai/claude-code']}`]: true,
     [`agent-browser@${packageJson.dependencies['agent-browser']}`]: true,
     [`node-pty@${packageJson.dependencies['node-pty']}`]: true,
     [`opencode-ai@${packageJson.dependencies['opencode-ai']}`]: true,
