@@ -321,12 +321,17 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
-- **Upload** is in the session sidebar on desktop and mobile. Choose one or more local files,
-  browse or type an existing server folder inside `TERMINAL_WORKDIR`, then click **Upload**.
-  Desktop users can also drop files onto the terminal to open the upload dialog. The destination
-  starts at the workspace root and the last valid folder is remembered in the browser tab.
-  Absolute paths and paths relative to the workspace are accepted. Hidden directories are listed;
-  directory symlinks are omitted from the list but can be entered if they resolve inside the workspace.
+- **Upload** is in the session sidebar on desktop and mobile. The dialog lists **Files** first:
+  drop files on the dashed area or click it (**Choose files** on mobile) to pick them. Then pick a
+  **Destination** inside `TERMINAL_WORKDIR` and click **Upload N files**. Desktop users can also
+  drop files onto the terminal to open the dialog. The destination path bar shows clickable
+  breadcrumbs; the folder list below opens subfolders, `..` goes up one level, and a filter
+  appears when a folder has more than eight subfolders. The pencil button switches the bar to a
+  text field where absolute paths and paths relative to the workspace are accepted; press Enter
+  to open the folder or Escape to return to the breadcrumbs. The destination starts at the
+  workspace root and the last valid folder is remembered in the browser tab. Hidden directories
+  are listed; directory symlinks are omitted from the list but can be entered if they resolve
+  inside the workspace.
 - Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
   sequentially with one active upload per login session. The dialog shows progress and saved paths;
   closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
