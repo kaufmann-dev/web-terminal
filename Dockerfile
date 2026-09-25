@@ -46,6 +46,7 @@ RUN dnf --assumeyes update \
       nodejs24 \
       nodejs24-npm \
       openssh-clients \
+      openssl \
       passt \
       perl-podlators \
       pkgconf-pkg-config \
@@ -74,6 +75,7 @@ RUN dnf --assumeyes update \
     && ln --symbolic /usr/bin/npx-24 /usr/local/bin/npx \
     && node --version | grep --extended-regexp --quiet '^v24\.' \
     && bat --version \
+    && openssl version \
     && python3 -c 'import yaml' \
     && sed --regexp-extended --in-place \
       's/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/' \
