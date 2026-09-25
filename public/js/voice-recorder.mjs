@@ -214,8 +214,10 @@ export function bindVoiceControls(root, recorder) {
     for (const group of groups) {
       group.dataset.state = state;
       const action = group.querySelector('[data-voice-action]');
-      action.textContent = state === 'recording' ? 'Stop' : 'Mic';
-      action.setAttribute('aria-label', state === 'recording' ? 'Stop dictation' : 'Start dictation');
+      // The markup holds microphone and stop icons; CSS shows one based on the group's state.
+      const actionLabel = state === 'recording' ? 'Stop dictation' : 'Start dictation';
+      action.setAttribute('aria-label', actionLabel);
+      action.setAttribute('title', actionLabel);
       action.disabled = disabled;
       group.querySelector('[data-voice-cancel]').disabled = cancelDisabled;
       const status = group.querySelector('[data-voice-status]');

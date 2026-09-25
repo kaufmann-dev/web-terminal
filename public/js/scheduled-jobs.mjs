@@ -207,6 +207,9 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   const enabledInput = get('job-enabled');
   const preview = get('job-preview');
   const saveButton = get('job-save');
+  const cancelButton = get('job-cancel');
+  const newButton = get('jobs-new');
+  const runsEmpty = get('jobs-runs-empty');
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   let configured = false;
@@ -246,7 +249,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
   };
   const statusBadge = (run) => {
     const { label, tone } = describeRunStatus(run);
-    const badge = element('span', label, 'jobs-status');
+    const badge = element('span', label, 'status-badge');
     badge.dataset.tone = tone;
     return badge;
   };
@@ -269,7 +272,18 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     detailView.hidden = view !== 'detail';
     editor.hidden = view !== 'editor';
     title.textContent = view === 'editor' ? (editingJob ? 'Edit job' : 'New job') : 'Scheduled jobs';
+    // Each view keeps its main action in the shared dialog footer, like the upload dialog.
+    newButton.hidden = view !== 'list';
+    detailRun.hidden = view !== 'detail';
+    cancelButton.hidden = view !== 'editor';
+    saveButton.hidden = view !== 'editor';
+    summary.textContent = '';
     setError();
+  }
+
+  function lastRunText(job) {
+    if (job.running) return 'Running now…';
+    return job.lastRun ? `Last run ${formatRelativeTime(job.lastRun.startedAt)}` : 'Not run yet';
   }
 
   function schedulePoll() {
@@ -351,27 +365,30 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
         .filter(Boolean).join(' · ')
       : '';
     list.hidden = !jobs.length;
-    get('jobs-toolbar').hidden = !jobs.length;
     get('jobs-empty').hidden = jobs.length > 0;
     for (const job of jobs) {
       const item = element('li', '', 'jobs-item');
       item.dataset.enabled = String(job.enabled);
-      const row = button('', () => openDetail(job), 'jobs-row');
+      const row = button('', () => openDetail(job), 'app-list-row jobs-row');
+      const body = element('span', '', 'jobs-row-body');
       const heading = element('span', '', 'jobs-row-heading');
       heading.append(element('span', job.name, 'jobs-row-name'), statusBadge(job.running ? { status: 'running' } : job.lastRun));
       const timing = [job.enabled
         ? (job.nextRunAt ? `Next ${formatRelativeTime(job.nextRunAt)}` : 'No upcoming run')
         : 'Paused'];
       if (job.lastRun && job.lastRun.status !== 'running') timing.push(`last ran ${formatRelativeTime(job.lastRun.startedAt)}`);
-      row.append(
+      body.append(
         heading,
         element('span', scheduleText(job), 'jobs-row-meta'),
         element('span', timing.join(' · '), 'jobs-row-meta'),
       );
+      const chevron = element('span', '›', 'app-list-chevron');
+      chevron.setAttribute('aria-hidden', 'true');
+      row.append(body, chevron);
       row.title = job.nextRunAt && job.enabled ? `Next run: ${formatDateTime(job.nextRunAt)}` : '';
       const quick = job.running
-        ? button('Stop', () => perform(async () => { await stopJob(job); await refresh(); }), 'jobs-quick', `Stop ${job.name}`)
-        : button('Run', () => perform(async () => { await runJob(job); await refresh(); }), 'jobs-quick', `Run ${job.name} now`);
+        ? button('Stop', () => perform(async () => { await stopJob(job); await refresh(); }), 'btn-compact jobs-quick', `Stop ${job.name}`)
+        : button('Run', () => perform(async () => { await runJob(job); await refresh(); }), 'btn-compact jobs-quick', `Run ${job.name} now`);
       item.append(row, quick);
       list.append(item);
     }
@@ -407,6 +424,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     detailRun.setAttribute('aria-label', job.running ? `Stop ${job.name}` : `Run ${job.name} now`);
     detailToggle.textContent = job.enabled ? 'Pause' : 'Resume';
     for (const control of [detailRun, detailToggle, detailEdit, detailDelete]) control.disabled = busy;
+    summary.textContent = lastRunText(job);
     renderRuns();
   }
 
@@ -419,10 +437,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
       atBottom: previousLog.scrollTop + previousLog.clientHeight >= previousLog.scrollHeight - 4,
     };
     runsList.replaceChildren();
-    if (!runs.length) {
-      runsList.append(element('li', 'No runs yet. Use Run now to test the command.', 'jobs-runs-empty'));
-      return;
-    }
+    runsEmpty.hidden = runs.length > 0;
     for (const run of runs) {
       const item = element('li', '', 'jobs-run-item');
       const expanded = run.id === expandedRunId;
@@ -430,10 +445,10 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
         expandedRunId = expanded ? null : run.id;
         renderRuns();
         loadExpandedLog();
-      }, 'jobs-run');
+      }, 'app-list-row jobs-run');
       toggle.disabled = false;
       toggle.setAttribute('aria-expanded', String(expanded));
-      const chevron = element('span', '›', 'jobs-run-chevron');
+      const chevron = element('span', '›', 'app-list-chevron jobs-run-chevron');
       chevron.setAttribute('aria-hidden', 'true');
       const time = element('span', formatDateTime(run.startedAt), 'jobs-run-time');
       time.title = formatRelativeTime(run.startedAt);
@@ -445,7 +460,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
       toggle.append(chevron, time, element('span', detail, 'jobs-run-detail'), statusBadge(run));
       item.append(toggle);
       if (expanded) {
-        const output = element('pre', '', 'jobs-log');
+        const output = element('pre', '', 'code-block jobs-log');
         output.id = `jobs-log-${run.id}`;
         output.dataset.runId = run.id;
         output.tabIndex = 0;
@@ -550,7 +565,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
       detailEdit.focus({ preventScroll: true });
     } else {
       showList();
-      get('jobs-new').focus({ preventScroll: true });
+      newButton.focus({ preventScroll: true });
     }
   }
 
@@ -598,11 +613,10 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
     refreshSequence += 1;
     (isMobile() ? get('sidebar-toggle') : opener).focus({ preventScroll: true });
   });
-  get('jobs-new').addEventListener('click', () => openEditor());
-  get('jobs-empty-new').addEventListener('click', () => openEditor());
+  newButton.addEventListener('click', () => openEditor());
   get('jobs-detail-back').addEventListener('click', () => {
     showList();
-    get('jobs-new').focus({ preventScroll: true });
+    newButton.focus({ preventScroll: true });
   });
   detailRun.addEventListener('click', () => perform(async () => {
     const job = detailJob;
@@ -631,7 +645,7 @@ export function bindScheduledJobs({ document, apiRequest, getCsrfToken, closeSid
       showList();
     });
   });
-  get('job-cancel').addEventListener('click', closeEditor);
+  cancelButton.addEventListener('click', closeEditor);
   presetSelect.addEventListener('change', () => {
     if (presetSelect.value) scheduleInput.value = presetSelect.value;
     updatePreview(0);

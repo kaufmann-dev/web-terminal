@@ -140,6 +140,20 @@ export function uploadableItems(items) {
   return items.filter((item) => item.status !== 'saved' && item.file.size <= MAX_UPLOAD_BYTES);
 }
 
+export function describeUploadStatus(item) {
+  switch (item.status) {
+    case 'uploading': {
+      const percent = Math.min(100, Math.round(item.loaded / Math.max(1, item.file.size) * 100));
+      return { label: percent >= 100 ? 'Saving' : `Uploading ${percent}%`, tone: 'running' };
+    }
+    case 'saved': return { label: 'Saved', tone: 'success' };
+    case 'error':
+      return { label: item.file.size > MAX_UPLOAD_BYTES ? 'Too large' : 'Failed', tone: 'error' };
+    case 'cancelled': return { label: 'Cancelled', tone: 'idle' };
+    default: return null;
+  }
+}
+
 export function selectionSummary(items, destination, running = false) {
   const saved = items.filter((item) => item.status === 'saved').length;
   if (running) return `${saved} of ${items.length} saved. Uploading…`;
@@ -250,11 +264,11 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
   }
 
   function folderRow(label, target, iconPath, ariaLabel) {
-    const row = button('', () => browse(target, { focusFolders: true }), 'upload-folder');
+    const row = button('', () => browse(target, { focusFolders: true }), 'app-list-row upload-folder');
     const name = element('span', label, 'upload-folder-name');
-    const chevron = element('span', '›', 'upload-folder-chevron');
+    const chevron = element('span', '›', 'app-list-chevron');
     chevron.setAttribute('aria-hidden', 'true');
-    row.append(icon(iconPath, 'upload-folder-icon'), name, chevron);
+    row.append(icon(iconPath, 'app-list-icon'), name, chevron);
     row.title = target;
     if (ariaLabel) row.setAttribute('aria-label', ariaLabel);
     return row;
@@ -265,7 +279,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
     folders.replaceChildren();
     folders.setAttribute('aria-busy', String(browsing));
     if (browsing) {
-      folders.append(element('p', 'Loading folders…', 'upload-folders-note'));
+      folders.append(element('p', 'Loading folders…', 'app-list-note'));
       return;
     }
     if (!destination) return;
@@ -276,9 +290,9 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
       folders.append(folderRow(name, `${destination.replace(/\/$/, '')}/${name}`, FOLDER_ICON));
     }
     if (!directories.length) {
-      folders.append(element('p', 'No subfolders — files will be saved here.', 'upload-folders-note'));
+      folders.append(element('p', 'No subfolders — files will be saved here.', 'app-list-note'));
     } else if (!visible.length) {
-      folders.append(element('p', 'No folders match the filter.', 'upload-folders-note'));
+      folders.append(element('p', 'No folders match the filter.', 'app-list-note'));
     }
   }
 
@@ -289,7 +303,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
       row.dataset.state = item.status;
       const main = element('div', '', 'upload-file-main');
       if (!queue.running && item.status !== 'saved') {
-        const input = element('input');
+        const input = element('input', '', 'input-compact');
         input.type = 'text';
         input.value = item.name;
         input.spellcheck = false;
@@ -303,9 +317,15 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
         main.append(name);
       }
       main.append(element('span', formatBytes(item.file.size), 'upload-size'));
+      const status = describeUploadStatus(item);
+      if (status) {
+        const badge = element('span', status.label, 'status-badge');
+        badge.dataset.tone = status.tone;
+        main.append(badge);
+      }
       if (!queue.running) {
         if (['error', 'cancelled'].includes(item.status) && item.file.size <= MAX_UPLOAD_BYTES) {
-          const retry = button('Retry', () => queue.run(destination, [item]), 'upload-text-button');
+          const retry = button('Retry', () => queue.run(destination, [item]), 'btn-compact');
           retry.disabled = !destination || browsing || editingPath;
           retry.setAttribute('aria-label', `Retry ${item.name}`);
           main.append(retry);
@@ -315,13 +335,15 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
           queue.items = queue.items.filter((entry) => entry !== item);
           queue.render();
           (fileList.querySelector('input, button') || choose).focus({ preventScroll: true });
-        }, 'upload-icon-button upload-file-remove');
+        }, 'icon-button icon-button-compact upload-file-remove');
         remove.setAttribute('aria-label', `${action} ${item.name}`);
         remove.title = action;
         main.append(remove);
       }
       row.append(main);
-      if (item.status !== 'pending') row.append(element('p', item.message, 'upload-file-message'));
+      const message = item.status === 'saved' ? item.path
+        : ['pending', 'uploading'].includes(item.status) ? '' : item.message;
+      if (message) row.append(element('p', message, 'upload-file-message'));
       if (item.status === 'uploading') {
         const progress = element('progress');
         progress.max = Math.max(1, item.file.size);
