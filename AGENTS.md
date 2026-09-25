@@ -29,8 +29,10 @@ node --check app.js
 node --check terminal-session-manager.js
 node --check voice-transcription.js
 node --check file-upload-store.js
+node --check scheduled-job-manager.js
 node --check public/js/voice-recorder.mjs
 node --check public/js/file-uploads.mjs
+node --check public/js/scheduled-jobs.mjs
 node --check public/js/terminal.js
 node --test test/*.test.js
 ```
@@ -62,9 +64,19 @@ node --test test/*.test.js
   retained normal scrollback and the active/alternate screen before live output resumes.
 - Browser disconnects, refresh, session switching, and logout must detach clients without stopping
   PTYs. A newer client replaces the older client for the same named session.
-- Treat terminal-session deletion as the only UI operation that intentionally stops processes.
+- Treat terminal-session deletion as the only UI operation that intentionally stops PTY processes.
   Signal every process in the PTY's Linux session with SIGHUP, then SIGKILL survivors after two
   seconds. Natural shell exit removes the session.
+- Keep scheduled jobs process-local in `scheduled-job-manager.js`, scheduled in-process with the
+  exact `croner` dependency. Persist definitions and bounded run history under
+  `$TERMINAL_HOME/.local/state/web-terminal/jobs` with atomic owner-only writes. Each run is a
+  detached `bash -c` process in `TERMINAL_WORKDIR` with the secret-free terminal environment, no
+  TTY, and output capped at 1 MiB per run for the last 20 runs. A job never overlaps itself;
+  scheduled runs that would overlap are recorded as skipped. Job stop, timeout, deletion, and
+  application shutdown signal the run's Linux session with SIGTERM, then SIGKILL survivors after
+  two seconds. Missed runs are not replayed after downtime, and runs active at shutdown are
+  recorded as interrupted. Job APIs require authentication, mutations require CSRF, and only
+  mutations and manual runs record interactive activity.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
 - Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.
@@ -123,7 +135,8 @@ node --test test/*.test.js
   intentionally removes legacy containers, images, volumes, runtime data, and custom networks
   while preserving registry credentials and unrelated terminal data. It must validate every
   deletion target, retry after an interruption, and never reset state again after writing its
-  completion marker. The Node shutdown path must close WebSockets and terminate all child PTYs.
+  completion marker. The Node shutdown path must close WebSockets and terminate all child PTYs
+  and running scheduled jobs.
 - The PTY environment sets `HOME`, XDG directories, PATH, `TERM=xterm-256color`, and
   `COLORTERM=truecolor`; the Express process keeps the container's original HOME while running as
   UID/GID 1000.
