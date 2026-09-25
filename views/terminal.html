@@ -77,6 +77,7 @@
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
       <div class="sidebar-uploads">
         <button id="upload-open" class="upload-button" type="button" disabled>Upload</button>
+        <button id="jobs-open" class="upload-button" type="button" disabled>Jobs</button>
       </div>
       <div class="sidebar-voice">
         <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
@@ -127,6 +128,62 @@
         <button id="upload-cancel" type="button" hidden>Cancel remaining</button>
         <button id="upload-submit" type="button" disabled>Upload</button>
       </div>
+    </div>
+  </dialog>
+  <dialog id="jobs-dialog" class="upload-dialog jobs-dialog" aria-labelledby="jobs-title">
+    <div class="upload-dialog-header">
+      <h2 id="jobs-title">Scheduled jobs</h2>
+      <button id="jobs-close" type="button">Close</button>
+    </div>
+    <div class="upload-dialog-body">
+      <p id="jobs-error" class="upload-error" role="alert" hidden></p>
+      <section id="jobs-list-view" aria-label="Scheduled job list">
+        <div class="jobs-toolbar">
+          <p id="jobs-summary" class="jobs-muted" role="status" aria-live="polite"></p>
+          <button id="jobs-new" type="button">New job</button>
+        </div>
+        <ul id="jobs-list" class="jobs-list"></ul>
+      </section>
+      <form id="jobs-editor" class="jobs-editor" hidden novalidate>
+        <label for="job-name">Name</label>
+        <input id="job-name" type="text" maxlength="64" autocomplete="off" required>
+        <label for="job-command">Command</label>
+        <textarea id="job-command" rows="5" maxlength="8192" autocomplete="off" autocapitalize="none" spellcheck="false" required></textarea>
+        <p class="jobs-hint">Runs with Bash in the terminal's start folder, using the terminal environment. Output is kept for the last 20 runs.</p>
+        <div class="jobs-field-row">
+          <div class="jobs-field">
+            <label for="job-preset">Schedule</label>
+            <select id="job-preset">
+              <option value="">Custom</option>
+            </select>
+          </div>
+          <div class="jobs-field">
+            <label for="job-schedule">Cron expression</label>
+            <input id="job-schedule" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="0 3 * * *" required>
+          </div>
+        </div>
+        <p class="jobs-hint">minute · hour · day of month · month · day of week</p>
+        <label for="job-timezone">Timezone</label>
+        <input id="job-timezone" type="text" list="job-timezones" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <datalist id="job-timezones"></datalist>
+        <div id="job-preview" class="jobs-preview" aria-live="polite"></div>
+        <label for="job-timeout">Timeout in minutes (0 = none)</label>
+        <input id="job-timeout" type="number" min="0" max="10080" step="1" inputmode="numeric" value="0">
+        <label class="jobs-checkbox"><input id="job-enabled" type="checkbox" checked> Enabled</label>
+        <div class="upload-footer-actions">
+          <button id="job-cancel" type="button">Cancel</button>
+          <button id="job-save" type="submit">Create job</button>
+        </div>
+      </form>
+      <section id="jobs-runs-view" aria-labelledby="jobs-runs-title" hidden>
+        <div class="jobs-toolbar">
+          <button id="jobs-runs-back" type="button">Back</button>
+          <h3 id="jobs-runs-title"></h3>
+          <button id="jobs-runs-refresh" type="button">Refresh</button>
+        </div>
+        <ul id="jobs-runs" class="jobs-runs" aria-label="Run history"></ul>
+        <pre id="jobs-log" class="jobs-log" tabindex="0" aria-label="Run output" hidden></pre>
+      </section>
     </div>
   </dialog>
   <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>

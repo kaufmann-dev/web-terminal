@@ -62,6 +62,41 @@ function listLinuxSessionPids(sessionId, procRoot = '/proc') {
   return pids;
 }
 
+async function signalLinuxSession(sessionId, signal, {
+  listSessionPids = listLinuxSessionPids,
+  signalProcess = process.kill.bind(process),
+  logger = console,
+} = {}) {
+  let pids;
+  try {
+    pids = listSessionPids(sessionId);
+  } catch (err) {
+    logger.warn(`Unable to enumerate terminal process session ${sessionId}: ${err.message}`);
+    pids = [sessionId];
+  }
+
+  const descendants = pids.filter((pid) => pid !== sessionId);
+  const orderedPids = [...descendants, ...pids.filter((pid) => pid === sessionId)];
+
+  for (const pid of orderedPids) {
+    try {
+      signalProcess(pid, signal);
+    } catch (err) {
+      if (err.code !== 'ESRCH') {
+        logger.warn(`Unable to send ${signal} to terminal process ${pid}: ${err.message}`);
+      }
+    }
+
+    // Give the shell session leader a chance to reap terminated foreground
+    // children before it receives the same signal. Containers commonly run
+    // Node as PID 1, which cannot otherwise reap grandchildren orphaned at
+    // the same instant as their shell.
+    if (pid !== sessionId && orderedPids.includes(sessionId)) {
+      await delay(25);
+    }
+  }
+}
+
 function writeTerminal(terminal, data) {
   return new Promise((resolve) => terminal.write(data, resolve));
 }
@@ -386,35 +421,12 @@ class TerminalSessionManager {
     session.resolveExit(event);
   }
 
-  async _signalSession(sessionId, signal) {
-    let pids;
-    try {
-      pids = this.listSessionPids(sessionId);
-    } catch (err) {
-      this.logger.warn(`Unable to enumerate terminal process session ${sessionId}: ${err.message}`);
-      pids = [sessionId];
-    }
-
-    const descendants = pids.filter((pid) => pid !== sessionId);
-    const orderedPids = [...descendants, ...pids.filter((pid) => pid === sessionId)];
-
-    for (const pid of orderedPids) {
-      try {
-        this.signalProcess(pid, signal);
-      } catch (err) {
-        if (err.code !== 'ESRCH') {
-          this.logger.warn(`Unable to send ${signal} to terminal process ${pid}: ${err.message}`);
-        }
-      }
-
-      // Give the shell session leader a chance to reap terminated foreground
-      // children before it receives the same signal. Containers commonly run
-      // Node as PID 1, which cannot otherwise reap grandchildren orphaned at
-      // the same instant as their shell.
-      if (pid !== sessionId && orderedPids.includes(sessionId)) {
-        await delay(25);
-      }
-    }
+  _signalSession(sessionId, signal) {
+    return signalLinuxSession(sessionId, signal, {
+      listSessionPids: this.listSessionPids,
+      signalProcess: this.signalProcess,
+      logger: this.logger,
+    });
   }
 
   _sendJson(session, client, message) {
@@ -492,6 +504,8 @@ module.exports = {
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
   isValidTerminalSize,
+  delay,
   listLinuxSessionPids,
+  signalLinuxSession,
   writeTerminal,
 };
