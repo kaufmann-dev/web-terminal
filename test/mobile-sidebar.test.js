@@ -489,35 +489,35 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
   );
 });
 
-test('mobile upload dialog is always fullscreen with stacked footer actions', () => {
+test('mobile dialogs are always fullscreen with stacked footer actions', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const mobileStyles = getMobileStyles(stylesheet);
 
   assert.match(
     mobileStyles,
-    /\.upload-dialog\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*height:\s*100dvh;[^}]*max-height:\s*100dvh;[^}]*margin:\s*0;[^}]*border:\s*0;[^}]*inset:\s*0;[^}]*\}/s,
+    /\.app-dialog\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*height:\s*100dvh;[^}]*max-height:\s*100dvh;[^}]*margin:\s*0;[^}]*border:\s*0;[^}]*inset:\s*0;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
-    /\.upload-dialog-body\s*\{[^}]*flex:\s*1 1 auto;[^}]*\}/s,
+    /\.app-dialog-body\s*\{[^}]*flex:\s*1 1 auto;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
-    /\.upload-footer-actions\s*\{[^}]*flex-direction:\s*column;[^}]*\}/s,
+    /\.app-dialog-actions\s*\{[^}]*flex-direction:\s*column;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
-    /\.upload-footer-actions button\s*\{[^}]*width:\s*100%;[^}]*\}/s,
+    /\.app-dialog-actions button\s*\{[^}]*width:\s*100%;[^}]*\}/s,
   );
 });
 
-test('sidebar upload and voice actions share one divider with hover feedback', () => {
+test('sidebar actions and voice controls share one divider with hover feedback', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
 
   assert.match(
     desktopStyles,
-    /\.sidebar-uploads\s*\{[^}]*border-top:\s*1px solid var\(--border\);/s,
+    /\.sidebar-actions\s*\{[^}]*border-top:\s*1px solid var\(--border\);/s,
   );
   assert.doesNotMatch(
     desktopStyles,
@@ -529,6 +529,6 @@ test('sidebar upload and voice actions share one divider with hover feedback', (
   );
   assert.match(
     desktopStyles,
-    /@media \(hover: hover\) \{[\s\S]*\.upload-dialog button:hover:not\(:disabled\)[\s\S]*color:\s*var\(--accent-bright\);/s,
+    /@media \(hover: hover\) \{[\s\S]*\.app-dialog button:hover:not\(:disabled\)[\s\S]*color:\s*var\(--accent-bright\);/s,
   );
 });

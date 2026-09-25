@@ -275,7 +275,7 @@ or control unrelated native Wayland windows.
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
   control grid follows that top offset without moving or resizing the terminal. An always-visible
-  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. Mic and
+  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. The microphone
   Cancel each match one button column, with status text spanning the six columns between them.
   All three rows are 44px high in an edge-to-edge grid with 1px internal dividers and a bottom
   border, without individual button borders or outer padding. The first button in the second
@@ -295,7 +295,7 @@ or control unrelated native Wayland windows.
   scrolls xterm's retained
   normal-screen history directly, without momentum or sending mouse or key input to
   alternate-screen programs; pinch-to-zoom remains available.
-- **Mic** starts dictation; **Stop** sends the recording to ElevenLabs Scribe v2 and inserts cleaned
+- The microphone button starts dictation; while recording it becomes a red stop button, which sends the recording to ElevenLabs Scribe v2 and inserts cleaned
   text once into the terminal where recording began. Press **Enter** yourself to execute. Scribe
   detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks
   and tabs become spaces and terminal control characters are removed. There is no transcript
@@ -321,12 +321,17 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
-- **Upload** is in the session sidebar on desktop and mobile. Choose one or more local files,
-  browse or type an existing server folder inside `TERMINAL_WORKDIR`, then click **Upload**.
-  Desktop users can also drop files onto the terminal to open the upload dialog. The destination
-  starts at the workspace root and the last valid folder is remembered in the browser tab.
-  Absolute paths and paths relative to the workspace are accepted. Hidden directories are listed;
-  directory symlinks are omitted from the list but can be entered if they resolve inside the workspace.
+- **Upload** is in the session sidebar on desktop and mobile. The dialog lists **Files** first:
+  drop files on the dashed area or click it (**Choose files** on mobile) to pick them. Then pick a
+  **Destination** inside `TERMINAL_WORKDIR` and click **Upload N files**. Desktop users can also
+  drop files onto the terminal to open the dialog. The destination path bar shows clickable
+  breadcrumbs; the folder list below opens subfolders, `..` goes up one level, and a filter
+  appears when a folder has more than eight subfolders. The pencil button switches the bar to a
+  text field where absolute paths and paths relative to the workspace are accepted; press Enter
+  to open the folder or Escape to return to the breadcrumbs. The destination starts at the
+  workspace root and the last valid folder is remembered in the browser tab. Hidden directories
+  are listed; directory symlinks are omitted from the list but can be entered if they resolve
+  inside the workspace.
 - Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
   sequentially with one active upload per login session. The dialog shows progress and saved paths;
   closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
@@ -342,15 +347,21 @@ or control unrelated native Wayland windows.
   destination before retrying. Folder uploads, folder creation, and automatic archive extraction
   are not provided; upload a ZIP file when needed.
 - **Jobs** is next to **Upload** in the session sidebar and manages scheduled background commands.
-  **New job** asks for a name, a Bash command, a five-field cron expression (`minute hour
+  The list shows each job's schedule in words (for example "Weekdays at 09:00 · Europe/Vienna"),
+  when it runs next, when it last ran, and its last result, with a **Run** or **Stop** button.
+  Click a job to open its details: the command, schedule and raw cron expression, next run,
+  timeout, the actions **Run now**/**Stop**, **Pause**/**Resume**, **Edit**, and **Delete**, and its
+  recent runs. Expand a run to see its output, which follows along while the run is active.
+- **New job** asks for a name, a Bash command, a five-field cron expression (`minute hour
   day-of-month month day-of-week`, or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`), an
   IANA timezone that defaults to the browser's, and an optional timeout in minutes. Presets fill
-  common schedules, and the editor previews the next five run times in the job's timezone.
+  common schedules, and the editor describes the schedule and previews the next five run times in
+  the job's timezone.
 - Each run executes `bash -c <command>` in `TERMINAL_WORKDIR` as the terminal user with the terminal
   environment, so the same PATH, tools, `DOCKER_HOST`, and dotfiles-managed credentials are
   available; `WEB_TERMINAL_JOB_ID` and `WEB_TERMINAL_JOB_NAME` identify the job. Runs have no TTY or
   stdin and do not appear in any terminal session. Combined stdout and stderr is kept per run, up to
-  1 MiB, for the last 20 runs of each job; **History** shows runs and their output.
+  1 MiB, for the last 20 runs of each job.
 - A job never overlaps itself: when its schedule fires while the previous run is still active, the
   new run is recorded as skipped. **Run now** starts a manual run and is refused while a run is
   active. **Stop**, a reached timeout, and **Delete** send SIGTERM to every process in the run's

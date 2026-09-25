@@ -241,6 +241,10 @@ test('touch activates once, movement cancels, keyboard activation works and time
   assert.equal(stops, 1);
   assert.equal(dispatch('mousedown').defaultPrevented, true);
   render({ state: 'recording', message: 'Recording', elapsed: '0:01' });
+  assert.equal(group.dataset.state, 'recording');
+  assert.equal(action.attributes['aria-label'], 'Stop dictation');
+  assert.equal(action.attributes.title, 'Stop dictation');
+  assert.equal(action.textContent, '', 'the action keeps its icon markup instead of text');
   render({ state: 'recording', message: 'Recording', elapsed: '0:02' });
   assert.equal(announcements, 1);
   assert.equal(status.textContent, 'Recording 0:02');
