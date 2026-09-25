@@ -9,6 +9,7 @@ RUN dnf --assumeyes update \
     && dnf config-manager --set-enabled crb \
     && dnf --assumeyes --setopt=install_weak_deps=False install \
       bash-completion \
+      bat \
       bind-utils \
       ca-certificates \
       cage \
@@ -72,6 +73,7 @@ RUN dnf --assumeyes update \
     && ln --symbolic /usr/bin/npm-24 /usr/local/bin/npm \
     && ln --symbolic /usr/bin/npx-24 /usr/local/bin/npx \
     && node --version | grep --extended-regexp --quiet '^v24\.' \
+    && bat --version \
     && python3 -c 'import yaml' \
     && sed --regexp-extended --in-place \
       's/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/' \
