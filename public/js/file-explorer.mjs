@@ -217,6 +217,8 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   let directories = [];
   let files = [];
   let browsing = false;
+  // A refresh keeps the current list on screen until the new one arrives.
+  let refreshing = false;
   let browseSequence = 0;
   let editingPath = false;
   let configured = false;
@@ -313,10 +315,11 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   }
 
   function renderEntries() {
-    filter.hidden = browsing || directories.length + files.length <= ENTRY_FILTER_THRESHOLD;
+    const loading = browsing && !refreshing;
+    filter.hidden = loading || directories.length + files.length <= ENTRY_FILTER_THRESHOLD;
     folders.replaceChildren();
     folders.setAttribute('aria-busy', String(browsing));
-    if (browsing) {
+    if (loading) {
       folders.append(element('p', 'Loading…', 'app-list-note'));
       return;
     }
@@ -417,9 +420,10 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     render,
   });
 
-  async function browse(path = '', { focusFolders = false } = {}) {
+  async function browse(path = '', { focusFolders = false, refresh = false } = {}) {
     const sequence = ++browseSequence;
     browsing = true;
+    refreshing = refresh;
     setError();
     renderLocation();
     renderEntries();
@@ -457,7 +461,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     const target = destination;
     await queue.run(target, items);
     // Show the saved files unless the user has moved to another folder meanwhile.
-    if (destination === target && !browsing) browse(target);
+    if (destination === target && !browsing) browse(target, { refresh: true });
   }
 
   function setEditingPath(editing) {
@@ -478,11 +482,13 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     closeSidebar();
     if (!dialog.open) dialog.showModal();
     queue.add(files);
-    if (!destination && !browsing) {
-      let remembered = '';
-      try { remembered = sessionStorage.getItem(storageKey) || ''; } catch { /* Storage is optional. */ }
-      if (!(await browse(remembered)) && remembered && !destination) browse('');
+    if (browsing) return;
+    // Re-list on every open: the terminal may have changed the folder since the last visit.
+    let start = destination;
+    if (!start) {
+      try { start = sessionStorage.getItem(storageKey) || ''; } catch { /* Storage is optional. */ }
     }
+    if (!(await browse(start, { refresh: Boolean(destination) })) && start) browse('');
   }
   opener.addEventListener('click', () => open());
   get('upload-close').addEventListener('click', () => dialog.close());
