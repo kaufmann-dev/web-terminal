@@ -28,10 +28,10 @@ npm ci
 node --check app.js
 node --check terminal-session-manager.js
 node --check voice-transcription.js
-node --check file-upload-store.js
+node --check workspace-file-store.js
 node --check scheduled-job-manager.js
 node --check public/js/voice-recorder.mjs
-node --check public/js/file-uploads.mjs
+node --check public/js/file-explorer.mjs
 node --check public/js/scheduled-jobs.mjs
 node --check public/js/terminal.js
 node --test test/*.test.js
@@ -77,6 +77,13 @@ node --test test/*.test.js
   two seconds. Missed runs are not replayed after downtime, and runs active at shutdown are
   recorded as interrupted. Job APIs require authentication, mutations require CSRF, and only
   mutations and manual runs record interactive activity.
+- Keep workspace file access in `workspace-file-store.js`, rooted at `TERMINAL_WORKDIR` and resolved
+  through pinned directory descriptors with `O_NOFOLLOW`. `/api/files/content/*` is the only route
+  that serves workspace files. Treat them as untrusted: render inline only the allowlisted image,
+  PDF, audio, and video extensions, serve any other valid UTF-8 file as `text/plain`, and send
+  everything else as an attachment. Every non-PDF inline response must carry the `sandbox`
+  Content-Security-Policy and `nosniff`; never serve workspace HTML as `text/html`. File reads
+  require authentication and do not record interactive activity.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
 - Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.

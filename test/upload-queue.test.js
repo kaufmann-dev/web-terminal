@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 test('upload queue freezes its destination and continues after individual failures', async () => {
-  const { UploadQueue } = await import('../public/js/file-uploads.mjs');
+  const { UploadQueue } = await import('../public/js/file-explorer.mjs');
   const calls = [];
   let active = 0;
   const queue = new UploadQueue({ send: async (options) => {
@@ -32,7 +32,7 @@ test('upload queue freezes its destination and continues after individual failur
 });
 
 test('cancel stops the active and remaining uploads while preserving saved files', async () => {
-  const { UploadQueue } = await import('../public/js/file-uploads.mjs');
+  const { UploadQueue } = await import('../public/js/file-explorer.mjs');
   let started;
   const waiting = new Promise((resolve) => { started = resolve; });
   const queue = new UploadQueue({ send: async ({ name, signal }) => {
@@ -50,7 +50,7 @@ test('cancel stops the active and remaining uploads while preserving saved files
 });
 
 test('oversized files never transfer, empty files transfer, and expired authentication stops the queue', async () => {
-  const { UploadQueue, MAX_UPLOAD_BYTES } = await import('../public/js/file-uploads.mjs');
+  const { UploadQueue, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
   let expired = 0;
   const calls = [];
   const queue = new UploadQueue({ onAuthExpired: () => { expired += 1; }, send: async ({ name }) => {
@@ -67,7 +67,7 @@ test('oversized files never transfer, empty files transfer, and expired authenti
 });
 
 test('XHR transfer sends encoded paths and CSRF, reports progress and surfaces proxy errors', async () => {
-  const { sendUpload } = await import('../public/js/file-uploads.mjs');
+  const { sendUpload } = await import('../public/js/file-explorer.mjs');
   let xhr;
   const createRequest = () => (xhr = {
     upload: {}, headers: {}, open(method, url) { this.method = method; this.url = url; },

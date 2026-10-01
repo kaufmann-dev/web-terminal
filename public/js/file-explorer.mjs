@@ -131,9 +131,24 @@ export function parentDirectory(root, directory) {
   return parent.length < root.length ? root : parent;
 }
 
-export function filterFolders(names, query = '') {
+// Entries are folder names or file objects with a name.
+export function filterEntries(entries, query = '') {
   const needle = query.trim().toLowerCase();
-  return needle ? names.filter((name) => name.toLowerCase().includes(needle)) : names;
+  return needle
+    ? entries.filter((entry) => (entry.name ?? entry).toLowerCase().includes(needle))
+    : entries;
+}
+
+export function fileContentUrl(root, path, { download = false } = {}) {
+  const relative = path.slice(root.length).split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return `/api/files/content/${relative}${download ? '?download=1' : ''}`;
+}
+
+export function formatModified(ms, now = Date.now(), locale = undefined) {
+  const date = new Date(ms);
+  const options = { month: 'short', day: 'numeric' };
+  if (date.getFullYear() !== new Date(now).getFullYear()) options.year = 'numeric';
+  return date.toLocaleDateString(locale, options);
 }
 
 export function uploadableItems(items) {
@@ -172,9 +187,11 @@ export function selectionSummary(items, destination, running = false) {
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const FOLDER_ICON = 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z';
 const PARENT_ICON = 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 6 6v5';
-const FOLDER_FILTER_THRESHOLD = 8;
+const FILE_ICON = 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm0 0v5h5';
+const DOWNLOAD_ICON = 'M12 4v11m0 0-4-4m4 4 4-4M5 19h14';
+const ENTRY_FILTER_THRESHOLD = 8;
 
-export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSidebar, isMobile, onAuthExpired }) {
+export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSidebar, isMobile, onAuthExpired }) {
   const get = (id) => document.getElementById(id);
   const dialog = get('upload-dialog');
   const opener = get('upload-open');
@@ -194,10 +211,11 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
   const fields = get('upload-destination-fields');
   const choose = get('upload-choose');
   const workspace = document.querySelector('.terminal-workspace');
-  const storageKey = 'terminal.upload-directory';
+  const storageKey = 'terminal.files-directory';
   let root = null;
   let destination = null;
   let directories = [];
+  let files = [];
   let browsing = false;
   let browseSequence = 0;
   let editingPath = false;
@@ -274,25 +292,48 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
     return row;
   }
 
-  function renderFolders() {
-    filter.hidden = browsing || directories.length <= FOLDER_FILTER_THRESHOLD;
+  function fileRow(file) {
+    const filePath = `${destination.replace(/\/$/, '')}/${file.name}`;
+    const entry = element('div', '', 'files-entry');
+    const link = element('a', '', 'app-list-row files-file');
+    link.href = fileContentUrl(root, filePath);
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.title = filePath;
+    link.append(icon(FILE_ICON, 'app-list-icon'), element('span', file.name, 'upload-folder-name'),
+      element('span', `${formatBytes(file.size)} · ${formatModified(file.modified)}`, 'files-meta'));
+    const download = element('a', '', 'icon-button icon-button-compact files-download');
+    download.href = fileContentUrl(root, filePath, { download: true });
+    download.download = file.name;
+    download.title = 'Download';
+    download.setAttribute('aria-label', `Download ${file.name}`);
+    download.append(icon(DOWNLOAD_ICON));
+    entry.append(link, download);
+    return entry;
+  }
+
+  function renderEntries() {
+    filter.hidden = browsing || directories.length + files.length <= ENTRY_FILTER_THRESHOLD;
     folders.replaceChildren();
     folders.setAttribute('aria-busy', String(browsing));
     if (browsing) {
-      folders.append(element('p', 'Loading folders…', 'app-list-note'));
+      folders.append(element('p', 'Loading…', 'app-list-note'));
       return;
     }
     if (!destination) return;
     const parent = parentDirectory(root, destination);
     if (parent) folders.append(folderRow('..', parent, PARENT_ICON, 'Parent folder'));
-    const visible = filterFolders(directories, filter.hidden ? '' : filter.value);
-    for (const name of visible) {
+    const query = filter.hidden ? '' : filter.value;
+    const visibleFolders = filterEntries(directories, query);
+    const visibleFiles = filterEntries(files, query);
+    for (const name of visibleFolders) {
       folders.append(folderRow(name, `${destination.replace(/\/$/, '')}/${name}`, FOLDER_ICON));
     }
-    if (!directories.length) {
-      folders.append(element('p', 'No subfolders — files will be saved here.', 'app-list-note'));
-    } else if (!visible.length) {
-      folders.append(element('p', 'No folders match the filter.', 'app-list-note'));
+    for (const file of visibleFiles) folders.append(fileRow(file));
+    if (!directories.length && !files.length) {
+      folders.append(element('p', 'This folder is empty.', 'app-list-note'));
+    } else if (!visibleFolders.length && !visibleFiles.length) {
+      folders.append(element('p', 'Nothing matches the filter.', 'app-list-note'));
     }
   }
 
@@ -325,7 +366,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
       }
       if (!queue.running) {
         if (['error', 'cancelled'].includes(item.status) && item.file.size <= MAX_UPLOAD_BYTES) {
-          const retry = button('Retry', () => queue.run(destination, [item]), 'btn-compact');
+          const retry = button('Retry', () => upload([item]), 'btn-compact');
           retry.disabled = !destination || browsing || editingPath;
           retry.setAttribute('aria-label', `Retry ${item.name}`);
           main.append(retry);
@@ -365,7 +406,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
     cancel.hidden = !queue.running;
     const current = queue.items.find((item) => item.status === 'uploading');
     const percent = current ? Math.min(100, Math.round(current.loaded / Math.max(1, current.file.size) * 100)) : 0;
-    opener.textContent = queue.running ? `Upload · ${percent}%` : 'Upload';
+    opener.textContent = queue.running ? `Files · ${percent}%` : 'Files';
     summary.textContent = selectionSummary(queue.items, destination, queue.running);
     renderFiles();
   }
@@ -381,15 +422,16 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
     browsing = true;
     setError();
     renderLocation();
-    renderFolders();
+    renderEntries();
     queue.render();
     let succeeded = false;
     try {
-      const data = await apiRequest(`/api/upload-directories?${new URLSearchParams({ path })}`);
+      const data = await apiRequest(`/api/files?${new URLSearchParams({ path })}`);
       if (sequence !== browseSequence) return false;
       root = data.root;
       destination = data.directory;
       directories = data.directories;
+      files = data.files;
       filter.value = '';
       try { sessionStorage.setItem(storageKey, destination); } catch { /* Storage is optional. */ }
       succeeded = true;
@@ -401,7 +443,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
         browsing = false;
         if (succeeded) editingPath = false;
         renderLocation();
-        renderFolders();
+        renderEntries();
         queue.render();
         if (succeeded && focusFolders) {
           (folders.querySelector('button') || editPath).focus({ preventScroll: true });
@@ -409,6 +451,13 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
       }
     }
     return succeeded;
+  }
+
+  async function upload(items) {
+    const target = destination;
+    await queue.run(target, items);
+    // Show the saved files unless the user has moved to another folder meanwhile.
+    if (destination === target && !browsing) browse(target);
   }
 
   function setEditingPath(editing) {
@@ -458,12 +507,12 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
     event.preventDefault();
     setEditingPath(false);
   });
-  filter.addEventListener('input', renderFolders);
+  filter.addEventListener('input', renderEntries);
   get('upload-path-form').addEventListener('submit', (event) => {
     event.preventDefault();
     if (!queue.running && editingPath) browse(pathInput.value, { focusFolders: true });
   });
-  submit.addEventListener('click', () => { if (destination && !editingPath) queue.run(destination); });
+  submit.addEventListener('click', () => { if (destination && !editingPath) upload(); });
   cancel.addEventListener('click', () => queue.cancel());
 
   let dragDepth = 0;
@@ -511,7 +560,7 @@ export function bindFileUploads({ document, apiRequest, getCsrfToken, closeSideb
   window.addEventListener('pagehide', () => queue.cancel());
   window.addEventListener('beforeunload', () => queue.cancel());
   renderLocation();
-  renderFolders();
+  renderEntries();
   queue.render();
   return {
     enable() { configured = true; opener.disabled = false; },

@@ -83,7 +83,7 @@
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
       <div class="sidebar-actions">
-        <button id="upload-open" class="sidebar-action" type="button" disabled>Upload</button>
+        <button id="upload-open" class="sidebar-action" type="button" disabled>Files</button>
         <button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs</button>
       </div>
       <div class="sidebar-voice">
@@ -116,13 +116,32 @@
   </main>
   <dialog id="upload-dialog" class="app-dialog upload-dialog" aria-labelledby="upload-title">
     <div class="app-dialog-header">
-      <h2 id="upload-title">Upload files</h2>
+      <h2 id="upload-title">Files</h2>
       <button id="upload-close" type="button" autofocus>Close</button>
     </div>
     <div class="app-dialog-body">
       <p id="upload-error" class="app-dialog-error" role="alert" hidden></p>
+      <form id="upload-path-form" class="app-dialog-section">
+        <fieldset id="upload-destination-fields">
+          <legend class="app-dialog-label">Location</legend>
+          <div id="upload-location" class="upload-location">
+            <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Current folder"></nav>
+            <button id="upload-edit-path" class="icon-button" type="button" aria-label="Type a folder path" title="Type a folder path">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="upload-path-editor" class="upload-path-row" hidden>
+            <input id="upload-directory" aria-label="Folder path" type="text" enterkeyhint="go" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Folder path inside the workspace">
+            <button type="submit">Go</button>
+          </div>
+          <input id="upload-folder-filter" class="upload-folder-filter" type="search" aria-label="Filter this folder" placeholder="Filter this folder" autocomplete="off" autocapitalize="none" spellcheck="false" hidden>
+          <div id="upload-folders" class="app-list upload-folders" aria-label="Folder contents"></div>
+        </fieldset>
+      </form>
       <section class="app-dialog-section" aria-labelledby="upload-files-label">
-        <h3 id="upload-files-label" class="app-dialog-label">Files</h3>
+        <h3 id="upload-files-label" class="app-dialog-label">Upload to this folder</h3>
         <button id="upload-choose" class="dashed-panel upload-dropzone" type="button">
           <svg class="upload-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path>
@@ -133,25 +152,6 @@
         <input id="upload-files" type="file" multiple hidden>
         <ul id="upload-file-list" class="app-list upload-file-list" aria-label="Selected files"></ul>
       </section>
-      <form id="upload-path-form" class="app-dialog-section">
-        <fieldset id="upload-destination-fields">
-          <legend class="app-dialog-label">Destination</legend>
-          <div id="upload-location" class="upload-location">
-            <nav id="upload-breadcrumbs" class="upload-breadcrumbs" aria-label="Destination folder"></nav>
-            <button id="upload-edit-path" class="icon-button" type="button" aria-label="Type a folder path" title="Type a folder path">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"></path>
-              </svg>
-            </button>
-          </div>
-          <div id="upload-path-editor" class="upload-path-row" hidden>
-            <input id="upload-directory" aria-label="Destination folder path" type="text" enterkeyhint="go" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Folder path inside the workspace">
-            <button type="submit">Go</button>
-          </div>
-          <input id="upload-folder-filter" class="upload-folder-filter" type="search" aria-label="Filter folders" placeholder="Filter folders" autocomplete="off" autocapitalize="none" spellcheck="false" hidden>
-          <div id="upload-folders" class="app-list upload-folders" aria-label="Server folders"></div>
-        </fieldset>
-      </form>
     </div>
     <div class="app-dialog-footer">
       <p id="upload-summary" class="app-dialog-status" role="status" aria-live="polite"></p>

@@ -256,7 +256,8 @@ or control unrelated native Wayland windows.
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
   clipboard-image uploads, accepted file-upload submissions, accepted transcription submissions,
   scheduled-job changes and manual runs, and accepted terminal input or paste extend the idle
-  deadline. Folder browsing, upload progress, job list and log viewing, schedule previews,
+  deadline. Folder browsing, opening and downloading files, upload progress, job list and log
+  viewing, schedule previews,
   polling, voice availability checks, transcription processing, CSRF
   retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health checks,
   pushed updates, and merely leaving a tab open do not.
@@ -321,17 +322,27 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
-- **Upload** is in the session sidebar on desktop and mobile. The dialog lists **Files** first:
-  drop files on the dashed area or click it (**Choose files** on mobile) to pick them. Then pick a
-  **Destination** inside `TERMINAL_WORKDIR` and click **Upload N files**. Desktop users can also
-  drop files onto the terminal to open the dialog. The destination path bar shows clickable
-  breadcrumbs; the folder list below opens subfolders, `..` goes up one level, and a filter
-  appears when a folder has more than eight subfolders. The pencil button switches the bar to a
-  text field where absolute paths and paths relative to the workspace are accepted; press Enter
-  to open the folder or Escape to return to the breadcrumbs. The destination starts at the
-  workspace root and the last valid folder is remembered in the browser tab. Hidden directories
-  are listed; directory symlinks are omitted from the list but can be entered if they resolve
-  inside the workspace.
+- **Files** is in the session sidebar on desktop and mobile. The dialog browses
+  `TERMINAL_WORKDIR`: the **Location** bar shows clickable breadcrumbs, and the list below shows
+  the folder's subfolders and files with their size and modification date. Click a folder to open
+  it, `..` to go up one level; a filter appears when a folder has more than eight entries. The
+  pencil button switches the bar to a text field where absolute paths and paths relative to the
+  workspace are accepted; press Enter to open the folder or Escape to return to the breadcrumbs.
+  Browsing starts at the workspace root and the last valid folder is remembered in the browser
+  tab. Hidden files and directories are listed. Symlinks are omitted from the list; directory
+  symlinks can still be entered if they resolve inside the workspace, and file symlinks cannot be
+  opened.
+- Click a file to open it in a new browser tab, where the browser's own viewer displays it:
+  PNG, JPEG, GIF, WebP, AVIF, SVG, BMP, and ICO images, PDFs, MP3, M4A, WAV, Ogg, Opus, and FLAC
+  audio, and MP4, M4V, MOV, and WebM video. Any other file that is valid UTF-8 text opens as
+  plain text, so source code, logs, Markdown, JSON, and HTML are shown as source and never
+  rendered or executed. Files the browser cannot display are downloaded instead. The download
+  arrow on each row always saves the file to your computer, with no size limit. Folders cannot be
+  downloaded; create an archive in the terminal first.
+- To upload, drop files on the dashed **Upload to this folder** area or click it (**Choose files**
+  on mobile), then click **Upload N files**; they are saved into the folder being viewed and the
+  list refreshes when the transfer finishes. Desktop users can also drop files onto the terminal
+  to open the dialog.
 - Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
   sequentially with one active upload per login session. The dialog shows progress and saved paths;
   closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
@@ -339,14 +350,14 @@ or control unrelated native Wayland windows.
   **Retry**. Successful files remain saved if another file fails. **Dismiss** only removes the
   result from the dialog. **Cancel remaining** stops the active transfer and queued files.
 - Uploaded files remain until manually deleted and survive redeployment only on a mounted persistent
-  volume. They are not served through browser download or static routes. Refreshing or leaving the
+  volume. Refreshing or leaving the
   page, logout, session expiry, and graceful shutdown cancel unfinished transfers and remove their
   temporary files. A forced process termination can leave hidden `.web-terminal-upload-*.part`
   files in the destination; remove those manually when no uploads are running. Interrupted transfers
   do not resume automatically. If a connection fails after the server saved a file, check the
-  destination before retrying. Folder uploads, folder creation, and automatic archive extraction
-  are not provided; upload a ZIP file when needed.
-- **Jobs** is next to **Upload** in the session sidebar and manages scheduled background commands.
+  destination before retrying. Folder uploads, folder creation, deleting, renaming, and automatic
+  archive extraction are not provided; use the terminal, and upload a ZIP file when needed.
+- **Jobs** is next to **Files** in the session sidebar and manages scheduled background commands.
   The list shows each job's schedule in words (for example "Weekdays at 09:00 · Europe/Vienna"),
   when it runs next, when it last ran, and its last result, with a **Run** or **Stop** button.
   Click a job to open its details: the command, schedule and raw cron expression, next run,

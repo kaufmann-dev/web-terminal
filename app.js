@@ -6,7 +6,8 @@ const { AUDIO_TYPES, MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
   cleanTranscript, createTranscriptionService } = require('./voice-transcription');
 const http = require('http');
 const path = require('path');
-const { FileUploadStore, UploadError, uploadError } = require('./file-upload-store');
+const { pipeline } = require('stream');
+const { WorkspaceFileStore, UploadError, uploadError } = require('./workspace-file-store');
 const { JobError, ScheduledJobManager } = require('./scheduled-job-manager');
 const express = require('express');
 const session = require('express-session');
@@ -254,7 +255,7 @@ function createWebTerminal(options = {}) {
   }
 
   const terminalEnvironment = createTerminalEnvironment(config);
-  const fileUploadStore = new FileUploadStore({ directory: config.terminalWorkdir });
+  const workspaceFileStore = new WorkspaceFileStore({ directory: config.terminalWorkdir });
   const clipboardImageStore = options.clipboardImageStore || new ClipboardImageStore({
     directory: config.clipboardImageDirectory,
   });
@@ -630,14 +631,65 @@ function createWebTerminal(options = {}) {
       }
     });
 
-  app.get('/api/upload-directories', requireApiAuth, async (req, res) => {
+  app.get('/api/files', requireApiAuth, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
-      return res.json(await fileUploadStore.list(req.query.path));
+      return res.json(await workspaceFileStore.list(req.query.path));
     } catch (error) {
       const failure = uploadError(error);
       return res.status(failure.status).json({ error: failure.message });
     }
+  });
+
+  // The workspace-relative path is part of the URL so browser tabs and viewers show the filename.
+  app.get('/api/files/content/*path', requireApiAuth, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    let file;
+    try {
+      file = await workspaceFileStore.openFile(req.params.path.join('/'));
+    } catch (error) {
+      const failure = uploadError(error);
+      return res.status(failure.status).json({ error: failure.message });
+    }
+    const inline = file.type && req.query.download !== '1';
+    const filename = encodeURIComponent(file.name)
+      .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+    res.set({
+      // no-transform keeps compression from dropping Content-Length and download progress.
+      'Cache-Control': 'no-store, no-transform',
+      'Content-Type': inline ? file.type : 'application/octet-stream',
+      'Content-Length': String(file.size),
+      'Accept-Ranges': 'bytes',
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${filename}`,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    // Workspace files are untrusted: a sandboxed document has an opaque origin and cannot run
+    // script. Chromium's PDF viewer does not load in a sandboxed document, and a PDF has no
+    // access to this origin's DOM, so PDFs keep the application policy.
+    if (inline && file.type !== 'application/pdf') {
+      res.set('Content-Security-Policy',
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:");
+    }
+    // Browsers seek in audio and video with single byte ranges.
+    const ranges = req.range(file.size);
+    let start = 0;
+    let end = file.size - 1;
+    if (ranges === -1) {
+      await file.handle.close();
+      return res.status(416).set({ 'Content-Range': `bytes */${file.size}`, 'Content-Length': '0' }).end();
+    }
+    if (Array.isArray(ranges) && ranges.type === 'bytes' && ranges.length === 1) {
+      ({ start, end } = ranges[0]);
+      res.status(206).set({
+        'Content-Range': `bytes ${start}-${end}/${file.size}`,
+        'Content-Length': String(end - start + 1),
+      });
+    }
+    if (!file.size) {
+      await file.handle.close();
+      return res.end();
+    }
+    return pipeline(file.handle.createReadStream({ start, end }), res, () => {});
   });
 
   app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
@@ -656,7 +708,7 @@ function createWebTerminal(options = {}) {
     uploadTasks.add(task);
     let deadlineTimer;
     try {
-      const result = await fileUploadStore.save(req, {
+      const result = await workspaceFileStore.save(req, {
         directory: req.query.directory,
         filename: req.query.filename,
         signal: abort.signal,
