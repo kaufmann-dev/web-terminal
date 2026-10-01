@@ -16,7 +16,7 @@
     { readClipboardContent },
     { bindTerminalSessionNameNormalization },
     { VoiceRecorder, bindVoiceControls },
-    { bindFileUploads },
+    { bindFileExplorer },
     { bindScheduledJobs },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
@@ -25,7 +25,7 @@
     import('/static/js/clipboard-reader.mjs'),
     import('/static/js/session-name.mjs'),
     import('/static/js/voice-recorder.mjs'),
-    import('/static/js/file-uploads.mjs'),
+    import('/static/js/file-explorer.mjs'),
     import('/static/js/scheduled-jobs.mjs'),
   ]);
   await Promise.all([
@@ -84,7 +84,7 @@
   window.addEventListener('pagehide', () => voice.cancel());
   window.addEventListener('beforeunload', () => voice.cancel());
 
-  const uploads = bindFileUploads({
+  const uploads = bindFileExplorer({
     document,
     apiRequest,
     getCsrfToken: () => csrfToken,

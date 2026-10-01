@@ -575,12 +575,18 @@ body.dark {
   .app-dialog .btn-link:hover:not(:disabled) {
     background: transparent;
   }
+
+  .files-file:hover,
+  .app-dialog .files-download:hover {
+    background: var(--panel-raised);
+    color: var(--text);
+  }
 }
 
 .sidebar-action:focus-visible,
 .app-dialog :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -3px; }
 
-/* Dialog components shared by the upload and scheduled-job dialogs */
+/* Dialog components shared by the files and scheduled-job dialogs */
 .app-dialog {
   width: min(640px, calc(100% - 32px));
   max-width: none;
@@ -645,11 +651,11 @@ body.dark {
 .status-badge[data-tone="error"] { border-color: var(--error); color: var(--error); }
 .code-block { margin: 0; padding: 10px 12px; overflow: auto; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain; }
 
-/* Upload dialog */
-.upload-dialog .upload-dropzone { display: flex; width: 100%; min-height: 96px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; }
+/* Files dialog */
+.upload-dialog .upload-dropzone { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: center; gap: 10px; padding: 12px 16px; }
 .upload-dialog .upload-dropzone[data-dragging] { background: rgb(69 162 158 / 10%); color: var(--text); border-color: var(--accent-bright); }
 .upload-dialog .upload-dropzone:disabled { opacity: 0.6; }
-.upload-dropzone-icon { width: 24px; height: 24px; }
+.upload-dropzone-icon { width: 20px; height: 20px; }
 .upload-dropzone-link { color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
 .upload-dropzone-touch { display: none; }
 .upload-file-list { margin-top: 8px; }
@@ -674,8 +680,14 @@ body.dark {
 .upload-path-row[hidden] { display: none; }
 .upload-path-row button { flex: 0 0 auto; }
 .upload-folder-filter { margin-top: 8px; }
-.upload-folders { max-height: 264px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.upload-folders { max-height: min(424px, 46dvh); margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; }
 .upload-folder-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-entry { display: flex; align-items: center; }
+.app-list > .files-entry + .files-entry { border-top: 0; }
+.app-dialog .files-file { min-width: 0; flex: 1; color: inherit; text-decoration: none; transition: background 120ms ease; }
+.files-file .app-list-icon { color: var(--muted); }
+.files-meta { flex-shrink: 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.app-dialog .files-download { flex-basis: 40px; width: 40px; min-height: 40px; align-self: stretch; }
 
 /* Scheduled jobs dialog */
 .jobs-empty { padding: 28px 16px; text-align: center; }
@@ -822,7 +834,7 @@ body.dark {
   .upload-location { min-height: 44px; }
   .upload-dialog .upload-breadcrumb { min-height: 40px; }
   .upload-folders { max-height: 40dvh; }
-  .upload-dialog .upload-dropzone { min-height: 64px; flex-direction: row; }
+  .upload-dialog .upload-dropzone { min-height: 48px; }
   .upload-dropzone-desktop { display: none; }
   .upload-dropzone-touch { display: inline; }
   .jobs-field-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }

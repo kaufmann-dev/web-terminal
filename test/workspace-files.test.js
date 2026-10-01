@@ -8,7 +8,7 @@ const { PassThrough, Readable } = require('node:stream');
 const { once } = require('node:events');
 const http = require('node:http');
 const test = require('node:test');
-const { FileUploadStore, MAX_UPLOAD_BYTES } = require('../file-upload-store');
+const { WorkspaceFileStore, MAX_UPLOAD_BYTES, inlineType } = require('../workspace-file-store');
 const { createWebTerminal } = require('../app');
 const { authenticate, cookieHeader, createFakeOpenidClient, oidcServiceOptions } = require('./oidc-test-helpers');
 
@@ -21,7 +21,7 @@ async function workspace(t) {
   await fs.mkdir(path.join(root, 'outside'));
   await fs.symlink(path.join(root, 'outside'), path.join(directory, 'escape'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return { root, directory, store: new FileUploadStore({ directory }) };
+  return { root, directory, store: new WorkspaceFileStore({ directory }) };
 }
 
 function source(data, headers = {}) {
@@ -56,7 +56,7 @@ test('directory browsing and uploads stay inside the workspace', async (t) => {
 
 test('size checks, cancellation and write failures leave no partial destination', async (t) => {
   const { directory } = await workspace(t);
-  const store = new FileUploadStore({ directory, maxBytes: 4 });
+  const store = new WorkspaceFileStore({ directory, maxBytes: 4 });
   const save = (stream, options = {}) => store.save(stream, { filename: 'file', signal: new AbortController().signal, ...options });
   await assert.rejects(save(source('12345', { 'content-length': '5' })), { status: 413 });
   await assert.rejects(save(source('12345')), { status: 413 });
@@ -99,6 +99,53 @@ test('swapping the destination for an outside symlink cannot redirect an upload'
   assert.deepEqual(await fs.readdir(path.join(root, 'moved')), []);
 });
 
+test('listings include regular files only, with size and modification time', async (t) => {
+  const { directory, store } = await workspace(t);
+  await fs.writeFile(path.join(directory, 'b.txt'), 'bb');
+  await fs.writeFile(path.join(directory, '.env'), 'a');
+  await fs.symlink('b.txt', path.join(directory, 'link.txt'));
+  const { files, directories } = await store.list();
+  assert.deepEqual(directories, ['.hidden', 'project']);
+  assert.deepEqual(files.map(({ name, size }) => ({ name, size })), [{ name: '.env', size: 1 }, { name: 'b.txt', size: 2 }]);
+  assert.equal(files[1].modified, (await fs.stat(path.join(directory, 'b.txt'))).mtimeMs);
+});
+
+test('only allowlisted images, PDFs and UTF-8 text have an inline type', () => {
+  const binary = Buffer.from([0x89, 0x50, 0x00, 0xff]);
+  assert.equal(inlineType('a.PNG', binary), 'image/png');
+  assert.equal(inlineType('a.jpeg', binary), 'image/jpeg');
+  assert.equal(inlineType('a.svg', Buffer.from('<svg/>')), 'image/svg+xml');
+  assert.equal(inlineType('a.pdf', binary), 'application/pdf');
+  assert.equal(inlineType('a.mp3', binary), 'audio/mpeg');
+  assert.equal(inlineType('a.MP4', binary), 'video/mp4');
+  for (const name of ['page.html', 'script.js', 'Dockerfile', 'notes.md', 'empty']) {
+    assert.equal(inlineType(name, Buffer.from(name === 'empty' ? '' : '<script>héllo</script>')), 'text/plain; charset=utf-8');
+  }
+  assert.equal(inlineType('archive.zip', binary), null);
+  assert.equal(inlineType('latin1.txt', Buffer.from([0x63, 0x61, 0x66, 0xe9])), null);
+  const sample = Buffer.concat([Buffer.alloc(8 * 1024 - 1, 0x61), Buffer.from('é')]).subarray(0, 8 * 1024);
+  assert.equal(inlineType('long.txt', sample), 'text/plain; charset=utf-8');
+});
+
+test('files open only as regular files inside the workspace', async (t) => {
+  const { directory, root, store } = await workspace(t);
+  await fs.writeFile(path.join(directory, 'project', 'a.txt'), 'hello');
+  await fs.writeFile(path.join(root, 'outside', 'secret'), 'secret');
+  await fs.symlink('a.txt', path.join(directory, 'project', 'link'));
+  await fs.symlink(path.join(root, 'outside', 'secret'), path.join(directory, 'leak'));
+  for (const value of ['project/a.txt', path.join(directory, 'project', 'a.txt')]) {
+    const file = await store.openFile(value);
+    assert.deepEqual({ name: file.name, size: file.size, type: file.type },
+      { name: 'a.txt', size: 5, type: 'text/plain; charset=utf-8' });
+    await file.handle.close();
+  }
+  for (const value of ['../outside/secret', 'escape/secret', 'leak', 'project/link', 'project', '', '.', 'a\0b',
+    ['project/a.txt'], undefined]) {
+    await assert.rejects(store.openFile(value), `${value}`);
+  }
+  await assert.rejects(store.openFile('project/missing'), { code: 'ENOENT' });
+});
+
 async function serviceFixture(t) {
   const fixture = await workspace(t);
   let clock = Date.now();
@@ -118,11 +165,11 @@ async function serviceFixture(t) {
 test('upload API enforces authentication, CSRF, MIME type and filename conflicts', async (t) => {
   const { base, headers, directory } = await serviceFixture(t);
   const url = `${base}/api/uploads?directory=project&filename=file.json`;
-  assert.equal((await fetch(`${base}/api/upload-directories`)).status, 401);
+  assert.equal((await fetch(`${base}/api/files`)).status, 401);
   assert.equal((await fetch(url, { method: 'POST', body: 'x' })).status, 401);
   assert.equal((await fetch(url, { method: 'POST', body: 'x', headers: { Cookie: headers.Cookie } })).status, 403);
   assert.equal((await fetch(url, { method: 'POST', body: 'x', headers: { ...headers, 'Content-Type': 'application/json' } })).status, 415);
-  const listing = await fetch(`${base}/api/upload-directories?path=project`, { headers });
+  const listing = await fetch(`${base}/api/files?path=project`, { headers });
   assert.equal(listing.status, 200);
   assert.equal(listing.headers.get('cache-control'), 'no-store');
   const upload = await fetch(url, { method: 'POST', headers, body: '{"test":true}' });
@@ -214,7 +261,10 @@ test('only accepted submissions extend activity; browsing, invalid paths and tra
   };
   const initial = await activity();
   advance(1000);
-  await fetch(`${base}/api/upload-directories`, { headers });
+  await fetch(`${base}/api/files`, { headers });
+  await fs.writeFile(path.join(directory, 'note.txt'), 'note');
+  assert.equal(await (await fetch(`${base}/api/files/content/note.txt`, { headers })).text(), 'note');
+  await fs.rm(path.join(directory, 'note.txt'));
   await fetch(`${base}/api/uploads?directory=escape&filename=bad`, { method: 'POST', headers, body: 'x' });
   assert.equal(await activity(), initial);
   const slow = await startSlowUpload(base, headers, 'activity');
@@ -246,4 +296,78 @@ test('a disconnected request removes partials and releases its upload slot', asy
   assert.equal(response.status, 201);
   await assert.rejects(fs.stat(path.join(directory, 'disconnected')), { code: 'ENOENT' });
   assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
+});
+
+test('file content is served inline only as inert types and otherwise as an attachment', async (t) => {
+  const { base, headers, directory } = await serviceFixture(t);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+  const text = 'compressible '.repeat(2000);
+  await fs.writeFile(path.join(directory, 'project', 'image.png'), png);
+  await fs.writeFile(path.join(directory, 'project', 'drawing.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+  await fs.writeFile(path.join(directory, 'project', 'page.html'), '<script>alert(1)</script>');
+  await fs.writeFile(path.join(directory, 'project', 'doc.pdf'), '%PDF-1.7');
+  await fs.writeFile(path.join(directory, 'project', 'data.bin'), png);
+  await fs.writeFile(path.join(directory, 'project', "café (1)'s.txt"), text);
+  await fs.writeFile(path.join(directory, 'project', 'empty'), '');
+  const get = (name, extra = '') => fetch(
+    `${base}/api/files/content/project/${encodeURIComponent(name)}${extra}`,
+    { headers: { Cookie: headers.Cookie, 'Accept-Encoding': 'gzip' } });
+
+  assert.equal((await fetch(`${base}/api/files/content/project/image.png`)).status, 401);
+  assert.equal((await get('missing')).status, 400);
+  assert.equal((await fetch(`${base}/api/files/content/escape/x`, { headers })).status, 403);
+  assert.equal((await fetch(`${base}/api/files/content/project`, { headers })).status, 400);
+  assert.equal((await fetch(`${base}/api/files/content/project/%2E%2E%2F%2E%2E%2Fetc%2Fpasswd`, { headers })).status, 403);
+
+  const image = await get('image.png');
+  assert.equal(image.status, 200);
+  assert.equal(image.headers.get('content-type'), 'image/png');
+  assert.equal(image.headers.get('content-disposition'), "inline; filename*=UTF-8''image.png");
+  assert.equal(image.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(image.headers.get('cache-control'), 'no-store, no-transform');
+  assert.match(image.headers.get('content-security-policy'), /^sandbox; default-src 'none'/);
+  assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+
+  const svg = await get('drawing.svg');
+  assert.equal(svg.headers.get('content-type'), 'image/svg+xml');
+  assert.match(svg.headers.get('content-security-policy'), /^sandbox;/);
+
+  const html = await get('page.html');
+  assert.equal(html.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.match(html.headers.get('content-security-policy'), /^sandbox;/);
+  assert.equal(await html.text(), '<script>alert(1)</script>');
+
+  const pdf = await get('doc.pdf');
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  assert.match(pdf.headers.get('content-disposition'), /^inline;/);
+  assert.doesNotMatch(pdf.headers.get('content-security-policy'), /sandbox/);
+
+  const binary = await get('data.bin');
+  assert.equal(binary.headers.get('content-type'), 'application/octet-stream');
+  assert.match(binary.headers.get('content-disposition'), /^attachment;/);
+
+  const download = await get("café (1)'s.txt", '?download=1');
+  assert.equal(download.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(download.headers.get('content-disposition'),
+    "attachment; filename*=UTF-8''caf%C3%A9%20%281%29%27s.txt");
+  assert.equal(download.headers.get('content-encoding'), null);
+  assert.equal(download.headers.get('content-length'), String(Buffer.byteLength(text)));
+  assert.equal(await download.text(), text);
+
+  const range = (value) => fetch(`${base}/api/files/content/project/image.png`,
+    { headers: { Cookie: headers.Cookie, Range: value } });
+  const partial = await range('bytes=1-3');
+  assert.equal(partial.status, 206);
+  assert.equal(partial.headers.get('content-range'), 'bytes 1-3/6');
+  assert.equal(partial.headers.get('content-length'), '3');
+  assert.deepEqual(Buffer.from(await partial.arrayBuffer()), png.subarray(1, 4));
+  const unsatisfiable = await range('bytes=10-');
+  assert.equal(unsatisfiable.status, 416);
+  assert.equal(unsatisfiable.headers.get('content-range'), 'bytes */6');
+  assert.equal(image.headers.get('accept-ranges'), 'bytes');
+
+  const empty = await get('empty');
+  assert.equal(empty.status, 200);
+  assert.equal(empty.headers.get('content-length'), '0');
+  assert.equal(await empty.text(), '');
 });

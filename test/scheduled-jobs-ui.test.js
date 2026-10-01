@@ -71,12 +71,12 @@ test('run statuses and durations are described for the job list', async () => {
   assert.equal(formatDuration(start, null, Date.parse('2026-01-01T00:00:10.000Z')), '10s');
 });
 
-test('the sidebar exposes a jobs dialog beside uploads', () => {
+test('the sidebar exposes a jobs dialog beside files', () => {
   const view = fs.readFileSync(path.join(projectRoot, 'views', 'terminal.html'), 'utf8');
   const script = fs.readFileSync(path.join(projectRoot, 'public', 'js', 'terminal.js'), 'utf8');
   assert.match(
     view,
-    /<div class="sidebar-actions">\s*<button id="upload-open" class="sidebar-action"[^>]*>Upload<\/button>\s*<button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs<\/button>/,
+    /<div class="sidebar-actions">\s*<button id="upload-open" class="sidebar-action"[^>]*>Files<\/button>\s*<button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs<\/button>/,
   );
   assert.match(view, /<dialog id="jobs-dialog" class="app-dialog jobs-dialog"/);
   assert.match(script, /import\('\/static\/js\/scheduled-jobs\.mjs'\)/);

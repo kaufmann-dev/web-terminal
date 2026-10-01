@@ -7,13 +7,15 @@ const test = require('node:test');
 
 const projectRoot = path.join(__dirname, '..');
 
-test('upload dialog helpers format sizes, breadcrumbs, parents, and filters', async () => {
+test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, and file links', async () => {
   const {
     breadcrumbSegments,
-    filterFolders,
+    fileContentUrl,
+    filterEntries,
     formatBytes,
+    formatModified,
     parentDirectory,
-  } = await import('../public/js/file-uploads.mjs');
+  } = await import('../public/js/file-explorer.mjs');
 
   assert.equal(formatBytes(0), '0 B');
   assert.equal(formatBytes(1023), '1023 B');
@@ -36,13 +38,23 @@ test('upload dialog helpers format sizes, breadcrumbs, parents, and filters', as
   assert.equal(parentDirectory('/code', '/elsewhere'), null);
 
   const names = ['api', 'Web-App', '.cargo', 'webhooks'];
-  assert.deepEqual(filterFolders(names, ''), names);
-  assert.deepEqual(filterFolders(names, '  WEB '), ['Web-App', 'webhooks']);
-  assert.deepEqual(filterFolders(names, 'missing'), []);
+  assert.deepEqual(filterEntries(names, ''), names);
+  assert.deepEqual(filterEntries(names, '  WEB '), ['Web-App', 'webhooks']);
+  assert.deepEqual(filterEntries(names, 'missing'), []);
+  const files = [{ name: 'README.md' }, { name: 'web.config' }];
+  assert.deepEqual(filterEntries(files, 'web'), [files[1]]);
+
+  assert.equal(fileContentUrl('/code', '/code/a b/é&#?.txt'), '/api/files/content/a%20b/%C3%A9%26%23%3F.txt');
+  assert.equal(fileContentUrl('/code', '/code/a.zip', { download: true }), '/api/files/content/a.zip?download=1');
+  assert.equal(fileContentUrl('/', '/srv/a.txt'), '/api/files/content/srv/a.txt');
+
+  const now = new Date(2026, 9, 1).getTime();
+  assert.equal(formatModified(new Date(2026, 2, 5).getTime(), now, 'en-US'), 'Mar 5');
+  assert.equal(formatModified(new Date(2024, 11, 31).getTime(), now, 'en-US'), 'Dec 31, 2024');
 });
 
 test('upload summaries describe the selection, progress, and results', async () => {
-  const { selectionSummary, uploadableItems, MAX_UPLOAD_BYTES } = await import('../public/js/file-uploads.mjs');
+  const { selectionSummary, uploadableItems, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
   const item = (status, size = 1024 * 1024) => ({ status, file: { size } });
 
   assert.equal(selectionSummary([], '/code'), 'No files selected · up to 100 MiB each');
@@ -62,7 +74,7 @@ test('upload summaries describe the selection, progress, and results', async () 
   assert.deepEqual(uploadableItems([item('saved'), tooLarge, retryable]), [retryable]);
 });
 
-test('upload dialog markup puts files first and keeps a single destination path bar', () => {
+test('files dialog markup puts the folder listing first and keeps a single path bar', () => {
   const view = fs.readFileSync(path.join(projectRoot, 'views', 'terminal.html'), 'utf8');
   const dialog = view.slice(view.indexOf('<dialog id="upload-dialog"'), view.indexOf('</dialog>'));
   for (const id of [
@@ -73,13 +85,15 @@ test('upload dialog markup puts files first and keeps a single destination path 
   ]) {
     assert.match(dialog, new RegExp(`id="${id}"`), id);
   }
-  assert.ok(dialog.indexOf('id="upload-choose"') < dialog.indexOf('id="upload-path-form"'));
+  assert.ok(dialog.indexOf('id="upload-folders"') < dialog.indexOf('id="upload-choose"'));
+  assert.match(dialog, /<h2 id="upload-title">Files<\/h2>/);
+  assert.match(view, /<button id="upload-open" class="sidebar-action" type="button" disabled>Files<\/button>/);
   assert.match(dialog, /<div id="upload-path-editor" class="upload-path-row" hidden>/);
   assert.match(dialog, /id="upload-directory"[^>]*enterkeyhint="go"/);
   assert.match(dialog, /<button id="upload-submit" class="btn-dialog-primary"/);
 });
 
-test('upload and job dialogs share one dialog structure and component set', () => {
+test('files and job dialogs share one dialog structure and component set', () => {
   const view = fs.readFileSync(path.join(projectRoot, 'views', 'terminal.html'), 'utf8');
   const dialogMarkup = (id) => {
     const start = view.indexOf(`<dialog id="${id}"`);
@@ -101,7 +115,7 @@ test('upload and job dialogs share one dialog structure and component set', () =
 });
 
 test('upload file rows use the shared status badge vocabulary', async () => {
-  const { describeUploadStatus, MAX_UPLOAD_BYTES } = await import('../public/js/file-uploads.mjs');
+  const { describeUploadStatus, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
   const file = { size: 200 };
   assert.equal(describeUploadStatus({ status: 'pending', file }), null);
   assert.deepEqual(describeUploadStatus({ status: 'uploading', loaded: 50, file }), { label: 'Uploading 25%', tone: 'running' });
