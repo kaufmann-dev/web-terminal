@@ -2,6 +2,9 @@
 
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
@@ -11,6 +14,7 @@ const {
   TerminalSessionManager,
   isValidTerminalSize,
   listLinuxSessionPids,
+  readLinuxForeground,
   writeTerminal,
 } = require('../terminal-session-manager');
 const {
@@ -307,6 +311,70 @@ test('destructive deletion escalates a stubborn PTY session to SIGKILL', async (
   assert.deepEqual(ptys[0].signals, ['SIGHUP', 'SIGKILL']);
   assert.ok(signaled.some(({ signal }) => signal === 'SIGHUP'));
   assert.ok(signaled.some(({ signal }) => signal === 'SIGKILL'));
+});
+
+test('lists each session with its foreground program and home-relative directory', () => {
+  const directories = { 41000: '/code', 41001: '/code/projects/app', 41002: '/codex' };
+  const { manager } = createFakeManager({
+    terminalEnvironment: { HOME: '/code' },
+    readForeground: (pid) => (pid === 41003 ? null : { program: 'bash', directory: directories[pid] }),
+  });
+  for (const name of ['main', 'app', 'other', 'gone']) manager.createSession(name);
+
+  assert.deepEqual(manager.listSessions(), [
+    { name: 'main', program: 'bash', directory: '~' },
+    { name: 'app', program: 'bash', directory: '~/projects/app' },
+    { name: 'gone', program: null, directory: null },
+    { name: 'other', program: 'bash', directory: '/codex' },
+  ]);
+});
+
+test('names Node foreground processes after their title or script', (t) => {
+  const procRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proc-'));
+  t.after(() => fs.rmSync(procRoot, { recursive: true, force: true }));
+  const writeProcess = (pid, { stat, comm, cmdline }) => {
+    const directory = path.join(procRoot, String(pid));
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, 'stat'), stat || `${pid} (bash) S 1 ${pid} ${pid} 34816 ${pid + 1} 0`);
+    fs.writeFileSync(path.join(directory, 'comm'), `${comm}\n`);
+    fs.writeFileSync(path.join(directory, 'cmdline'), cmdline);
+    fs.symlinkSync('/code/app', path.join(directory, 'cwd'));
+  };
+  writeProcess(100, { comm: 'bash', cmdline: '/bin/bash\0-i\0' });
+  writeProcess(101, { comm: 'MainThread', cmdline: 'node\0--no-warnings\0/app/node_modules/.bin/codex\0' });
+  writeProcess(200, { comm: 'bash', cmdline: '/bin/bash\0-i\0' });
+  writeProcess(201, { comm: 'MainThread', cmdline: 'npm run dev\0\0\0' });
+  writeProcess(300, { stat: '300 (bash) S 1 300 300 34816 -1 0', comm: 'bash', cmdline: '/bin/bash\0' });
+
+  assert.deepEqual(readLinuxForeground(100, procRoot), { program: 'codex', directory: '/code/app' });
+  assert.deepEqual(readLinuxForeground(200, procRoot), { program: 'npm', directory: '/code/app' });
+  assert.deepEqual(readLinuxForeground(300, procRoot), { program: 'bash', directory: '/code/app' });
+  assert.equal(readLinuxForeground(999, procRoot), null);
+});
+
+test('real node-pty session reports its foreground program and directory', {
+  skip: process.platform !== 'linux',
+  timeout: 10000,
+}, async () => {
+  const manager = new TerminalSessionManager({
+    terminalEnvironment: { ...process.env, HOME: process.cwd(), TERM: 'xterm-256color' },
+    terminalWorkdir: process.cwd(),
+    bashRcPath: '/dev/null',
+    killTimeoutMs: 2000,
+    logger: { error() {}, warn() {} },
+  });
+  manager.createSession('real');
+  const session = manager.sessions.get('real');
+  session.ptyProcess.write('cd test && sleep 30\n');
+
+  let listed;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    [listed] = manager.listSessions();
+    if (listed.program === 'sleep') break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  await manager.deleteSession('real');
+  assert.deepEqual(listed, { name: 'real', program: 'sleep', directory: '~/test' });
 });
 
 test('real node-pty deletion terminates a foreground child process', {

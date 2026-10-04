@@ -27,10 +27,7 @@ class FakeSessionManager {
   }
 
   listSessions() {
-    return [...this.sessions].map((name) => ({
-      name,
-      attachedClients: this.attachedSockets.size > 0 ? 1 : 0,
-    }));
+    return [...this.sessions].map((name) => ({ name, program: 'bash', directory: '~' }));
   }
 
   hasSession(name) {
@@ -44,7 +41,7 @@ class FakeSessionManager {
       throw error;
     }
     this.sessions.add(name);
-    return { name, attachedClients: 0 };
+    return { name };
   }
 
   async deleteSession(name) {

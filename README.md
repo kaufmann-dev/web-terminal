@@ -243,8 +243,9 @@ or control unrelated native Wayland windows.
 
 - The first visit creates a session named `main`. Use the sidebar to create and switch between
   named sessions. Names contain 1–32 letters, numbers, or hyphens, start with a letter or number,
-  and convert uppercase letters to lowercase automatically. Desktop uses a full-height terminal
-  beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
+  and convert uppercase letters to lowercase automatically. Each sidebar row shows the session's
+  foreground program and its working directory, such as `claude · ~/projects/app`. Desktop uses
+  a full-height terminal beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
   Logout button; mobile opens the sidebar with the menu button and closes it by tapping outside.
   Session actions show errors beside the creation form; routine progress and success messages
   are omitted. The desktop sidebar ends with the microphone controls.

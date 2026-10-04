@@ -62,6 +62,31 @@ function listLinuxSessionPids(sessionId, procRoot = '/proc') {
   return pids;
 }
 
+function readLinuxForeground(shellPid, procRoot = '/proc') {
+  try {
+    const stat = fs.readFileSync(path.join(procRoot, String(shellPid), 'stat'), 'utf8');
+    const commandEnd = stat.lastIndexOf(')');
+    if (commandEnd === -1) {
+      return null;
+    }
+
+    const foregroundPid = Number(stat.slice(commandEnd + 2).trim().split(/\s+/)[5]);
+    const pid = String(foregroundPid > 0 ? foregroundPid : shellPid);
+    const directory = fs.readlinkSync(path.join(procRoot, pid, 'cwd'));
+    let program = fs.readFileSync(path.join(procRoot, pid, 'comm'), 'utf8').trim();
+    if (program === 'MainThread') {
+      // Node renames its main thread; name it after its title or script instead.
+      const args = fs.readFileSync(path.join(procRoot, pid, 'cmdline'), 'utf8').split('\0');
+      const command = path.basename(args[0]).split(' ')[0];
+      const script = command === 'node' ? args.slice(1).find((arg) => arg && !arg.startsWith('-')) : null;
+      program = script ? path.basename(script) : command;
+    }
+    return program ? { program, directory } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function signalLinuxSession(sessionId, signal, {
   listSessionPids = listLinuxSessionPids,
   signalProcess = process.kill.bind(process),
@@ -124,16 +149,21 @@ class TerminalSessionManager {
     this.TerminalClass = options.TerminalClass || HeadlessTerminal;
     this.SerializeAddonClass = options.SerializeAddonClass || SerializeAddon;
     this.listSessionPids = options.listSessionPids || listLinuxSessionPids;
+    this.readForeground = options.readForeground || readLinuxForeground;
     this.signalProcess = options.signalProcess || process.kill.bind(process);
     this.logger = options.logger || console;
   }
 
   listSessions() {
     return [...this.sessions.values()]
-      .map((session) => ({
-        name: session.name,
-        attachedClients: session.client && session.client.ready ? 1 : 0,
-      }))
+      .map((session) => {
+        const foreground = session.exited ? null : this.readForeground(session.ptyProcess.pid);
+        return {
+          name: session.name,
+          program: foreground ? foreground.program : null,
+          directory: foreground ? this._displayPath(foreground.directory) : null,
+        };
+      })
       .sort((a, b) => {
         if (a.name === 'main') return -1;
         if (b.name === 'main') return 1;
@@ -220,7 +250,7 @@ class TerminalSessionManager {
     }));
 
     this.sessions.set(name, session);
-    return { name, attachedClients: 0 };
+    return { name };
   }
 
   async attachClient(name, socket, loginSessionId, cols, rows) {
@@ -429,6 +459,17 @@ class TerminalSessionManager {
     });
   }
 
+  _displayPath(directory) {
+    const home = this.terminalEnvironment.HOME;
+    if (!home || home === '/') {
+      return directory;
+    }
+    if (directory === home) {
+      return '~';
+    }
+    return directory.startsWith(`${home}/`) ? `~${directory.slice(home.length)}` : directory;
+  }
+
   _sendJson(session, client, message) {
     return this._send(session, client, JSON.stringify(message), false);
   }
@@ -506,6 +547,7 @@ module.exports = {
   isValidTerminalSize,
   delay,
   listLinuxSessionPids,
+  readLinuxForeground,
   signalLinuxSession,
   writeTerminal,
 };
