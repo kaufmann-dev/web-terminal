@@ -1129,8 +1129,8 @@
 
     const details = document.createElement('span');
     details.className = 'session-row-details';
-    const clientLabel = session.attachedClients === 1 ? 'client' : 'clients';
-    details.textContent = `${session.attachedClients} ${clientLabel}`;
+    details.textContent = [session.program, session.directory].filter(Boolean).join(' · ');
+    details.hidden = !details.textContent;
 
     openButton.append(name, details);
     openButton.addEventListener('click', () => selectSession(session.name, { closeSidebar: true }));

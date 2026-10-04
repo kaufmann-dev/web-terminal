@@ -288,10 +288,10 @@ test('accepted terminal-session mutations count as interactive activity', async 
   let currentTime = 1_800_000_000_000;
   const names = new Set();
   const sessionManager = {
-    listSessions: () => [...names].map((name) => ({ name, attachedClients: 0 })),
+    listSessions: () => [...names].map((name) => ({ name, program: 'bash', directory: '~' })),
     createSession: (name) => {
       names.add(name);
-      return { name, attachedClients: 0 };
+      return { name };
     },
     deleteSession: async (name) => names.delete(name),
     shutdown: async () => {},
@@ -339,10 +339,10 @@ test('accepted terminal-session mutations count as interactive activity', async 
 test('terminal session creation normalizes uppercase letters', async (t) => {
   const names = new Set();
   const sessionManager = {
-    listSessions: () => [...names].map((name) => ({ name, attachedClients: 0 })),
+    listSessions: () => [...names].map((name) => ({ name, program: 'bash', directory: '~' })),
     createSession: (name) => {
       names.add(name);
-      return { name, attachedClients: 0 };
+      return { name };
     },
     shutdown: async () => {},
   };
@@ -362,7 +362,7 @@ test('terminal session creation normalizes uppercase letters', async (t) => {
 
   assert.equal(response.status, 201);
   assert.deepEqual(await response.json(), {
-    session: { name: 'my-project-2', attachedClients: 0 },
+    session: { name: 'my-project-2' },
   });
   assert.deepEqual([...names], ['my-project-2']);
 });
