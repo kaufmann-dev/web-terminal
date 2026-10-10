@@ -673,6 +673,8 @@ body.dark {
 .upload-location { display: flex; min-height: 40px; background: var(--bg); border: 1px solid var(--border); }
 .upload-location[hidden] { display: none; }
 .upload-location .icon-button { border-left: 1px solid var(--border); }
+.upload-toggle-hidden[aria-pressed="true"] { color: var(--accent); }
+.upload-toggle-hidden[aria-pressed="true"] .upload-toggle-hidden-slash { display: none; }
 .upload-breadcrumbs { display: flex; min-width: 0; flex: 1; align-items: center; gap: 2px; padding: 0 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .upload-breadcrumbs::-webkit-scrollbar { display: none; }
 .upload-breadcrumbs-clipped { mask-image: linear-gradient(to right, transparent, #000 32px); }

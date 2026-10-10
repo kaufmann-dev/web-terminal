@@ -331,7 +331,7 @@ or control unrelated native Wayland windows.
   workspace are accepted; press Enter to open the folder or Escape to return to the breadcrumbs.
   Browsing starts at the workspace root and the last valid folder is remembered in the browser
   tab. The list is re-read every time the dialog opens; if the folder no longer exists, the
-  dialog returns to the workspace root. Hidden files and directories are listed. Symlinks are omitted from the list; directory
+  dialog returns to the workspace root. Hidden files and directories (names starting with `.`) are not listed by default; the eye button in the **Location** bar shows them until the page reloads. Symlinks are omitted from the list; directory
   symlinks can still be entered if they resolve inside the workspace, and file symlinks cannot be
   opened.
 - Click a file to open it in a new browser tab, where the browser's own viewer displays it:

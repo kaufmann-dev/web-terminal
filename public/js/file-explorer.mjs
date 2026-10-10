@@ -139,6 +139,10 @@ export function filterEntries(entries, query = '') {
     : entries;
 }
 
+export function isHidden(entry) {
+  return (entry.name ?? entry).startsWith('.');
+}
+
 export function fileContentUrl(root, path, { download = false } = {}) {
   const relative = path.slice(root.length).split('/').filter(Boolean).map(encodeURIComponent).join('/');
   return `/api/files/content/${relative}${download ? '?download=1' : ''}`;
@@ -201,6 +205,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   const breadcrumbs = get('upload-breadcrumbs');
   const locationBar = get('upload-location');
   const editPath = get('upload-edit-path');
+  const toggleHidden = get('upload-toggle-hidden');
   const pathEditor = get('upload-path-editor');
   const filter = get('upload-folder-filter');
   const fileList = get('upload-file-list');
@@ -222,6 +227,8 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   let browseSequence = 0;
   let editingPath = false;
   let configured = false;
+  // Dotfiles are hidden by default; the choice lasts until the page reloads.
+  let showHidden = false;
   const setError = (message = '') => {
     error.textContent = message;
     error.hidden = !message;
@@ -314,11 +321,24 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     return entry;
   }
 
+  function renderHiddenToggle() {
+    const hiddenCount = [...directories, ...files].filter(isHidden).length;
+    const label = showHidden ? 'Hide hidden files'
+      : hiddenCount ? `Show hidden files (${hiddenCount} here)` : 'Show hidden files';
+    toggleHidden.setAttribute('aria-pressed', String(showHidden));
+    toggleHidden.setAttribute('aria-label', label);
+    toggleHidden.title = label;
+  }
+
   function renderEntries() {
     const loading = browsing && !refreshing;
-    filter.hidden = loading || directories.length + files.length <= ENTRY_FILTER_THRESHOLD;
+    const listedFolders = showHidden ? directories : directories.filter((name) => !isHidden(name));
+    const listedFiles = showHidden ? files : files.filter((file) => !isHidden(file));
+    const hiddenCount = directories.length + files.length - listedFolders.length - listedFiles.length;
+    filter.hidden = loading || listedFolders.length + listedFiles.length <= ENTRY_FILTER_THRESHOLD;
     folders.replaceChildren();
     folders.setAttribute('aria-busy', String(browsing));
+    renderHiddenToggle();
     if (loading) {
       folders.append(element('p', 'Loading…', 'app-list-note'));
       return;
@@ -327,14 +347,15 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     const parent = parentDirectory(root, destination);
     if (parent) folders.append(folderRow('..', parent, PARENT_ICON, 'Parent folder'));
     const query = filter.hidden ? '' : filter.value;
-    const visibleFolders = filterEntries(directories, query);
-    const visibleFiles = filterEntries(files, query);
+    const visibleFolders = filterEntries(listedFolders, query);
+    const visibleFiles = filterEntries(listedFiles, query);
     for (const name of visibleFolders) {
       folders.append(folderRow(name, `${destination.replace(/\/$/, '')}/${name}`, FOLDER_ICON));
     }
     for (const file of visibleFiles) folders.append(fileRow(file));
-    if (!directories.length && !files.length) {
-      folders.append(element('p', 'This folder is empty.', 'app-list-note'));
+    if (!listedFolders.length && !listedFiles.length) {
+      folders.append(element('p', hiddenCount
+        ? `Only hidden items here (${hiddenCount}).` : 'This folder is empty.', 'app-list-note'));
     } else if (!visibleFolders.length && !visibleFiles.length) {
       folders.append(element('p', 'Nothing matches the filter.', 'app-list-note'));
     }
@@ -514,6 +535,10 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     setEditingPath(false);
   });
   filter.addEventListener('input', renderEntries);
+  toggleHidden.addEventListener('click', () => {
+    showHidden = !showHidden;
+    renderEntries();
+  });
   get('upload-path-form').addEventListener('submit', (event) => {
     event.preventDefault();
     if (!queue.running && editingPath) browse(pathInput.value, { focusFolders: true });
