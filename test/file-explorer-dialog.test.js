@@ -13,6 +13,7 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
     fileContentUrl,
     filterEntries,
     formatBytes,
+    isHidden,
     formatModified,
     parentDirectory,
   } = await import('../public/js/file-explorer.mjs');
@@ -41,6 +42,9 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
   assert.deepEqual(filterEntries(names, ''), names);
   assert.deepEqual(filterEntries(names, '  WEB '), ['Web-App', 'webhooks']);
   assert.deepEqual(filterEntries(names, 'missing'), []);
+  assert.deepEqual(names.filter(isHidden), ['.cargo']);
+  assert.equal(isHidden({ name: '.env' }), true);
+  assert.equal(isHidden({ name: 'a.env' }), false);
   const files = [{ name: 'README.md' }, { name: 'web.config' }];
   assert.deepEqual(filterEntries(files, 'web'), [files[1]]);
 
@@ -80,7 +84,7 @@ test('files dialog markup puts the folder listing first and keeps a single path 
   for (const id of [
     'upload-error', 'upload-choose', 'upload-files', 'upload-file-list', 'upload-path-form',
     'upload-destination-fields', 'upload-location', 'upload-breadcrumbs', 'upload-edit-path',
-    'upload-path-editor', 'upload-directory', 'upload-folder-filter', 'upload-folders',
+    'upload-path-editor', 'upload-toggle-hidden', 'upload-directory', 'upload-folder-filter', 'upload-folders',
     'upload-summary', 'upload-cancel', 'upload-submit',
   ]) {
     assert.match(dialog, new RegExp(`id="${id}"`), id);
