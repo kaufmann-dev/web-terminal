@@ -106,6 +106,10 @@ node --test test/*.test.js
   current LTS line and is installed from CentOS/EPEL's maintained `nodejs24` stream. Do not preserve
   Node 24 after it ceases to be the appropriate maintained line; update the engine, image package,
   tests, and documentation together.
+- Always install `nodejs24-full-i18n` with `nodejs24`. The base package is built with small ICU
+  (English only) and expects its data in `/usr/share/node-24/icudata`; without it `Intl.Segmenter`
+  crashes the process with a segmentation fault and every non-English locale (for example `de-AT`)
+  silently formats as English. The Dockerfile verifies both at build time.
 - The floating CentOS Stream 10 base and `dnf update` intentionally take current distribution
   updates on each image rebuild. Install system tools, Chromium, Fontconfig, Mesa, uv, Podman, and
   build dependencies natively with DNF; do not add a Nix runtime or Nix store paths.

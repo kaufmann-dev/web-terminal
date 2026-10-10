@@ -44,6 +44,7 @@ RUN dnf --assumeyes update \
       mesa-vulkan-drivers \
       micro \
       nodejs24 \
+      nodejs24-full-i18n \
       nodejs24-npm \
       openssh-clients \
       openssl \
@@ -74,6 +75,7 @@ RUN dnf --assumeyes update \
     && ln --symbolic /usr/bin/npm-24 /usr/local/bin/npm \
     && ln --symbolic /usr/bin/npx-24 /usr/local/bin/npx \
     && node --version | grep --extended-regexp --quiet '^v24\.' \
+    && node -e 'if ([...new Intl.Segmenter().segment("ab")].length !== 2 || new Date(0).toLocaleDateString("de-AT", { timeZone: "UTC" }) !== "1.1.1970") process.exit(1)' \
     && bat --version \
     && openssl version \
     && python3 -c 'import yaml' \
