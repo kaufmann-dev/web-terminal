@@ -47,8 +47,8 @@ Dockerfile location is a required one-time Coolify change. Remove any old
 post-deployment command.
 
 The image is built from the current CentOS Stream 10 base. Each rebuild applies the maintained DNF
-updates and installs Node.js 24 from the current LTS stream plus the native development toolchain,
-Chromium, and Podman 6 or newer. Node 24 is retained because it is the current LTS line, not as a
+updates and installs Node.js 24 (with its full ICU locale data) from the current LTS stream plus the
+native development toolchain, Chromium, and Podman 6 or newer. Node 24 is retained because it is the current LTS line, not as a
 permanent compatibility pin. Application dependencies remain exactly locked for reproducible
 images and are advanced when compatible stable releases are available. Nix is not installed.
 Nixpacks is included only as a terminal CLI for working on other projects.

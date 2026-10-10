@@ -387,6 +387,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     'fuse-overlayfs',
     'mesa-dri-drivers',
     'nodejs24',
+    'nodejs24-full-i18n',
     'nodejs24-npm',
     'passt',
     'podman',
@@ -421,6 +422,9 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
   );
   for (const imageCommand of [
     "python3 -c 'import yaml'",
+    // The distribution's nodejs24 ships only English ICU data; without nodejs24-full-i18n,
+    // Intl.Segmenter crashes the process and non-English locales silently fall back to English.
+    `node -e 'if ([...new Intl.Segmenter().segment("ab")].length !== 2 || new Date(0).toLocaleDateString("de-AT", { timeZone: "UTC" }) !== "1.1.1970") process.exit(1)'`,
     'npm ci --omit=dev',
     `node -e 'require("node-pty")'`,
     './node_modules/.bin/agent-browser --version',
