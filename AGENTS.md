@@ -89,6 +89,9 @@ node --test test/*.test.js
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
 - Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.
   Express must retain them.
+- Also keep server and deployment settings (`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`,
+  `SOURCE_COMMIT`, `COOLIFY_*` metadata) out of those environments so they cannot change projects run in a
+  terminal. Keep `SERVER_ONLY_ENVIRONMENT` in `app.js` and `server_only_environment` in `scripts/start.sh` identical.
 - Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also
   process-local. Do not configure multiple application replicas without replacing both designs.
 - Serve only the pinned xterm browser module, fit addon, stylesheet, and self-hosted font files

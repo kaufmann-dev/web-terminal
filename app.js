@@ -50,6 +50,20 @@ function isValidTerminalSessionName(name) {
   return typeof name === 'string' && TERMINAL_SESSION_NAME_PATTERN.test(name);
 }
 
+const SERVER_ONLY_ENVIRONMENT = [
+  'NODE_ENV',
+  'PORT',
+  'HOST',
+  'PUBLIC_ORIGIN',
+  'TRUST_PROXY',
+  'SOURCE_COMMIT',
+  'COOLIFY_BRANCH',
+  'COOLIFY_CONTAINER_NAME',
+  'COOLIFY_FQDN',
+  'COOLIFY_RESOURCE_UUID',
+  'COOLIFY_URL',
+];
+
 function createTerminalEnvironment({
   terminalHome,
   terminalWorkdir,
@@ -100,6 +114,10 @@ function createTerminalEnvironment({
   delete terminalEnvironment.SESSION_SECRET;
   delete terminalEnvironment.ELEVENLABS_API_KEY;
   delete terminalEnvironment.LC_ALL;
+  // Server and deployment settings would otherwise change the behavior of projects run in the terminal.
+  for (const name of SERVER_ONLY_ENVIRONMENT) {
+    delete terminalEnvironment[name];
+  }
   return terminalEnvironment;
 }
 

@@ -37,6 +37,11 @@ require_absolute_path() {
 
 run_in_terminal_environment() {
   local -a unset_environment=(-u SESSION_SECRET -u ELEVENLABS_API_KEY)
+  # Keep in sync with SERVER_ONLY_ENVIRONMENT in app.js.
+  local -a server_only_environment=(
+    NODE_ENV PORT HOST PUBLIC_ORIGIN TRUST_PROXY SOURCE_COMMIT
+    COOLIFY_BRANCH COOLIFY_CONTAINER_NAME COOLIFY_FQDN COOLIFY_RESOURCE_UUID COOLIFY_URL
+  )
   local -a podman_environment=()
   local -a terminal_identity_environment=()
   local environment_name
@@ -46,6 +51,9 @@ run_in_terminal_environment() {
       unset_environment+=(-u "$environment_name")
     fi
   done < <(compgen -e)
+  for environment_name in "${server_only_environment[@]}"; do
+    unset_environment+=(-u "$environment_name")
+  done
 
   if is_container_environment; then
     terminal_identity_environment=(

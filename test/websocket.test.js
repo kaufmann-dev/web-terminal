@@ -255,7 +255,19 @@ test('terminal uses a persistent user npm prefix ahead of bundled image commands
   }
 });
 
-test('terminal environment retains Fontconfig, pins UTF-8, and removes server credentials', () => {
+test('startup chezmoi environment removes the same server settings as the terminal environment', () => {
+  const startupScript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'start.sh'), 'utf8');
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const scriptNames = startupScript
+    .match(/server_only_environment=\(([^)]*)\)/)[1]
+    .trim()
+    .split(/\s+/);
+  const appNames = [...appSource.match(/SERVER_ONLY_ENVIRONMENT = \[([^\]]*)\]/)[1].matchAll(/'([A-Z_]+)'/g)]
+    .map((match) => match[1]);
+  assert.deepEqual(scriptNames, appNames);
+});
+
+test('terminal environment retains Fontconfig, pins UTF-8, and removes server credentials and settings', () => {
   const overrides = {
     LANG: 'C',
     LC_CTYPE: 'C',
@@ -266,6 +278,17 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     OIDC_PRIVATE_EXTENSION: 'private-value',
     SESSION_SECRET: 'secret-session',
     ELEVENLABS_API_KEY: 'secret-voice',
+    NODE_ENV: 'production',
+    PORT: '3000',
+    HOST: '0.0.0.0',
+    PUBLIC_ORIGIN: 'https://terminal.example',
+    TRUST_PROXY: 'true',
+    SOURCE_COMMIT: 'abc123',
+    COOLIFY_BRANCH: 'main',
+    COOLIFY_CONTAINER_NAME: 'web-terminal-container',
+    COOLIFY_FQDN: 'terminal.example',
+    COOLIFY_RESOURCE_UUID: 'resource-uuid',
+    COOLIFY_URL: 'https://terminal.example',
     FONTCONFIG_FILE: '/etc/fonts/fonts.conf',
     FONTCONFIG_PATH: '/etc/fonts',
     LIBGL_DRIVERS_PATH: '/usr/lib64/dri',
@@ -321,6 +344,21 @@ test('terminal environment retains Fontconfig, pins UTF-8, and removes server cr
     assert.equal(Object.hasOwn(environment, 'SESSION_SECRET'), false);
     assert.equal(Object.hasOwn(environment, 'ELEVENLABS_API_KEY'), false);
     assert.equal(process.env.ELEVENLABS_API_KEY, 'secret-voice');
+    for (const name of [
+      'NODE_ENV',
+      'PORT',
+      'HOST',
+      'PUBLIC_ORIGIN',
+      'TRUST_PROXY',
+      'SOURCE_COMMIT',
+      'COOLIFY_BRANCH',
+      'COOLIFY_CONTAINER_NAME',
+      'COOLIFY_FQDN',
+      'COOLIFY_RESOURCE_UUID',
+      'COOLIFY_URL',
+    ]) {
+      assert.equal(Object.hasOwn(environment, name), false, name);
+    }
   } finally {
     for (const [name, value] of Object.entries(originals)) {
       if (value === undefined) {

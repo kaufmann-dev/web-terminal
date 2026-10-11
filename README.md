@@ -86,6 +86,10 @@ Optional:
   application environment; it is excluded from PTY and chezmoi environments. Without it the app
   starts normally with voice controls disabled.
 - `NODE_ENV` — defaults to `production`.
+
+`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`, `SOURCE_COMMIT`, and Coolify's `COOLIFY_*`
+deployment metadata configure only the web-terminal server. They are removed from terminal sessions,
+scheduled jobs, and chezmoi so they do not change how projects run in the terminal behave.
 - `TERMINAL_WORKDIR` — defaults to `/code`, where new terminal sessions start.
 - `TERMINAL_HOME` — defaults to `TERMINAL_WORKDIR`; controls `~` and persisted tool state.
 
