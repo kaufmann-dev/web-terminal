@@ -9,6 +9,7 @@ const path = require('path');
 const { pipeline } = require('stream');
 const { WorkspaceFileStore, UploadError, uploadError } = require('./workspace-file-store');
 const { JobError, ScheduledJobManager } = require('./scheduled-job-manager');
+const { renderErrorPage } = require('./error-page');
 const express = require('express');
 const session = require('express-session');
 const MemoryStore = require('memorystore')(session);
@@ -921,6 +922,13 @@ function createWebTerminal(options = {}) {
     });
   });
 
+  app.use((req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'Not found.' });
+    }
+    return res.status(404).type('html').send(renderErrorPage(404));
+  });
+
   app.use((err, req, res, next) => {
     if (err === invalidCsrfTokenError) {
       return res.status(403).json({ error: 'Invalid CSRF token.' });
@@ -936,6 +944,22 @@ function createWebTerminal(options = {}) {
       return res.status(413).json({ error: 'Clipboard image exceeds the 10 MiB limit.' });
     }
     return next(err);
+  });
+
+  app.use((err, req, res, next) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+    const status = err.status >= 400 && err.status < 600 ? err.status : 500;
+    if (status >= 500) {
+      console.error('Unhandled request error:', err);
+    }
+    if (req.path.startsWith('/api/')) {
+      return res.status(status).json({
+        error: status < 500 && err.expose ? err.message : 'Request failed.',
+      });
+    }
+    return res.status(status).type('html').send(renderErrorPage(status));
   });
 
   let server;

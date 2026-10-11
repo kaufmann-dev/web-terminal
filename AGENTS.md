@@ -30,6 +30,7 @@ node --check terminal-session-manager.js
 node --check voice-transcription.js
 node --check workspace-file-store.js
 node --check scheduled-job-manager.js
+node --check error-page.js
 node --check public/js/voice-recorder.mjs
 node --check public/js/file-explorer.mjs
 node --check public/js/scheduled-jobs.mjs

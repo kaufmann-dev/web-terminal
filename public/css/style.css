@@ -160,6 +160,13 @@ body.dark {
   font-size: 13px;
 }
 
+.error-status {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
 .btn-primary {
   display: flex;
   align-items: center;
