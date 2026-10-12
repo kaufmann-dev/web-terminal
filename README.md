@@ -275,8 +275,7 @@ or control unrelated native Wayland windows.
   replaying backgrounded terminal frames. Regaining browser connectivity immediately retries any
   pending reconnect backoff.
 - xterm.js handles wheel scrolling directly. Its compact line height keeps adjacent rows of block
-  glyphs continuous. There is no tmux copy mode, Codex-specific wheel routing, or synthetic
-  wheel-to-key translation.
+  glyphs continuous. There is no tmux copy mode or Codex-specific wheel routing.
 - At widths of 720px or less, the terminal uses 12px text and follows the browser chrome with
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
@@ -298,9 +297,10 @@ or control unrelated native Wayland windows.
   leave terminal focus unchanged and never summon the keyboard. Toolbar-managed keyboard
   transitions do not send focus reports to terminal applications. A stationary tap on a ready
   terminal opens or reopens the software keyboard on the first tap. A one-finger vertical drag
-  scrolls xterm's retained
-  normal-screen history directly, without momentum or sending mouse or key input to
-  alternate-screen programs; pinch-to-zoom remains available.
+  scrolls xterm's retained normal-screen history directly, without momentum. In alternate-screen
+  or mouse-tracking programs such as Codex and Claude Code, the drag is passed to xterm.js as
+  one-line wheel input instead, so it scrolls exactly as a desktop wheel does; pinch-to-zoom
+  remains available.
 - The microphone button starts dictation; while recording it becomes a red stop button, which sends the recording to ElevenLabs Scribe v2 and inserts cleaned
   text once into the terminal where recording began. Press **Enter** yourself to execute. Scribe
   detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks

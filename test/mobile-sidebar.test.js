@@ -415,7 +415,7 @@ test('terminal uses compact mobile text and refits across the breakpoint', () =>
   );
 });
 
-test('collapsed-sidebar terminal scrolls retained output with touch gestures', () => {
+test('collapsed-sidebar terminal scrolls retained output and full-screen programs with touch gestures', () => {
   const terminalScript = fs.readFileSync(terminalScriptPath, 'utf8');
   const touchHandlers = terminalScript.slice(
     terminalScript.indexOf('handleTouchScrollPointerDown ='),
@@ -448,7 +448,16 @@ test('collapsed-sidebar terminal scrolls retained output with touch gestures', (
     /this\.terminalElement\.getBoundingClientRect\(\)\.height/,
   );
   assert.match(touchHandlers, /terminalHeight \/ this\.terminal\.rows/);
-  assert.match(touchHandlers, /activeBuffer\.type === 'normal'/);
+  assert.match(
+    touchHandlers,
+    /activeBuffer\.type === 'alternate' \|\| this\.terminal\.modes\.mouseTrackingMode !== 'none'/,
+  );
+  assert.match(
+    touchHandlers,
+    /this\.dispatchTouchScrollWheel\(result\.lines, event\.clientX, event\.clientY\)/,
+  );
+  assert.match(touchHandlers, /new WheelEvent\('wheel'/);
+  assert.match(touchHandlers, /deltaMode: WheelEvent\.DOM_DELTA_LINE/);
   assert.match(touchHandlers, /activeBuffer\.baseY > 0/);
   assert.match(touchHandlers, /this\.terminal\.scrollLines\(result\.lines\)/);
   assert.match(

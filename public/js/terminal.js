@@ -448,9 +448,31 @@
       }
 
       event.preventDefault();
+      if (result.lines === 0) {
+        return;
+      }
       const activeBuffer = this.terminal.buffer.active;
-      if (result.lines !== 0 && activeBuffer.type === 'normal' && activeBuffer.baseY > 0) {
+      if (activeBuffer.type === 'alternate' || this.terminal.modes.mouseTrackingMode !== 'none') {
+        this.dispatchTouchScrollWheel(result.lines, event.clientX, event.clientY);
+      } else if (activeBuffer.baseY > 0) {
         this.terminal.scrollLines(result.lines);
+      }
+    };
+
+    // Full-screen programs such as Codex and Claude Code have no xterm scrollback. Let xterm
+    // handle the drag as desktop wheel input: a mouse wheel report when the program tracks the
+    // mouse, otherwise an arrow key on the alternate screen. xterm sends one report per event.
+    dispatchTouchScrollWheel = (lines, clientX, clientY) => {
+      const deltaY = Math.sign(lines);
+      for (let line = 0; line < Math.abs(lines); line += 1) {
+        this.terminalElement.dispatchEvent(new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          deltaMode: WheelEvent.DOM_DELTA_LINE,
+          deltaY,
+        }));
       }
     };
 
