@@ -500,7 +500,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     [`opencode-ai@${packageJson.dependencies['opencode-ai']}`]: true,
   });
 
-  assert.match(gitWranglerInstaller, /^readonly GIT_WRANGLER_VERSION="1\.1\.0"$/m);
+  assert.match(gitWranglerInstaller, /^readonly GIT_WRANGLER_VERSION="1\.1\.1"$/m);
   assert.match(gitWranglerInstaller, /sha256sum --check --strict/);
   assert.match(nixpacksInstaller, /^readonly NIXPACKS_VERSION="1\.41\.0"$/m);
   assert.match(nixpacksInstaller, /sha256sum --check --strict/);
