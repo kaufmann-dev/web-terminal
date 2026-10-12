@@ -14,6 +14,7 @@
       transformMobileTerminalInput,
     },
     { readClipboardContent },
+    { decodeOsc52ClipboardWrite },
     { bindTerminalSessionNameNormalization },
     { VoiceRecorder, bindVoiceControls },
     { bindFileExplorer },
@@ -23,6 +24,7 @@
     import('/vendor/xterm/addon-fit.mjs'),
     import('/static/js/terminal-input.mjs'),
     import('/static/js/clipboard-reader.mjs'),
+    import('/static/js/terminal-clipboard.mjs'),
     import('/static/js/session-name.mjs'),
     import('/static/js/voice-recorder.mjs'),
     import('/static/js/file-explorer.mjs'),
@@ -294,6 +296,13 @@
         }
       });
       this.selectionDisposable = this.terminal.onSelectionChange(this.copySelection);
+      this.osc52Disposable = this.terminal.parser.registerOscHandler(52, (payload) => {
+        const text = decodeOsc52ClipboardWrite(payload);
+        if (text) {
+          this.writeClipboardText(text, 'Terminal copy sent to clipboard.');
+        }
+        return true;
+      });
       this.resizeObserver = new ResizeObserver(() => {
         window.clearTimeout(this.resizeTimer);
         this.resizeTimer = window.setTimeout(() => this.fitAndNotify(), 100);
@@ -659,9 +668,13 @@
       if (!selection) {
         return;
       }
+      this.writeClipboardText(selection, 'Selection copied to clipboard.');
+    };
+
+    writeClipboardText = (text, successMessage) => {
       const reportCopyFailure = () => {
         setClipboardStatus(
-          'Unable to copy the selection. Allow clipboard access and try again.',
+          'Unable to copy to the clipboard. Allow clipboard access and try again.',
           true,
           5000,
         );
@@ -671,8 +684,8 @@
           reportCopyFailure();
           return;
         }
-        navigator.clipboard.writeText(selection)
-          .then(() => setClipboardStatus('Selection copied to clipboard.', false, 3000))
+        navigator.clipboard.writeText(text)
+          .then(() => setClipboardStatus(successMessage, false, 3000))
           .catch(reportCopyFailure);
       } catch (err) {
         reportCopyFailure();
@@ -1055,6 +1068,7 @@
       this.inputDisposable.dispose();
       this.binaryDisposable.dispose();
       this.selectionDisposable.dispose();
+      this.osc52Disposable.dispose();
       if (this.socket && (this.socket.readyState === WebSocket.CONNECTING
         || this.socket.readyState === WebSocket.OPEN)) {
         this.socket.close(1000, 'Terminal changed.');

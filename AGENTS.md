@@ -35,6 +35,7 @@ node --check public/js/voice-recorder.mjs
 node --check public/js/file-explorer.mjs
 node --check public/js/scheduled-jobs.mjs
 node --check public/js/terminal.js
+node --check public/js/terminal-clipboard.mjs
 node --test test/*.test.js
 ```
 

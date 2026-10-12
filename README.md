@@ -320,7 +320,9 @@ or control unrelated native Wayland windows.
   apply; cancellation does not guarantee that already-submitted provider processing or billing
   stops. See the [Scribe API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert).
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
-  confirmation. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
+  confirmation. Programs that draw their own mouse selection, such as Codex and Claude Code, copy
+  through OSC 52; the browser applies those clipboard writes and ignores OSC 52 clipboard read
+  queries. Use `Ctrl+V` to paste text or an image; `Ctrl+Shift+V` remains text-only. Pasting
   a PNG, JPEG, or WebP image up to 10 MiB uploads it to
   `$TERMINAL_HOME/.cache/web-terminal/clipboard-images` and inserts its absolute path into the
   terminal; images older than 24 hours are pruned at startup and on later image uploads. Because
