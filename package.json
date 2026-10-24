@@ -16,7 +16,7 @@
     "@xterm/headless": "6.0.0",
     "@xterm/xterm": "6.0.0",
     "agent-browser": "0.33.1",
-    "compression": "^1.8.1",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "croner": "10.0.1",
     "csrf-csrf": "^4.0.3",
@@ -29,7 +29,7 @@
     "opencode-ai": "1.18.9",
     "openid-client": "6.8.4",
     "pnpm": "11.18.0",
-    "vitest": "4.1.11",
+    "vitest": "4.1.12",
     "ws": "8.21.1"
   },
   "engines": {

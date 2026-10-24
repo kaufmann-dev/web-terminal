@@ -147,7 +147,7 @@ user namespaces, or the rootless Podman configuration is unavailable.
 The terminal includes:
 
 - Node.js 24 (the current LTS line), npm, npx, and pnpm 11.18.0
-- Vitest 4.1.11
+- Vitest 4.1.12
 - `codex` 0.146.0, `opencode` 1.18.9, and Claude Code (`claude`) 2.1.282
 - Muse Code (`muse`) 1.4.0-R4161.1, installed from Meta's checksum-verified Linux binary
 - `agent-browser` 0.33.1 with headless Chromium and native Fontconfig

@@ -12,7 +12,7 @@ npm ci
 - Keep these terminal CLIs as exact production dependencies so `npm ci` installs them into the
   immutable image: `@openai/codex@0.146.0`, `opencode-ai@1.18.9`,
   `@anthropic-ai/claude-code@2.1.282`, `agent-browser@0.33.1`, `pnpm@11.18.0`, and
-  `vitest@4.1.11`. Do not replace them with runtime installers or global npm installs. Exact
+  `vitest@4.1.12`. Do not replace them with runtime installers or global npm installs. Exact
   dependency locks make an individual image reproducible;
   they are not promises to retain old releases. Advance them, their lockfile entries, and the
   documented versions when newer compatible stable releases are available.
