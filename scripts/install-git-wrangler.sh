@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-readonly GIT_WRANGLER_VERSION="1.1.1"
+readonly GIT_WRANGLER_VERSION="1.1.3"
 readonly GIT_WRANGLER_BASE_URL="https://github.com/kaufmann-dev/git-wrangler/releases/download/v${GIT_WRANGLER_VERSION}"
 
 map_arch() {

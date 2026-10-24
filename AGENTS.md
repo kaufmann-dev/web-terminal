@@ -118,7 +118,7 @@ node --test test/*.test.js
 - The floating CentOS Stream 10 base and `dnf update` intentionally take current distribution
   updates on each image rebuild. Install system tools, Chromium, Fontconfig, Mesa, uv, Podman, and
   build dependencies natively with DNF; do not add a Nix runtime or Nix store paths.
-- Git Wrangler v1.1.1, Nixpacks v1.41.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
+- Git Wrangler v1.1.3, Nixpacks v1.41.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
   the current checksum-verified artifact releases. Their installers must support the documented architectures,
   reject unknown artifacts, and be advanced when newer compatible stable releases exist. Nixpacks
   is a bundled terminal command for working on other projects, not this application's build pack

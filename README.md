@@ -155,7 +155,7 @@ The terminal includes:
   X11 clients inside those displays
 - rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
 - Python 3 with PyYAML, plus Nixpacks 1.41.0 and uv for Python projects
-- `gh`, `git-wrangler` 1.1.1, Git, SSH, and `git-filter-repo`
+- `gh`, `git-wrangler` 1.1.3, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `bat`, `openssl`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
