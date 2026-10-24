@@ -355,10 +355,13 @@ test('names Node foreground processes after their title or script', (t) => {
 test('real node-pty session reports its foreground program and directory', {
   skip: process.platform !== 'linux',
   timeout: 10000,
-}, async () => {
+}, async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'terminal-home-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(home, 'test'));
   const manager = new TerminalSessionManager({
-    terminalEnvironment: { ...process.env, HOME: process.cwd(), TERM: 'xterm-256color' },
-    terminalWorkdir: process.cwd(),
+    terminalEnvironment: { ...process.env, HOME: home, TERM: 'xterm-256color' },
+    terminalWorkdir: home,
     bashRcPath: '/dev/null',
     killTimeoutMs: 2000,
     logger: { error() {}, warn() {} },
