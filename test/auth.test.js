@@ -248,6 +248,11 @@ test('interactive HTTP activity extends idle expiry but passive requests do not'
     headers: { Cookie: cookieHeader(cookies) },
   });
   assert.equal(csrfResponse.status, 200);
+  const csrfCookie = csrfResponse.headers.getSetCookie()
+    .find((cookie) => cookie.startsWith('terminal.csrf='));
+  assert.match(csrfCookie, new RegExp(
+    `Expires=${new Date(loginSession.loginAt + SESSION_ABSOLUTE_TTL_MS).toUTCString()}`,
+  ));
   const afterPassiveRequest = await onlyStoredSession(service.sessionStore);
   assert.equal(afterPassiveRequest.lastActivityAt, loginSession.lastActivityAt);
 

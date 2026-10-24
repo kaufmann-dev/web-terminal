@@ -583,7 +583,10 @@ function createWebTerminal(options = {}) {
 
   app.get('/csrf-token', requireApiAuth, (req, res) => {
     req.session.csrfInitialized = true;
-    res.json({ csrfToken: generateCsrfToken(req, res) });
+    // A persistent cookie survives iOS dropping session-only cookies while
+    // the page is suspended in the background.
+    const expires = new Date(req.session.loginAt + SESSION_ABSOLUTE_TTL_MS);
+    res.json({ csrfToken: generateCsrfToken(req, res, { cookieOptions: { expires } }) });
   });
 
   app.get('/api/voice', requireApiAuth, (req, res) => {
