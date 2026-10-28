@@ -12,15 +12,13 @@ const {
   MAX_BUFFERED_BYTES,
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
+  cleanTerminalTitle,
   isValidTerminalSize,
   listLinuxSessionPids,
   readLinuxForeground,
   writeTerminal,
 } = require('../terminal-session-manager');
-const {
-  isValidTerminalSessionName,
-  normalizeTerminalSessionName,
-} = require('../app');
+const { isValidTerminalSessionId } = require('../app');
 
 class FakePty {
   constructor(pid = 41000) {
@@ -110,36 +108,37 @@ function binaryMessages(socket) {
   return socket.sent.filter((message) => message.binary).map((message) => message.data);
 }
 
-test('validates terminal names and dimensions', () => {
-  assert.equal(normalizeTerminalSessionName('Upper-CASE-2'), 'upper-case-2');
-  assert.equal(isValidTerminalSessionName('main'), true);
-  assert.equal(isValidTerminalSessionName('project-2'), true);
-  assert.equal(isValidTerminalSessionName('Upper'), false);
-  assert.equal(isValidTerminalSessionName('-leading'), false);
-  assert.equal(isValidTerminalSessionName('a'.repeat(33)), false);
+test('validates terminal session IDs and dimensions', () => {
+  assert.equal(isValidTerminalSessionId('0a1b2c3d'), true);
+  assert.equal(isValidTerminalSessionId('main'), false);
+  assert.equal(isValidTerminalSessionId('0A1B2C3D'), false);
+  assert.equal(isValidTerminalSessionId('0a1b2c3'), false);
+  assert.equal(isValidTerminalSessionId('0a1b2c3d4'), false);
   assert.equal(isValidTerminalSize(2, 1), true);
   assert.equal(isValidTerminalSize(500, 200), true);
   assert.equal(isValidTerminalSize(1, 24), false);
   assert.equal(isValidTerminalSize(80.5, 24), false);
 });
 
-test('rejects duplicate session creation', async () => {
+test('creates sessions under distinct generated IDs', async () => {
   const { manager } = createFakeManager();
-  manager.createSession('main');
-  assert.throws(() => manager.createSession('main'), { code: 'TERMINAL_SESSION_EXISTS' });
-  await manager.deleteSession('main');
+  const first = manager.createSession();
+  const second = manager.createSession();
+  assert.match(first.id, /^[0-9a-f]{8}$/);
+  assert.notEqual(first.id, second.id);
+  await manager.shutdown();
 });
 
 test('orders PTY output, restores snapshots, and streams live bytes', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
-  const session = manager.sessions.get('main');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   ptys[0].emitData('first\r\n');
   ptys[0].emitData('second');
   await session.queue;
 
   const socket = new FakeSocket();
-  assert.equal(await manager.attachClient('main', socket, 'login-1', 80, 24), true);
+  assert.equal(await manager.attachClient(id, socket, 'login-1', 80, 24), true);
   const snapshot = binaryMessages(socket)[0].toString('utf8');
   assert.match(snapshot, /first/);
   assert.match(snapshot, /second/);
@@ -163,18 +162,18 @@ test('orders PTY output, restores snapshots, and streams live bytes', async () =
     binaryMessages(socket).slice(1).map((data) => data.toString('utf8')),
     ['A', 'B'],
   );
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('large reconnect snapshots do not trigger the live-output backpressure limit', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
-  const session = manager.sessions.get('main');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   const snapshot = 'x'.repeat(MAX_BUFFERED_BYTES + 1);
   session.serializeAddon.serialize = () => snapshot;
 
   const socket = new FakeSocket({ retainBufferedWrites: true });
-  assert.equal(await manager.attachClient('main', socket, 'login-1', 80, 24), true);
+  assert.equal(await manager.attachClient(id, socket, 'login-1', 80, 24), true);
   assert.equal(socket.closed, null);
   assert.deepEqual(
     socket.sent.filter((message) => !message.binary).map((message) => JSON.parse(message.data)),
@@ -191,13 +190,13 @@ test('large reconnect snapshots do not trigger the live-output backpressure limi
   ptys[0].emitData('too much live output');
   await session.queue;
   assert.equal(socket.closed.code, SOCKET_CLOSE_CODES.CLIENT_TOO_SLOW);
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('bounds the headless scrollback at 10,000 lines', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
-  const session = manager.sessions.get('main');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   const lines = Array.from({ length: 10050 }, (_, index) => `line-${String(index).padStart(5, '0')}`);
   ptys[0].emitData(`${lines.join('\r\n')}\r\n`);
   await session.queue;
@@ -206,70 +205,70 @@ test('bounds the headless scrollback at 10,000 lines', async () => {
   const snapshot = session.serializeAddon.serialize({ scrollback: 10000 });
   assert.doesNotMatch(snapshot, /line-00000/);
   assert.match(snapshot, /line-10049/);
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('keeps a PTY alive across browser disconnect and includes detached output on reconnect', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
+  const { id } = manager.createSession();
   const firstSocket = new FakeSocket();
-  await manager.attachClient('main', firstSocket, 'login-1', 80, 24);
-  assert.equal(manager.detachClient('main', firstSocket), true);
+  await manager.attachClient(id, firstSocket, 'login-1', 80, 24);
+  assert.equal(manager.detachClient(id, firstSocket), true);
   assert.equal(ptys[0].signals.length, 0);
-  assert.equal(manager.hasSession('main'), true);
+  assert.equal(manager.hasSession(id), true);
 
   ptys[0].emitData('completed while disconnected\r\n');
-  await manager.sessions.get('main').queue;
+  await manager.sessions.get(id).queue;
   const secondSocket = new FakeSocket();
-  await manager.attachClient('main', secondSocket, 'login-1', 80, 24);
+  await manager.attachClient(id, secondSocket, 'login-1', 80, 24);
   assert.match(binaryMessages(secondSocket)[0].toString('utf8'), /completed while disconnected/);
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('headless terminal answers device queries only while no browser is ready', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
-  const session = manager.sessions.get('main');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   ptys[0].emitData('\x1b[5n');
   await session.queue;
   assert.equal(ptys[0].writes.at(-1), '\x1b[0n');
 
   const socket = new FakeSocket();
-  await manager.attachClient('main', socket, 'login-1', 80, 24);
+  await manager.attachClient(id, socket, 'login-1', 80, 24);
   const writeCount = ptys[0].writes.length;
   ptys[0].emitData('\x1b[5n');
   await session.queue;
   assert.equal(ptys[0].writes.length, writeCount);
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('newest client replaces the previous client and owns input', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
+  const { id } = manager.createSession();
   const firstSocket = new FakeSocket();
   const secondSocket = new FakeSocket();
-  await manager.attachClient('main', firstSocket, 'login-1', 80, 24);
-  await manager.attachClient('main', secondSocket, 'login-2', 100, 30);
+  await manager.attachClient(id, firstSocket, 'login-1', 80, 24);
+  await manager.attachClient(id, secondSocket, 'login-2', 100, 30);
 
   assert.equal(firstSocket.closed.code, SOCKET_CLOSE_CODES.REPLACED);
-  assert.equal(manager.writeInput('main', firstSocket, 'old'), false);
-  assert.equal(manager.writeInput('main', secondSocket, 'new'), true);
+  assert.equal(manager.writeInput(id, firstSocket, 'old'), false);
+  assert.equal(manager.writeInput(id, secondSocket, 'new'), true);
   assert.equal(ptys[0].writes.at(-1), 'new');
   assert.deepEqual(ptys[0].resizes.at(-1), { cols: 100, rows: 30 });
-  await manager.deleteSession('main');
+  await manager.deleteSession(id);
 });
 
 test('natural shell exit removes the session and notifies the client', async () => {
   const { manager, ptys } = createFakeManager();
-  manager.createSession('main');
+  const { id } = manager.createSession();
   const socket = new FakeSocket();
-  await manager.attachClient('main', socket, 'login-1', 80, 24);
-  const session = manager.sessions.get('main');
+  await manager.attachClient(id, socket, 'login-1', 80, 24);
+  const session = manager.sessions.get(id);
   ptys[0].emitExit({ exitCode: 7, signal: 0 });
   await session.exitPromise;
   await session.queue;
 
-  assert.equal(manager.hasSession('main'), false);
+  assert.equal(manager.hasSession(id), false);
   assert.equal(socket.closed.code, SOCKET_CLOSE_CODES.SESSION_ENDED);
   const exitMessage = socket.sent
     .filter((message) => !message.binary)
@@ -284,14 +283,14 @@ test('destructive deletion signals every process in the Linux PTY session', asyn
     listSessionPids: () => [41000, 41001, 41002],
     signalProcess: (pid, signal) => signaled.push({ pid, signal }),
   });
-  manager.createSession('main');
+  const { id } = manager.createSession();
   const originalKill = ptys[0].kill.bind(ptys[0]);
   ptys[0].kill = (signal) => {
     originalKill(signal);
     ptys[0].emitExit({ exitCode: 0, signal: 1 });
   };
 
-  assert.equal(await manager.deleteSession('main'), true);
+  assert.equal(await manager.deleteSession(id), true);
   assert.deepEqual(signaled, [
     { pid: 41001, signal: 'SIGHUP' },
     { pid: 41002, signal: 'SIGHUP' },
@@ -305,8 +304,8 @@ test('destructive deletion escalates a stubborn PTY session to SIGKILL', async (
     listSessionPids: () => [41000, 41001],
     signalProcess: (pid, signal) => signaled.push({ pid, signal }),
   });
-  manager.createSession('main');
-  await manager.deleteSession('main');
+  const { id } = manager.createSession();
+  await manager.deleteSession(id);
 
   assert.deepEqual(ptys[0].signals, ['SIGHUP', 'SIGKILL']);
   assert.ok(signaled.some(({ signal }) => signal === 'SIGHUP'));
@@ -314,19 +313,56 @@ test('destructive deletion escalates a stubborn PTY session to SIGKILL', async (
 });
 
 test('lists each session with its foreground program and home-relative directory', () => {
-  const directories = { 41000: '/code', 41001: '/code/projects/app', 41002: '/codex' };
+  const directories = { 41000: '/code', 41001: '/code/projects/app', 41002: '/codex', 41004: '/' };
   const { manager } = createFakeManager({
     terminalEnvironment: { HOME: '/code' },
-    readForeground: (pid) => (pid === 41003 ? null : { program: 'bash', directory: directories[pid] }),
+    readForeground: (pid) => (pid === 41003
+      ? null
+      : { group: pid, program: 'bash', directory: directories[pid] }),
   });
-  for (const name of ['main', 'app', 'other', 'gone']) manager.createSession(name);
+  const ids = Array.from({ length: 5 }, () => manager.createSession().id);
 
   assert.deepEqual(manager.listSessions(), [
-    { name: 'main', program: 'bash', directory: '~' },
-    { name: 'app', program: 'bash', directory: '~/projects/app' },
-    { name: 'gone', program: null, directory: null },
-    { name: 'other', program: 'bash', directory: '/codex' },
+    { id: ids[0], label: '~', program: 'bash', directory: '~' },
+    { id: ids[1], label: 'app', program: 'bash', directory: '~/projects/app' },
+    { id: ids[2], label: 'codex', program: 'bash', directory: '/codex' },
+    { id: ids[3], label: 'shell', program: null, directory: null },
+    { id: ids[4], label: '/', program: 'bash', directory: '/' },
   ]);
+});
+
+test('labels a session with a program title only while its process group is in the foreground', async () => {
+  let group = 50001;
+  const { manager, ptys } = createFakeManager({
+    terminalEnvironment: { HOME: '/code' },
+    readForeground: () => ({ group, program: 'claude', directory: '/code/projects/app' }),
+  });
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
+
+  ptys[0].emitData('\x1b]0;✳ Fix login bug\x07');
+  await session.queue;
+  assert.equal(manager.listSessions()[0].label, 'Fix login bug');
+
+  group = ptys[0].pid;
+  assert.equal(manager.listSessions()[0].label, 'app');
+
+  group = 50002;
+  assert.equal(manager.listSessions()[0].label, 'app');
+
+  ptys[0].emitData('\x1b]2;bash\x07');
+  await session.queue;
+  group = ptys[0].pid;
+  assert.equal(manager.listSessions()[0].label, 'app');
+  await manager.deleteSession(id);
+});
+
+test('cleans program titles for display', () => {
+  assert.equal(cleanTerminalTitle('✳ Fix login bug'), 'Fix login bug');
+  assert.equal(cleanTerminalTitle('⠂  Review\u0007 the\tPR  '), 'Review the PR');
+  assert.equal(cleanTerminalTitle('x'.repeat(100)), 'x'.repeat(80));
+  assert.equal(cleanTerminalTitle(' ✳ '), null);
+  assert.equal(cleanTerminalTitle(''), null);
 });
 
 test('names Node foreground processes after their title or script', (t) => {
@@ -346,9 +382,9 @@ test('names Node foreground processes after their title or script', (t) => {
   writeProcess(201, { comm: 'MainThread', cmdline: 'npm run dev\0\0\0' });
   writeProcess(300, { stat: '300 (bash) S 1 300 300 34816 -1 0', comm: 'bash', cmdline: '/bin/bash\0' });
 
-  assert.deepEqual(readLinuxForeground(100, procRoot), { program: 'codex', directory: '/code/app' });
-  assert.deepEqual(readLinuxForeground(200, procRoot), { program: 'npm', directory: '/code/app' });
-  assert.deepEqual(readLinuxForeground(300, procRoot), { program: 'bash', directory: '/code/app' });
+  assert.deepEqual(readLinuxForeground(100, procRoot), { group: 101, program: 'codex', directory: '/code/app' });
+  assert.deepEqual(readLinuxForeground(200, procRoot), { group: 201, program: 'npm', directory: '/code/app' });
+  assert.deepEqual(readLinuxForeground(300, procRoot), { group: 300, program: 'bash', directory: '/code/app' });
   assert.equal(readLinuxForeground(999, procRoot), null);
 });
 
@@ -366,8 +402,8 @@ test('real node-pty session reports its foreground program and directory', {
     killTimeoutMs: 2000,
     logger: { error() {}, warn() {} },
   });
-  manager.createSession('real');
-  const session = manager.sessions.get('real');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   session.ptyProcess.write('cd test && sleep 30\n');
 
   let listed;
@@ -376,8 +412,8 @@ test('real node-pty session reports its foreground program and directory', {
     if (listed.program === 'sleep') break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  await manager.deleteSession('real');
-  assert.deepEqual(listed, { name: 'real', program: 'sleep', directory: '~/test' });
+  await manager.deleteSession(id);
+  assert.deepEqual(listed, { id, label: 'test', program: 'sleep', directory: '~/test' });
 });
 
 test('real node-pty deletion terminates a foreground child process', {
@@ -391,8 +427,8 @@ test('real node-pty deletion terminates a foreground child process', {
     killTimeoutMs: 2000,
     logger: { error() {}, warn() {} },
   });
-  manager.createSession('real');
-  const session = manager.sessions.get('real');
+  const { id } = manager.createSession();
+  const session = manager.sessions.get(id);
   manager.writeInput = manager.writeInput.bind(manager);
   session.ptyProcess.write('sleep 30\n');
 
@@ -403,7 +439,7 @@ test('real node-pty deletion terminates a foreground child process', {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.ok(processIds.length > 1, 'expected a foreground sleep process in the PTY session');
-  await manager.deleteSession('real');
+  await manager.deleteSession(id);
 
   for (const pid of processIds) {
     assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });

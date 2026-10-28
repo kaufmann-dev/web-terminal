@@ -25,13 +25,12 @@ const {
   ClipboardImageValidationError,
 } = require('./clipboard-image-store');
 const {
-  DuplicateTerminalSessionError,
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
   isValidTerminalSize,
 } = require('./terminal-session-manager');
 
-const TERMINAL_SESSION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const TERMINAL_SESSION_ID_PATTERN = /^[0-9a-f]{8}$/;
 const MAX_WEBSOCKET_PAYLOAD = 1024 * 1024;
 const ATTACH_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 30000;
@@ -40,14 +39,8 @@ const SESSION_IDLE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WEBSOCKET_ACTIVITY_DEBOUNCE_MS = 15000;
 
-function normalizeTerminalSessionName(name) {
-  return typeof name === 'string'
-    ? name.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
-    : name;
-}
-
-function isValidTerminalSessionName(name) {
-  return typeof name === 'string' && TERMINAL_SESSION_NAME_PATTERN.test(name);
+function isValidTerminalSessionId(id) {
+  return typeof id === 'string' && TERMINAL_SESSION_ID_PATTERN.test(id);
 }
 
 const SERVER_ONLY_ENVIRONMENT = [
@@ -773,23 +766,11 @@ function createWebTerminal(options = {}) {
   });
 
   app.post('/api/terminal-sessions', requireApiAuth, doubleCsrfProtection, (req, res) => {
-    const { name } = req.body || {};
-    const normalizedName = normalizeTerminalSessionName(name);
-    if (!isValidTerminalSessionName(normalizedName)) {
-      return res.status(400).json({
-        error: 'Session names must be 1-32 letters, numbers, or hyphens.',
-      });
-    }
-
     try {
-      const terminalSession = sessionManager.createSession(normalizedName);
+      const terminalSession = sessionManager.createSession();
       recordHttpActivity(req);
       return res.status(201).json({ session: terminalSession });
     } catch (err) {
-      if (err instanceof DuplicateTerminalSessionError
-        || err.code === 'TERMINAL_SESSION_EXISTS') {
-        return res.status(409).json({ error: 'A session with that name already exists.' });
-      }
       console.error('Terminal session service error:', err.message);
       return res.status(503).json({ error: 'Terminal session service unavailable.' });
     }
@@ -824,17 +805,17 @@ function createWebTerminal(options = {}) {
   );
 
   app.delete(
-    '/api/terminal-sessions/:name',
+    '/api/terminal-sessions/:id',
     requireApiAuth,
     doubleCsrfProtection,
     async (req, res) => {
-      const { name } = req.params;
-      if (!isValidTerminalSessionName(name)) {
-        return res.status(400).json({ error: 'Invalid terminal session name.' });
+      const { id } = req.params;
+      if (!isValidTerminalSessionId(id)) {
+        return res.status(400).json({ error: 'Invalid terminal session ID.' });
       }
 
       try {
-        if (!(await sessionManager.deleteSession(name))) {
+        if (!(await sessionManager.deleteSession(id))) {
           return res.status(404).json({ error: 'Terminal session not found.' });
         }
         recordHttpActivity(req);
@@ -1054,7 +1035,7 @@ function createWebTerminal(options = {}) {
     return true;
   }
 
-  function handleTerminalSocket(socket, request, sessionName, loginSessionId, authSession) {
+  function handleTerminalSocket(socket, request, sessionId, loginSessionId, authSession) {
     socket.isAlive = true;
     socket.loginSessionId = loginSessionId;
     socket.authSession = authSession;
@@ -1103,7 +1084,7 @@ function createWebTerminal(options = {}) {
         attaching = true;
         try {
           attached = await sessionManager.attachClient(
-            sessionName,
+            sessionId,
             socket,
             loginSessionId,
             message.cols,
@@ -1129,7 +1110,7 @@ function createWebTerminal(options = {}) {
           expireSocketAuthentication(socket);
           return;
         }
-        if (!sessionManager.writeInput(sessionName, socket, message.data)) {
+        if (!sessionManager.writeInput(sessionId, socket, message.data)) {
           closeWithProtocolError(socket, 'Terminal is not attached.');
         } else {
           recordSocketActivity(socket, activityAt);
@@ -1146,7 +1127,7 @@ function createWebTerminal(options = {}) {
           return;
         }
         const data = Buffer.from(message.data, 'base64');
-        if (!sessionManager.writeBinary(sessionName, socket, data)) {
+        if (!sessionManager.writeBinary(sessionId, socket, data)) {
           closeWithProtocolError(socket, 'Terminal is not attached.');
         } else {
           recordSocketActivity(socket, activityAt);
@@ -1156,7 +1137,7 @@ function createWebTerminal(options = {}) {
 
       if (message.type === 'resize' && isValidTerminalSize(message.cols, message.rows)) {
         try {
-          if (!(await sessionManager.resize(sessionName, socket, message.cols, message.rows))) {
+          if (!(await sessionManager.resize(sessionId, socket, message.cols, message.rows))) {
             closeWithProtocolError(socket, 'Terminal is not attached.');
           }
         } catch (err) {
@@ -1174,7 +1155,7 @@ function createWebTerminal(options = {}) {
       clearTimeout(socket.activityTimer);
       socket.activityTimer = null;
       persistSocketActivity(socket);
-      sessionManager.detachClient(sessionName, socket);
+      sessionManager.detachClient(sessionId, socket);
     });
   }
 
@@ -1249,18 +1230,18 @@ function createWebTerminal(options = {}) {
           return;
         }
 
-        const sessionName = url.searchParams.get('session');
-        if (!isValidTerminalSessionName(sessionName)) {
-          rejectUpgrade(socket, 400, 'Invalid terminal session name.');
+        const sessionId = url.searchParams.get('session');
+        if (!isValidTerminalSessionId(sessionId)) {
+          rejectUpgrade(socket, 400, 'Invalid terminal session ID.');
           return;
         }
-        if (!sessionManager.hasSession(sessionName)) {
+        if (!sessionManager.hasSession(sessionId)) {
           rejectUpgrade(socket, 404, 'Terminal session not found.');
           return;
         }
 
         webSocketServer.handleUpgrade(req, socket, head, (webSocket) => {
-          handleTerminalSocket(webSocket, req, sessionName, req.sessionID, req.session);
+          handleTerminalSocket(webSocket, req, sessionId, req.sessionID, req.session);
         });
       });
     });
@@ -1394,7 +1375,7 @@ module.exports = {
   OIDC_TRANSACTION_TTL_MS,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_IDLE_TTL_MS,
-  TERMINAL_SESSION_NAME_PATTERN,
+  TERMINAL_SESSION_ID_PATTERN,
   WEBSOCKET_ACTIVITY_DEBOUNCE_MS,
   applyApplicationSessionDeadline,
   createTerminalEnvironment,
@@ -1403,8 +1384,7 @@ module.exports = {
   hasExactSameOrigin,
   isApplicationSessionActive,
   isStrictBase64,
-  isValidTerminalSessionName,
-  normalizeTerminalSessionName,
+  isValidTerminalSessionId,
   normalizeIssuerUrl,
   normalizePublicOrigin,
 };

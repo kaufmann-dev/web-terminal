@@ -245,10 +245,13 @@ or control unrelated native Wayland windows.
 
 ## Everyday Use
 
-- The first visit creates a session named `main`. Use the sidebar to create and switch between
-  named sessions. Names contain 1–32 letters, numbers, or hyphens, start with a letter or number,
-  and convert uppercase letters to lowercase automatically. Each sidebar row shows the session's
-  foreground program and its working directory, such as `claude · ~/projects/app`. Desktop uses
+- The first visit opens a session automatically. **New session** opens another with one click;
+  sessions are never named, and the page URL carries a generated session ID. Each sidebar row is
+  labeled automatically: while a program that sets a terminal title is in the foreground, the row
+  shows that title (Claude Code titles it after the conversation topic); otherwise it shows the
+  working-directory folder, such as `app`. The second line shows the foreground program and its
+  working directory, such as `claude · ~/projects/app`. Labels refresh every 15 seconds and when
+  the window regains focus, and rows stay in creation order. Desktop uses
   a full-height terminal beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
   Logout button; mobile opens the sidebar with the menu button and closes it by tapping outside.
   Session actions show errors beside the creation form; routine progress and success messages
@@ -394,7 +397,7 @@ or control unrelated native Wayland windows.
   and recorded as interrupted.
 - Keyboard characters follow the active layout on the browser device. Spawned shells use a UTF-8
   locale so international characters such as `ß` work for typed and pasted input.
-- A named session accepts one browser client. Opening it in a newer tab replaces the older tab
+- A session accepts one browser client. Opening it in a newer tab replaces the older tab
   without stopping the PTY.
 - Deleting a terminal session is destructive: it sends SIGHUP to every process in the PTY's Linux
   session and escalates survivors to SIGKILL after two seconds.

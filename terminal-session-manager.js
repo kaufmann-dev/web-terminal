@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const nodePty = require('node-pty');
@@ -14,6 +15,7 @@ const MIN_COLS = 2;
 const MIN_ROWS = 1;
 const MAX_SCROLLBACK = 10000;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+const MAX_TITLE_LENGTH = 80;
 
 const SOCKET_CLOSE_CODES = Object.freeze({
   PROTOCOL_ERROR: 4000,
@@ -71,7 +73,8 @@ function readLinuxForeground(shellPid, procRoot = '/proc') {
     }
 
     const foregroundPid = Number(stat.slice(commandEnd + 2).trim().split(/\s+/)[5]);
-    const pid = String(foregroundPid > 0 ? foregroundPid : shellPid);
+    const group = foregroundPid > 0 ? foregroundPid : shellPid;
+    const pid = String(group);
     const directory = fs.readlinkSync(path.join(procRoot, pid, 'cwd'));
     let program = fs.readFileSync(path.join(procRoot, pid, 'comm'), 'utf8').trim();
     if (program === 'MainThread') {
@@ -81,7 +84,7 @@ function readLinuxForeground(shellPid, procRoot = '/proc') {
       const script = command === 'node' ? args.slice(1).find((arg) => arg && !arg.startsWith('-')) : null;
       program = script ? path.basename(script) : command;
     }
-    return program ? { program, directory } : null;
+    return program ? { group, program, directory } : null;
   } catch {
     return null;
   }
@@ -122,19 +125,29 @@ async function signalLinuxSession(sessionId, signal, {
   }
 }
 
+// Programs set titles with arbitrary text; spinners and status glyphs often lead it.
+function cleanTerminalTitle(title) {
+  const text = String(title)
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .trim();
+  return text ? text.slice(0, MAX_TITLE_LENGTH).trim() : null;
+}
+
+function folderLabel(directory) {
+  if (!directory) {
+    return null;
+  }
+  return directory === '~' || directory === '/' ? directory : path.posix.basename(directory);
+}
+
 function writeTerminal(terminal, data) {
   return new Promise((resolve) => terminal.write(data, resolve));
 }
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-class DuplicateTerminalSessionError extends Error {
-  constructor(name) {
-    super(`Terminal session already exists: ${name}`);
-    this.code = 'TERMINAL_SESSION_EXISTS';
-  }
 }
 
 class TerminalSessionManager {
@@ -155,30 +168,34 @@ class TerminalSessionManager {
   }
 
   listSessions() {
-    return [...this.sessions.values()]
-      .map((session) => {
-        const foreground = session.exited ? null : this.readForeground(session.ptyProcess.pid);
-        return {
-          name: session.name,
-          program: foreground ? foreground.program : null,
-          directory: foreground ? this._displayPath(foreground.directory) : null,
-        };
-      })
-      .sort((a, b) => {
-        if (a.name === 'main') return -1;
-        if (b.name === 'main') return 1;
-        return a.name.localeCompare(b.name);
-      });
+    return [...this.sessions.values()].map((session) => {
+      const foreground = session.exited ? null : this.readForeground(session.ptyProcess.pid);
+      const directory = foreground ? this._displayPath(foreground.directory) : null;
+      // A title belongs to the non-shell process group that was in the foreground when it was set.
+      const title = foreground
+        && session.title
+        && foreground.group !== session.ptyProcess.pid
+        && foreground.group === session.title.group
+        ? session.title.text
+        : null;
+      return {
+        id: session.id,
+        label: title || folderLabel(directory) || 'shell',
+        program: foreground ? foreground.program : null,
+        directory,
+      };
+    });
   }
 
-  hasSession(name) {
-    return this.sessions.has(name);
+  hasSession(id) {
+    return this.sessions.has(id);
   }
 
-  createSession(name) {
-    if (this.sessions.has(name)) {
-      throw new DuplicateTerminalSessionError(name);
-    }
+  createSession() {
+    let id;
+    do {
+      id = crypto.randomBytes(4).toString('hex');
+    } while (this.sessions.has(id));
 
     const terminal = new this.TerminalClass({
       allowProposedApi: true,
@@ -210,11 +227,12 @@ class TerminalSessionManager {
 
     let resolveExit;
     const session = {
-      name,
+      id,
       terminal,
       serializeAddon,
       ptyProcess,
       client: null,
+      title: null,
       queue: Promise.resolve(),
       deleting: false,
       exited: false,
@@ -233,6 +251,12 @@ class TerminalSessionManager {
       session.ptyProcess.write(data);
     }));
 
+    session.disposables.push(terminal.onTitleChange((title) => {
+      const text = cleanTerminalTitle(title);
+      const foreground = text ? this.readForeground(ptyProcess.pid) : null;
+      session.title = text && foreground ? { text, group: foreground.group } : null;
+    }));
+
     session.disposables.push(ptyProcess.onData((data) => {
       this._enqueue(session, async () => {
         if (session.disposed) {
@@ -249,12 +273,12 @@ class TerminalSessionManager {
       this._handleExit(session, event);
     }));
 
-    this.sessions.set(name, session);
-    return { name };
+    this.sessions.set(id, session);
+    return { id };
   }
 
-  async attachClient(name, socket, loginSessionId, cols, rows) {
-    const session = this.sessions.get(name);
+  async attachClient(id, socket, loginSessionId, cols, rows) {
+    const session = this.sessions.get(id);
     if (!session || session.exited || session.deleting) {
       return false;
     }
@@ -307,8 +331,8 @@ class TerminalSessionManager {
     return session.client === client && client.ready;
   }
 
-  detachClient(name, socket) {
-    const session = this.sessions.get(name);
+  detachClient(id, socket) {
+    const session = this.sessions.get(id);
     if (session && session.client && session.client.socket === socket) {
       session.client = null;
       return true;
@@ -316,8 +340,8 @@ class TerminalSessionManager {
     return false;
   }
 
-  writeInput(name, socket, data) {
-    const session = this._getReadySessionForSocket(name, socket);
+  writeInput(id, socket, data) {
+    const session = this._getReadySessionForSocket(id, socket);
     if (!session || typeof data !== 'string') {
       return false;
     }
@@ -325,8 +349,8 @@ class TerminalSessionManager {
     return true;
   }
 
-  writeBinary(name, socket, data) {
-    const session = this._getReadySessionForSocket(name, socket);
+  writeBinary(id, socket, data) {
+    const session = this._getReadySessionForSocket(id, socket);
     if (!session || !Buffer.isBuffer(data)) {
       return false;
     }
@@ -334,14 +358,14 @@ class TerminalSessionManager {
     return true;
   }
 
-  resize(name, socket, cols, rows) {
-    const session = this._getReadySessionForSocket(name, socket);
+  resize(id, socket, cols, rows) {
+    const session = this._getReadySessionForSocket(id, socket);
     if (!session || !isValidTerminalSize(cols, rows)) {
       return false;
     }
 
     return this._enqueue(session, async () => {
-      if (this._getReadySessionForSocket(name, socket) !== session) {
+      if (this._getReadySessionForSocket(id, socket) !== session) {
         return false;
       }
       session.terminal.resize(cols, rows);
@@ -350,14 +374,14 @@ class TerminalSessionManager {
     });
   }
 
-  async deleteSession(name) {
-    const session = this.sessions.get(name);
+  async deleteSession(id) {
+    const session = this.sessions.get(id);
     if (!session) {
       return false;
     }
 
     session.deleting = true;
-    this.sessions.delete(name);
+    this.sessions.delete(id);
     if (session.client) {
       this._sendJson(session, session.client, {
         type: 'exit',
@@ -377,7 +401,7 @@ class TerminalSessionManager {
       session.ptyProcess.kill('SIGHUP');
     } catch (err) {
       if (err.code !== 'ESRCH') {
-        this.logger.warn(`Unable to signal terminal session ${name}: ${err.message}`);
+        this.logger.warn(`Unable to signal terminal session ${id}: ${err.message}`);
       }
     }
 
@@ -388,7 +412,7 @@ class TerminalSessionManager {
         session.ptyProcess.kill('SIGKILL');
       } catch (err) {
         if (err.code !== 'ESRCH') {
-          this.logger.warn(`Unable to kill terminal session ${name}: ${err.message}`);
+          this.logger.warn(`Unable to kill terminal session ${id}: ${err.message}`);
         }
       }
       await Promise.race([session.exitPromise, delay(250)]);
@@ -404,11 +428,11 @@ class TerminalSessionManager {
   }
 
   async shutdown() {
-    await Promise.all([...this.sessions.keys()].map((name) => this.deleteSession(name)));
+    await Promise.all([...this.sessions.keys()].map((id) => this.deleteSession(id)));
   }
 
-  _getReadySessionForSocket(name, socket) {
-    const session = this.sessions.get(name);
+  _getReadySessionForSocket(id, socket) {
+    const session = this.sessions.get(id);
     if (!session || !session.client || !session.client.ready) {
       return null;
     }
@@ -418,7 +442,7 @@ class TerminalSessionManager {
   _enqueue(session, task) {
     const operation = session.queue.then(task);
     session.queue = operation.catch((err) => {
-      this.logger.error(`Terminal session ${session.name} queue error: ${err.message}`);
+      this.logger.error(`Terminal session ${session.id} queue error: ${err.message}`);
     });
     return operation;
   }
@@ -428,8 +452,8 @@ class TerminalSessionManager {
       return;
     }
     session.exited = true;
-    if (this.sessions.get(session.name) === session) {
-      this.sessions.delete(session.name);
+    if (this.sessions.get(session.id) === session) {
+      this.sessions.delete(session.id);
     }
 
     this._enqueue(session, async () => {
@@ -533,7 +557,6 @@ class TerminalSessionManager {
 }
 
 module.exports = {
-  DuplicateTerminalSessionError,
   INITIAL_COLS,
   INITIAL_ROWS,
   MAX_BUFFERED_BYTES,
@@ -544,6 +567,7 @@ module.exports = {
   MIN_ROWS,
   SOCKET_CLOSE_CODES,
   TerminalSessionManager,
+  cleanTerminalTitle,
   isValidTerminalSize,
   delay,
   listLinuxSessionPids,

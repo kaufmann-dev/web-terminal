@@ -21,40 +21,30 @@ const {
 
 class FakeSessionManager {
   constructor() {
-    this.sessions = new Set(['main']);
+    this.sessions = new Set(['0a1b2c3d']);
     this.attachedSockets = new Set();
     this.detachedSockets = new Set();
   }
 
   listSessions() {
-    return [...this.sessions].map((name) => ({ name, program: 'bash', directory: '~' }));
+    return [...this.sessions].map((id) => ({ id, label: '~', program: 'bash', directory: '~' }));
   }
 
-  hasSession(name) {
-    return this.sessions.has(name);
+  hasSession(id) {
+    return this.sessions.has(id);
   }
 
-  createSession(name) {
-    if (this.sessions.has(name)) {
-      const error = new Error('duplicate');
-      error.code = 'TERMINAL_SESSION_EXISTS';
-      throw error;
-    }
-    this.sessions.add(name);
-    return { name };
+  async deleteSession(id) {
+    return this.sessions.delete(id);
   }
 
-  async deleteSession(name) {
-    return this.sessions.delete(name);
-  }
-
-  async attachClient(name, socket) {
-    if (!this.sessions.has(name)) return false;
+  async attachClient(id, socket) {
+    if (!this.sessions.has(id)) return false;
     this.attachedSockets.add(socket);
     return true;
   }
 
-  detachClient(name, socket) {
+  detachClient(id, socket) {
     this.attachedSockets.delete(socket);
     this.detachedSockets.add(socket);
     return true;
@@ -129,7 +119,7 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
 
   const port = service.server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
-  const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?session=main`;
+  const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?session=0a1b2c3d`;
   assert.equal(await rejectedUpgrade(wsUrl, { origin: publicOrigin }), 401);
   assert.equal(await rejectedUpgrade(wsUrl, {
     origin: 'https://attacker.example',
@@ -173,7 +163,7 @@ test('WebSocket upgrades require authentication and exact same-origin', async (t
   assert.ok(logoutResponse.headers.getSetCookie().some((cookie) => cookie.startsWith('terminal.sid=;')));
   assert.ok(logoutResponse.headers.getSetCookie().some((cookie) => cookie.startsWith('terminal.csrf=;')));
   assert.equal((await logoutClose).code, SOCKET_CLOSE_CODES.LOGGED_OUT);
-  assert.equal(sessionManager.sessions.has('main'), true);
+  assert.equal(sessionManager.sessions.has('0a1b2c3d'), true);
 });
 
 test('PUBLIC_ORIGIN accepts only normalized HTTP(S) origins', () => {
@@ -205,7 +195,7 @@ test('WebSocket input activity is debounced and heartbeat expiry closes only the
   const { cookies } = await authenticate(baseUrl, openidClient);
   const initialSession = (await getStoredSessions(service.sessionStore))[0];
   const socket = await openSocket(
-    `ws://127.0.0.1:${port}/ws/terminal?session=main`,
+    `ws://127.0.0.1:${port}/ws/terminal?session=0a1b2c3d`,
     { origin: publicOrigin, headers: { Cookie: cookieHeader(cookies) } },
   );
   socket.send(JSON.stringify({ type: 'attach', cols: 80, rows: 24 }));
@@ -231,7 +221,7 @@ test('WebSocket input activity is debounced and heartbeat expiry closes only the
   currentTime += SESSION_IDLE_TTL_MS;
   const closed = await closePromise;
   assert.equal(closed.code, SOCKET_CLOSE_CODES.AUTH_EXPIRED);
-  assert.equal(sessionManager.sessions.has('main'), true);
+  assert.equal(sessionManager.sessions.has('0a1b2c3d'), true);
   assert.equal((await getStoredSessions(service.sessionStore)).length, 0);
 });
 

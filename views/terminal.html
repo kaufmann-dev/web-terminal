@@ -71,15 +71,10 @@
         </div>
       </div>
 
-      <form id="session-form" class="session-form">
-        <label for="session-name">New session</label>
-        <div class="session-form-row">
-          <input id="session-name" name="sessionName" type="text" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9\-]{0,31}" placeholder="project-name" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-          <button id="create-session-btn" class="btn-session-create" type="submit">Add</button>
-        </div>
-        <p class="session-name-hint">Lowercase letters, numbers and hyphens are allowed.</p>
+      <div class="session-create">
+        <button id="create-session-btn" class="btn-session-create" type="button">New session</button>
         <p id="session-error" class="session-error" role="alert" hidden></p>
-      </form>
+      </div>
 
       <div id="session-list" class="session-list" aria-label="Available sessions"></div>
       <div class="sidebar-actions">

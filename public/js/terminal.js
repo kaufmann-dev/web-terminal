@@ -15,7 +15,6 @@
     },
     { readClipboardContent },
     { decodeOsc52ClipboardWrite },
-    { bindTerminalSessionNameNormalization },
     { VoiceRecorder, bindVoiceControls },
     { bindFileExplorer },
     { bindScheduledJobs },
@@ -25,7 +24,6 @@
     import('/static/js/terminal-input.mjs'),
     import('/static/js/clipboard-reader.mjs'),
     import('/static/js/terminal-clipboard.mjs'),
-    import('/static/js/session-name.mjs'),
     import('/static/js/voice-recorder.mjs'),
     import('/static/js/file-explorer.mjs'),
     import('/static/js/scheduled-jobs.mjs'),
@@ -39,8 +37,6 @@
   const sidebar = document.getElementById('session-sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-  const sessionForm = document.getElementById('session-form');
-  const sessionNameInput = document.getElementById('session-name');
   const createSessionBtn = document.getElementById('create-session-btn');
   const sessionList = document.getElementById('session-list');
   const sessionError = document.getElementById('session-error');
@@ -57,15 +53,13 @@
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
   const visualViewport = window.visualViewport;
   const mobileViewportOffsetTopProperty = '--mobile-visual-viewport-offset-top';
-  const normalizeSessionNameInput = bindTerminalSessionNameNormalization(sessionNameInput);
 
-  const sessionNamePattern = /^[a-z0-9][a-z0-9-]{0,31}$/;
   const refreshIntervalMs = 15000;
   const noReconnectCloseCodes = new Set([4000, 4001, 4002, 4003, 4004]);
 
   let csrfToken = '';
   let sessions = [];
-  let activeSessionName = null;
+  let activeSessionId = null;
   let activeController = null;
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
@@ -216,10 +210,10 @@
     sidebarToggle.title = toggleLabel;
   }
 
-  function updateTerminalUrl(name) {
+  function updateTerminalUrl(id) {
     const url = new URL(window.location.href);
-    if (name) {
-      url.searchParams.set('session', name);
+    if (id) {
+      url.searchParams.set('session', id);
     } else {
       url.searchParams.delete('session');
     }
@@ -227,8 +221,8 @@
   }
 
   class TerminalController {
-    constructor(sessionName, onSessionExit) {
-      this.sessionName = sessionName;
+    constructor(sessionId, onSessionExit) {
+      this.sessionId = sessionId;
       this.onSessionExit = onSessionExit;
       this.socket = null;
       this.disposed = false;
@@ -828,7 +822,7 @@
       updateMobileTerminalControls();
       setConnectionStatus('Connecting…');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${protocol}//${window.location.host}/ws/terminal?session=${encodeURIComponent(this.sessionName)}`;
+      const url = `${protocol}//${window.location.host}/ws/terminal?session=${encodeURIComponent(this.sessionId)}`;
       const socket = new WebSocket(url);
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
@@ -973,7 +967,7 @@
         if (this.disposed) {
           return;
         }
-        if (!(data.sessions || []).some((session) => session.name === this.sessionName)) {
+        if (!(data.sessions || []).some((session) => session.id === this.sessionId)) {
           setConnectionStatus('Terminal session ended.', true);
           this.onSessionExit();
           return;
@@ -1111,7 +1105,7 @@
 
   function showEmptyTerminal(message) {
     disposeActiveController();
-    activeSessionName = null;
+    activeSessionId = null;
     terminalHost.hidden = true;
     setConnectionStatus('');
     setClipboardStatus('');
@@ -1120,18 +1114,18 @@
     updateTerminalUrl(null);
   }
 
-  function selectSession(name, { closeSidebar = false } = {}) {
-    const selectedSession = sessions.find((session) => session.name === name);
+  function selectSession(id, { closeSidebar = false } = {}) {
+    const selectedSession = sessions.find((session) => session.id === id);
     if (!selectedSession) {
       return;
     }
 
-    if (activeSessionName !== name || !activeController) {
+    if (activeSessionId !== id || !activeController) {
       disposeActiveController();
-      activeSessionName = name;
+      activeSessionId = id;
       terminalPlaceholder.hidden = true;
       terminalHost.hidden = false;
-      activeController = new TerminalController(name, () => {
+      activeController = new TerminalController(id, () => {
         window.setTimeout(() => {
           refreshSessions().catch((err) => setSessionError(err.message));
         }, 0);
@@ -1139,7 +1133,7 @@
       updateMobileTerminalControls();
     }
 
-    updateTerminalUrl(name);
+    updateTerminalUrl(id);
     renderSessions();
     if (closeSidebar) {
       setSidebarOpen(false);
@@ -1149,36 +1143,36 @@
   function buildSessionRow(session) {
     const row = document.createElement('div');
     row.className = 'session-row';
-    if (session.name === activeSessionName) {
+    if (session.id === activeSessionId) {
       row.classList.add('is-active');
     }
 
     const openButton = document.createElement('button');
     openButton.type = 'button';
     openButton.className = 'session-open';
-    openButton.setAttribute('aria-pressed', String(session.name === activeSessionName));
-    openButton.title = `Open ${session.name}`;
+    openButton.setAttribute('aria-pressed', String(session.id === activeSessionId));
+    openButton.title = `Open ${session.label}`;
 
-    const name = document.createElement('span');
-    name.className = 'session-row-name';
-    name.textContent = session.name;
+    const label = document.createElement('span');
+    label.className = 'session-row-name';
+    label.textContent = session.label;
 
     const details = document.createElement('span');
     details.className = 'session-row-details';
     details.textContent = [session.program, session.directory].filter(Boolean).join(' · ');
     details.hidden = !details.textContent;
 
-    openButton.append(name, details);
-    openButton.addEventListener('click', () => selectSession(session.name, { closeSidebar: true }));
+    openButton.append(label, details);
+    openButton.addEventListener('click', () => selectSession(session.id, { closeSidebar: true }));
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'session-delete';
-    deleteButton.title = `Delete ${session.name}`;
-    deleteButton.setAttribute('aria-label', `Delete terminal session ${session.name}`);
+    deleteButton.title = `Delete ${session.label}`;
+    deleteButton.setAttribute('aria-label', `Delete terminal session ${session.label}`);
     deleteButton.textContent = '×';
     deleteButton.disabled = mutationInProgress;
-    deleteButton.addEventListener('click', () => deleteSession(session.name));
+    deleteButton.addEventListener('click', () => deleteSession(session));
 
     row.append(openButton, deleteButton);
     return row;
@@ -1200,69 +1194,46 @@
     return sessions;
   }
 
+  function postSession() {
+    return apiRequest('/api/terminal-sessions', {
+      method: 'POST',
+      headers: { 'CSRF-Token': csrfToken },
+    });
+  }
+
   async function refreshSessions({ createDefault = false, preferredSession = null } = {}) {
     await fetchSessions();
 
     if (createDefault && sessions.length === 0) {
-      try {
-        await apiRequest('/api/terminal-sessions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'CSRF-Token': csrfToken,
-          },
-          body: JSON.stringify({ name: 'main' }),
-        });
-      } catch (err) {
-        if (!(err instanceof ApiError) || err.status !== 409) {
-          throw err;
-        }
-      }
+      await postSession();
       await fetchSessions();
     }
 
     renderSessions();
 
-    const requestedSession = preferredSession || activeSessionName;
-    if (requestedSession && sessions.some((session) => session.name === requestedSession)) {
+    const requestedSession = preferredSession || activeSessionId;
+    if (requestedSession && sessions.some((session) => session.id === requestedSession)) {
       selectSession(requestedSession);
       return;
     }
 
     if (sessions.length > 0) {
-      selectSession(sessions[0].name);
+      selectSession(sessions[0].id);
       return;
     }
 
     showEmptyTerminal('Create a session to open a terminal.');
   }
 
-  async function createSession(event) {
-    event.preventDefault();
-    const name = normalizeSessionNameInput().trim();
-
-    if (!sessionNamePattern.test(name)) {
-      setSessionError('Use 1-32 letters, numbers, or hyphens.');
-      sessionNameInput.focus();
-      return;
-    }
-
+  async function createSession() {
     mutationInProgress = true;
     createSessionBtn.disabled = true;
     setSessionError('');
     renderSessions();
 
     try {
-      await apiRequest('/api/terminal-sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'CSRF-Token': csrfToken,
-        },
-        body: JSON.stringify({ name }),
-      });
-      sessionNameInput.value = '';
-      await refreshSessions({ preferredSession: name });
+      const data = await postSession();
+      await refreshSessions({ preferredSession: data.session.id });
     } catch (err) {
       setSessionError(err.message);
     } finally {
@@ -1272,9 +1243,9 @@
     }
   }
 
-  async function deleteSession(name) {
+  async function deleteSession(session) {
     const confirmed = window.confirm(
-      `Delete “${name}”? All processes running in this session will stop.`,
+      `Delete “${session.label}”? All processes running in this session will stop.`,
     );
     if (!confirmed) {
       return;
@@ -1286,12 +1257,12 @@
     renderSessions();
 
     try {
-      await apiRequest(`/api/terminal-sessions/${encodeURIComponent(name)}`, {
+      await apiRequest(`/api/terminal-sessions/${encodeURIComponent(session.id)}`, {
         method: 'DELETE',
         headers: { 'CSRF-Token': csrfToken },
       });
 
-      if (activeSessionName === name) {
+      if (activeSessionId === session.id) {
         showEmptyTerminal('Selecting another terminal session…');
       }
       await refreshSessions();
@@ -1366,7 +1337,7 @@
     setSidebarOpen(!document.body.classList.contains('sessions-open'));
   });
   sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
-  sessionForm.addEventListener('submit', createSession);
+  createSessionBtn.addEventListener('click', createSession);
   for (const button of logoutButtons) {
     button.addEventListener('click', logout);
   }

@@ -57,15 +57,19 @@ node --test test/*.test.js
   HTTP, WebSocket upgrade, and heartbeat paths. Passive traffic must not extend either deadline.
 - Keep terminal WebSockets in `ws` no-server mode at `/ws/terminal`. Authenticate upgrades with
   the Express session middleware, require `Origin` to exactly match the normalized
-  `PUBLIC_ORIGIN`, validate session names, and never create a session during an upgrade. Do not
+  `PUBLIC_ORIGIN`, validate session IDs, and never create a session during an upgrade. Do not
   infer the public origin from reverse-proxy headers.
 - Keep application-managed terminal sessions process-local in `terminal-session-manager.js`. Each
-  named session owns one `node-pty` Bash process, a headless xterm with 10,000 lines of scrollback,
-  an ordered state/output queue, and at most one attached browser client.
+  session, keyed by a server-generated random ID, owns one `node-pty` Bash process, a headless xterm
+  with 10,000 lines of scrollback, an ordered state/output queue, and at most one attached browser
+  client.
+- Users never name sessions. Label each session with the terminal title set by its foreground
+  program, only while the non-shell process group that set it remains in the foreground; otherwise
+  label it with the working-directory folder. List sessions in creation order.
 - Feed PTY output through headless xterm before sending it. Reconnect snapshots must serialize
   retained normal scrollback and the active/alternate screen before live output resumes.
 - Browser disconnects, refresh, session switching, and logout must detach clients without stopping
-  PTYs. A newer client replaces the older client for the same named session.
+  PTYs. A newer client replaces the older client for the same session.
 - Treat terminal-session deletion as the only UI operation that intentionally stops PTY processes.
   Signal every process in the PTY's Linux session with SIGHUP, then SIGKILL survivors after two
   seconds. Natural shell exit removes the session.

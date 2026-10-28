@@ -291,14 +291,14 @@ test('interactive HTTP activity extends idle expiry but passive requests do not'
 
 test('accepted terminal-session mutations count as interactive activity', async (t) => {
   let currentTime = 1_800_000_000_000;
-  const names = new Set();
+  const ids = new Set();
   const sessionManager = {
-    listSessions: () => [...names].map((name) => ({ name, program: 'bash', directory: '~' })),
-    createSession: (name) => {
-      names.add(name);
-      return { name };
+    listSessions: () => [...ids].map((id) => ({ id, label: '~', program: 'bash', directory: '~' })),
+    createSession: () => {
+      ids.add('0a1b2c3d');
+      return { id: '0a1b2c3d' };
     },
-    deleteSession: async (name) => names.delete(name),
+    deleteSession: async (id) => ids.delete(id),
     shutdown: async () => {},
   };
   const openidClient = createFakeOpenidClient();
@@ -313,13 +313,12 @@ test('accepted terminal-session mutations count as interactive activity', async 
   const createResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'CSRF-Token': csrfToken,
       Cookie: cookieHeader(cookies),
     },
-    body: JSON.stringify({ name: 'work' }),
   });
   assert.equal(createResponse.status, 201);
+  assert.deepEqual(await createResponse.json(), { session: { id: '0a1b2c3d' } });
   assert.equal((await onlyStoredSession(service.sessionStore)).lastActivityAt, currentTime);
 
   currentTime += 1000;
@@ -327,10 +326,11 @@ test('accepted terminal-session mutations count as interactive activity', async 
     headers: { Cookie: cookieHeader(cookies) },
   });
   assert.equal(pollResponse.status, 200);
+  assert.deepEqual((await pollResponse.json()).sessions.map((session) => session.id), ['0a1b2c3d']);
   assert.equal((await onlyStoredSession(service.sessionStore)).lastActivityAt, currentTime - 1000);
 
   currentTime += 1000;
-  const deleteResponse = await fetch(`${baseUrl}/api/terminal-sessions/work`, {
+  const deleteResponse = await fetch(`${baseUrl}/api/terminal-sessions/0a1b2c3d`, {
     method: 'DELETE',
     headers: {
       'CSRF-Token': csrfToken,
@@ -339,37 +339,6 @@ test('accepted terminal-session mutations count as interactive activity', async 
   });
   assert.equal(deleteResponse.status, 204);
   assert.equal((await onlyStoredSession(service.sessionStore)).lastActivityAt, currentTime);
-});
-
-test('terminal session creation normalizes uppercase letters', async (t) => {
-  const names = new Set();
-  const sessionManager = {
-    listSessions: () => [...names].map((name) => ({ name, program: 'bash', directory: '~' })),
-    createSession: (name) => {
-      names.add(name);
-      return { name };
-    },
-    shutdown: async () => {},
-  };
-  const openidClient = createFakeOpenidClient();
-  const { baseUrl } = await startService(t, { openidClient, sessionManager });
-  const { cookies, csrfToken } = await authenticate(baseUrl, openidClient);
-
-  const response = await fetch(`${baseUrl}/api/terminal-sessions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'CSRF-Token': csrfToken,
-      Cookie: cookieHeader(cookies),
-    },
-    body: JSON.stringify({ name: 'My-PROJECT-2' }),
-  });
-
-  assert.equal(response.status, 201);
-  assert.deepEqual(await response.json(), {
-    session: { name: 'my-project-2' },
-  });
-  assert.deepEqual([...names], ['my-project-2']);
 });
 
 test('idle and absolute deadlines invalidate local authorization', async (t) => {
