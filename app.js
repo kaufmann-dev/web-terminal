@@ -210,6 +210,12 @@ function rejectUpgrade(socket, statusCode, message) {
   );
 }
 
+// RFC 5987 encoding for Content-Disposition filename* values.
+function encodeFilename(name) {
+  return encodeURIComponent(name)
+    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 function isStrictBase64(value) {
   return value.length % 4 === 0
     && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
@@ -355,6 +361,7 @@ function createWebTerminal(options = {}) {
   const voiceRequests = new Map();
   const uploadRequests = new Map();
   const uploadTasks = new Set();
+  const archiveRequests = new Set();
   const transcribe = options.transcribe || createTranscriptionService({
     apiKey: config.elevenlabsApiKey,
   });
@@ -667,8 +674,7 @@ function createWebTerminal(options = {}) {
       return res.status(failure.status).json({ error: failure.message });
     }
     const inline = file.type && req.query.download !== '1';
-    const filename = encodeURIComponent(file.name)
-      .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+    const filename = encodeFilename(file.name);
     res.set({
       // no-transform keeps compression from dropping Content-Length and download progress.
       'Cache-Control': 'no-store, no-transform',
@@ -705,6 +711,31 @@ function createWebTerminal(options = {}) {
       return res.end();
     }
     return pipeline(file.handle.createReadStream({ start, end }), res, () => {});
+  });
+
+  // Folders download as streamed ZIP attachments; hidden entries are included only on request.
+  app.get('/api/files/archive', requireApiAuth, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const abort = new AbortController();
+    let archive;
+    try {
+      archive = await workspaceFileStore.archive(req.query.path, {
+        includeHidden: req.query.hidden === '1', signal: abort.signal });
+    } catch (error) {
+      const failure = uploadError(error);
+      return res.status(failure.status).json({ error: failure.message });
+    }
+    archiveRequests.add(abort);
+    res.set({
+      'Cache-Control': 'no-store, no-transform',
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeFilename(`${archive.name}.zip`)}`,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return pipeline(archive.stream, res, () => {
+      abort.abort();
+      archiveRequests.delete(abort);
+    });
   });
 
   app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
@@ -1304,6 +1335,7 @@ function createWebTerminal(options = {}) {
       }
       for (const abort of uploadRequests.values()) abort.abort();
       await Promise.all(uploadTasks);
+      for (const abort of archiveRequests) abort.abort();
       await Promise.all([sessionManager.shutdown(), jobManager.shutdown()]);
       if (webSocketServer) {
         for (const socket of webSocketServer.clients) {

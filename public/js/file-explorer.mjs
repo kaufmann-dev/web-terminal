@@ -148,6 +148,14 @@ export function fileContentUrl(root, path, { download = false } = {}) {
   return `/api/files/content/${relative}${download ? '?download=1' : ''}`;
 }
 
+export function folderName(directory) {
+  return directory.split('/').filter(Boolean).pop() || 'workspace';
+}
+
+export function folderArchiveUrl(path, { includeHidden = false } = {}) {
+  return `/api/files/archive?${new URLSearchParams({ path, ...(includeHidden ? { hidden: '1' } : {}) })}`;
+}
+
 export function formatModified(ms, now = Date.now(), locale = undefined) {
   const date = new Date(ms);
   const options = { month: 'short', day: 'numeric' };
@@ -215,6 +223,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   const cancel = get('upload-cancel');
   const fields = get('upload-destination-fields');
   const choose = get('upload-choose');
+  const downloadFolder = get('upload-download-folder');
   const workspace = document.querySelector('.terminal-workspace');
   const storageKey = 'terminal.files-directory';
   let root = null;
@@ -290,7 +299,19 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     breadcrumbs.classList.toggle('upload-breadcrumbs-clipped', breadcrumbs.scrollLeft > 0);
   }
 
-  function folderRow(label, target, iconPath, ariaLabel) {
+  // The ZIP holds what the list shows: hidden entries only while they are shown.
+  function setArchiveLink(link, path) {
+    const name = folderName(path);
+    const label = `Download ${name} as ZIP${showHidden ? ', including hidden files' : ''}`;
+    link.href = folderArchiveUrl(path, { includeHidden: showHidden });
+    link.download = `${name}.zip`;
+    link.title = label;
+    link.setAttribute('aria-label', label);
+    link.removeAttribute('aria-disabled');
+  }
+
+  function folderRow(label, target, iconPath, { ariaLabel, download = true } = {}) {
+    const entry = element('div', '', 'files-entry');
     const row = button('', () => browse(target, { focusFolders: true }), 'app-list-row upload-folder');
     const name = element('span', label, 'upload-folder-name');
     const chevron = element('span', '›', 'app-list-chevron');
@@ -298,12 +319,33 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     row.append(icon(iconPath, 'app-list-icon'), name, chevron);
     row.title = target;
     if (ariaLabel) row.setAttribute('aria-label', ariaLabel);
-    return row;
+    entry.append(row);
+    if (download) {
+      const link = element('a', '', 'icon-button icon-button-compact files-download');
+      setArchiveLink(link, target);
+      link.append(icon(DOWNLOAD_ICON));
+      entry.append(link);
+    } else {
+      // Keeps this row's chevron in line with the folder rows that have a download button.
+      const spacer = element('span', '', 'files-action-spacer');
+      spacer.setAttribute('aria-hidden', 'true');
+      entry.append(spacer);
+    }
+    return entry;
+  }
+
+  function renderFolderDownload() {
+    if (destination) {
+      setArchiveLink(downloadFolder, destination);
+    } else {
+      for (const name of ['href', 'download']) downloadFolder.removeAttribute(name);
+      downloadFolder.setAttribute('aria-disabled', 'true');
+    }
   }
 
   function fileRow(file) {
     const filePath = `${destination.replace(/\/$/, '')}/${file.name}`;
-    const entry = element('div', '', 'files-entry');
+    const entry = element('div', '', 'files-entry files-entry-file');
     const link = element('a', '', 'app-list-row files-file');
     link.href = fileContentUrl(root, filePath);
     link.target = '_blank';
@@ -339,13 +381,14 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     folders.replaceChildren();
     folders.setAttribute('aria-busy', String(browsing));
     renderHiddenToggle();
+    renderFolderDownload();
     if (loading) {
       folders.append(element('p', 'Loading…', 'app-list-note'));
       return;
     }
     if (!destination) return;
     const parent = parentDirectory(root, destination);
-    if (parent) folders.append(folderRow('..', parent, PARENT_ICON, 'Parent folder'));
+    if (parent) folders.append(folderRow('..', parent, PARENT_ICON, { ariaLabel: 'Parent folder', download: false }));
     const query = filter.hidden ? '' : filter.value;
     const visibleFolders = filterEntries(listedFolders, query);
     const visibleFiles = filterEntries(listedFiles, query);

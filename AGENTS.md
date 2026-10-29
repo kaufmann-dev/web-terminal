@@ -84,12 +84,16 @@ node --test test/*.test.js
   recorded as interrupted. Job APIs require authentication, mutations require CSRF, and only
   mutations and manual runs record interactive activity.
 - Keep workspace file access in `workspace-file-store.js`, rooted at `TERMINAL_WORKDIR` and resolved
-  through pinned directory descriptors with `O_NOFOLLOW`. `/api/files/content/*` is the only route
-  that serves workspace files. Treat them as untrusted: render inline only the allowlisted image,
+  through pinned directory descriptors with `O_NOFOLLOW`. `/api/files/content/*` serves single
+  workspace files and `/api/files/archive` serves folders; no other route serves workspace content.
+  Folder archives are streamed with the exact `yazl` dependency as `application/zip` attachments
+  with `nosniff`, contain only regular files and directories opened through their parents' pinned
+  descriptors, include dot-entries only when requested, and are aborted on disconnect and
+  shutdown. Treat workspace files as untrusted: render inline only the allowlisted image,
   PDF, audio, and video extensions, serve any other valid UTF-8 file as `text/plain`, and send
   everything else as an attachment. Every non-PDF inline response must carry the `sandbox`
-  Content-Security-Policy and `nosniff`; never serve workspace HTML as `text/html`. File reads
-  require authentication and do not record interactive activity.
+  Content-Security-Policy and `nosniff`; never serve workspace HTML as `text/html`. File and folder
+  reads require authentication and do not record interactive activity.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
 - Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.

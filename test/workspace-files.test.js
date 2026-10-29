@@ -8,6 +8,9 @@ const { PassThrough, Readable } = require('node:stream');
 const { once } = require('node:events');
 const http = require('node:http');
 const test = require('node:test');
+const { inflateRawSync } = require('node:zlib');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { WorkspaceFileStore, MAX_UPLOAD_BYTES, inlineType } = require('../workspace-file-store');
 const { createWebTerminal } = require('../app');
 const { authenticate, cookieHeader, createFakeOpenidClient, oidcServiceOptions } = require('./oidc-test-helpers');
@@ -22,6 +25,37 @@ async function workspace(t) {
   await fs.symlink(path.join(root, 'outside'), path.join(directory, 'escape'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return { root, directory, store: new WorkspaceFileStore({ directory }) };
+}
+
+// Reads a ZIP without ZIP64 or a comment: the central directory gives names, methods, modes and offsets.
+function readZip(buffer) {
+  const end = buffer.length - 22;
+  assert.equal(buffer.readUInt32LE(end), 0x06054b50);
+  const entries = [];
+  let offset = buffer.readUInt32LE(end + 16);
+  for (let index = 0; index < buffer.readUInt16LE(end + 10); index += 1) {
+    assert.equal(buffer.readUInt32LE(offset), 0x02014b50);
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const local = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength);
+    const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28);
+    const raw = buffer.subarray(start, start + compressedSize);
+    entries.push({ name, method, mode: buffer.readUInt32LE(offset + 38) >>> 16,
+      data: method === 8 ? inflateRawSync(raw) : raw });
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+async function archiveEntries(store, value, options = {}) {
+  const { stream } = await store.archive(value, { signal: new AbortController().signal, ...options });
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return readZip(Buffer.concat(chunks));
 }
 
 function source(data, headers = {}) {
@@ -146,6 +180,51 @@ test('files open only as regular files inside the workspace', async (t) => {
   await assert.rejects(store.openFile('project/missing'), { code: 'ENOENT' });
 });
 
+test('folders archive as ZIPs of regular files and directories inside the workspace', async (t) => {
+  const { directory, root, store } = await workspace(t);
+  const project = path.join(directory, 'project');
+  const text = 'compressible '.repeat(200);
+  await fs.mkdir(path.join(project, 'src', 'empty'), { recursive: true });
+  await fs.mkdir(path.join(project, '.git'));
+  await fs.writeFile(path.join(project, '.git', 'HEAD'), 'ref');
+  await fs.writeFile(path.join(project, '.env'), 'SECRET=1');
+  await fs.writeFile(path.join(project, 'notes.txt'), text);
+  await fs.writeFile(path.join(project, 'src', 'café.jpg'), 'jpeg');
+  await fs.writeFile(path.join(project, 'src', 'run.sh'), '#!/bin/sh\n', { mode: 0o755 });
+  await fs.writeFile(path.join(project, 'back\\slash'), 'b');
+  await fs.writeFile(path.join(root, 'outside', 'secret'), 'secret');
+  await fs.symlink(path.join(root, 'outside', 'secret'), path.join(project, 'leak'));
+  await fs.symlink(path.join(root, 'outside'), path.join(project, 'outside-dir'));
+  await promisify(execFile)('mkfifo', [path.join(project, 'pipe')]);
+
+  const entries = await archiveEntries(store, 'project');
+  assert.deepEqual(entries.map((entry) => entry.name), [
+    'project/', 'project/back_slash', 'project/notes.txt', 'project/src/', 'project/src/café.jpg',
+    'project/src/empty/', 'project/src/run.sh',
+  ]);
+  const byName = Object.fromEntries(entries.map((entry) => [entry.name, entry]));
+  assert.equal(byName['project/notes.txt'].method, 8);
+  assert.equal(byName['project/notes.txt'].data.toString(), text);
+  assert.equal(byName['project/src/café.jpg'].method, 0);
+  assert.equal(byName['project/src/café.jpg'].data.toString(), 'jpeg');
+  assert.equal(byName['project/src/run.sh'].mode & 0o777, 0o755);
+  assert.equal(byName['project/src/'].mode & 0o170000, 0o040000);
+
+  const hidden = (await archiveEntries(store, path.join(directory, 'project'), { includeHidden: true }))
+    .map((entry) => entry.name);
+  for (const name of ['project/.env', 'project/.git/', 'project/.git/HEAD']) assert.ok(hidden.includes(name), name);
+  assert.equal((await archiveEntries(store, '')).at(0).name, 'workspace/');
+
+  for (const value of ['../outside', 'escape', 'a\0b', ['project']]) {
+    await assert.rejects(store.archive(value, { signal: new AbortController().signal }), `${value}`);
+  }
+  const abort = new AbortController();
+  const { stream } = await store.archive('project', { signal: abort.signal });
+  abort.abort();
+  await assert.rejects(once(stream, 'data'));
+  assert.equal(stream.destroyed, true);
+});
+
 async function serviceFixture(t) {
   const fixture = await workspace(t);
   let clock = Date.now();
@@ -265,6 +344,7 @@ test('only accepted submissions extend activity; browsing, invalid paths and tra
   await fs.writeFile(path.join(directory, 'note.txt'), 'note');
   assert.equal(await (await fetch(`${base}/api/files/content/note.txt`, { headers })).text(), 'note');
   await fs.rm(path.join(directory, 'note.txt'));
+  await (await fetch(`${base}/api/files/archive?path=project`, { headers })).arrayBuffer();
   await fetch(`${base}/api/uploads?directory=escape&filename=bad`, { method: 'POST', headers, body: 'x' });
   assert.equal(await activity(), initial);
   const slow = await startSlowUpload(base, headers, 'activity');
@@ -370,4 +450,46 @@ test('file content is served inline only as inert types and otherwise as an atta
   assert.equal(empty.status, 200);
   assert.equal(empty.headers.get('content-length'), '0');
   assert.equal(await empty.text(), '');
+});
+
+test('folder archive API streams authenticated ZIP attachments', async (t) => {
+  const { base, headers, directory } = await serviceFixture(t);
+  await fs.writeFile(path.join(directory, 'project', 'a.txt'), 'compressible '.repeat(2000));
+  await fs.writeFile(path.join(directory, 'project', '.env'), 'SECRET=1');
+  const get = (query) => fetch(`${base}/api/files/archive?${query}`,
+    { headers: { Cookie: headers.Cookie, 'Accept-Encoding': 'gzip' } });
+
+  assert.equal((await fetch(`${base}/api/files/archive?path=project`)).status, 401);
+  assert.equal((await get('path=escape')).status, 403);
+  assert.equal((await get('path=missing')).status, 400);
+  assert.equal((await get('path=a&path=b')).status, 400);
+
+  const archive = await get(`path=${encodeURIComponent(path.join(directory, 'project'))}`);
+  assert.equal(archive.status, 200);
+  assert.equal(archive.headers.get('content-type'), 'application/zip');
+  assert.equal(archive.headers.get('content-disposition'), "attachment; filename*=UTF-8''project.zip");
+  assert.equal(archive.headers.get('cache-control'), 'no-store, no-transform');
+  assert.equal(archive.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(archive.headers.get('content-encoding'), null);
+  assert.deepEqual(readZip(Buffer.from(await archive.arrayBuffer())).map((entry) => entry.name),
+    ['project/', 'project/a.txt']);
+
+  const hidden = await get('path=project&hidden=1');
+  assert.deepEqual(readZip(Buffer.from(await hidden.arrayBuffer())).map((entry) => entry.name),
+    ['project/', 'project/.env', 'project/a.txt']);
+  const root = await get('');
+  assert.equal(root.headers.get('content-disposition'), "attachment; filename*=UTF-8''workspace.zip");
+  await root.arrayBuffer();
+});
+
+test('graceful shutdown ends folder archives that are still streaming', async (t) => {
+  const { base, headers, directory, service } = await serviceFixture(t);
+  // Random bytes do not compress, so the archive outgrows the socket buffers and stays open.
+  await fs.writeFile(path.join(directory, 'project', 'random.bin'), require('node:crypto').randomBytes(32 * 1024 * 1024));
+  const response = await fetch(`${base}/api/files/archive?path=project`, { headers });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  await reader.read();
+  await service.stop();
+  await assert.rejects(async () => { while (!(await reader.read()).done); });
 });

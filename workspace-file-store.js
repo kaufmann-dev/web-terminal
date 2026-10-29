@@ -5,6 +5,8 @@ const { constants } = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PassThrough } = require('node:stream');
+const { finished } = require('node:stream/promises');
+const { ZipFile } = require('yazl');
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const TYPE_SAMPLE_BYTES = 8 * 1024;
@@ -30,6 +32,15 @@ const INLINE_TYPES = new Map([
   ['.mov', 'video/quicktime'],
   ['.webm', 'video/webm'],
 ]);
+
+// Archives store these already-compressed formats as-is instead of deflating them again.
+const STORED_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.mp3', '.m4a', '.ogg', '.opus', '.flac',
+  '.mp4', '.m4v', '.mov', '.webm', '.zip', '.gz', '.tgz', '.bz2', '.xz', '.zst', '.7z', '.rar',
+  '.woff2', '.docx', '.xlsx', '.pptx', '.jar',
+]);
+// Entries that disappear or change type between listing and opening are left out of an archive.
+const VANISHED_CODES = new Set(['ENOENT', 'ENOTDIR', 'ELOOP']);
 
 class UploadError extends Error {
   constructor(status, message) {
@@ -75,6 +86,62 @@ function inlineType(name, head) {
     if (head.length < TYPE_SAMPLE_BYTES) break;
   }
   return null;
+}
+
+// ZIP uses '/' as its only separator, and many extractors also split names on backslashes.
+function archivePath(name) {
+  return name.replaceAll('\\', '_');
+}
+
+async function openEntry(entryPath, flags) {
+  try {
+    return await fs.open(entryPath, flags);
+  } catch (error) {
+    if (VANISHED_CODES.has(error.code)) return null;
+    throw error;
+  }
+}
+
+async function addDirectory(zip, directory, prefix, options) {
+  const { includeHidden, signal } = options;
+  const stats = await directory.stat();
+  zip.addEmptyDirectory(prefix, { mtime: stats.mtime, mode: stats.mode });
+  const anchoredPath = `/proc/self/fd/${directory.fd}`;
+  const entries = (await fs.readdir(anchoredPath, { withFileTypes: true }))
+    .filter((entry) => includeHidden || !entry.name.startsWith('.'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    signal.throwIfAborted();
+    const entryPath = `${anchoredPath}/${entry.name}`;
+    const archiveName = `${prefix}/${archivePath(entry.name)}`;
+    if (entry.isDirectory()) {
+      const child = await openEntry(entryPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      if (!child) continue;
+      try {
+        await addDirectory(zip, child, archiveName, options);
+      } finally {
+        await child.close();
+      }
+    } else if (entry.isFile()) {
+      // O_NONBLOCK keeps a FIFO swapped in after the listing from blocking the open.
+      const file = await openEntry(entryPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      if (!file) continue;
+      let input;
+      try {
+        const fileStats = await file.stat();
+        if (!fileStats.isFile()) continue;
+        input = file.createReadStream();
+        zip.addReadStreamLazy(archiveName, { mtime: fileStats.mtime, mode: fileStats.mode,
+          compress: !STORED_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) },
+        (callback) => callback(null, input));
+        // One file at a time: the output's backpressure paces disk reads.
+        await finished(input, { signal });
+      } finally {
+        if (input) input.destroy();
+        else await file.close();
+      }
+    }
+  }
 }
 
 class WorkspaceFileStore {
@@ -159,6 +226,34 @@ class WorkspaceFileStore {
     } finally {
       await target.handle.close();
     }
+  }
+
+  // Streams a folder as a ZIP whose entries sit under one top-level folder. Only regular files and
+  // directories are included, each opened through its parent's pinned descriptor with O_NOFOLLOW.
+  async archive(value, { includeHidden = false, signal }) {
+    const target = await this.openDirectory(value);
+    const name = path.basename(target.directory) || 'workspace';
+    const zip = new ZipFile();
+    const stream = zip.outputStream;
+    // The walk stops when the caller aborts or the stream closes early, for example on disconnect.
+    const walk = new AbortController();
+    zip.on('error', (error) => stream.destroy(error));
+    stream.once('close', () => walk.abort());
+    const abort = () => stream.destroy(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    (async () => {
+      try {
+        await addDirectory(zip, target.handle, archivePath(name), { includeHidden, signal: walk.signal });
+        zip.end();
+      } catch (error) {
+        stream.destroy(error);
+      } finally {
+        signal.removeEventListener('abort', abort);
+        await target.handle.close();
+      }
+    })();
+    return { name, stream };
   }
 
   async save(request, { directory, filename, signal, onAccepted = () => {}, beforePublish = () => {} }) {

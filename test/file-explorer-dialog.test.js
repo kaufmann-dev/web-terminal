@@ -12,6 +12,8 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
     breadcrumbSegments,
     fileContentUrl,
     filterEntries,
+    folderArchiveUrl,
+    folderName,
     formatBytes,
     isHidden,
     formatModified,
@@ -52,6 +54,12 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
   assert.equal(fileContentUrl('/code', '/code/a.zip', { download: true }), '/api/files/content/a.zip?download=1');
   assert.equal(fileContentUrl('/', '/srv/a.txt'), '/api/files/content/srv/a.txt');
 
+  assert.equal(folderName('/code/scratchpads/clothes/images'), 'images');
+  assert.equal(folderName('/code'), 'code');
+  assert.equal(folderName('/'), 'workspace');
+  assert.equal(folderArchiveUrl('/code/a b/é&'), '/api/files/archive?path=%2Fcode%2Fa+b%2F%C3%A9%26');
+  assert.equal(folderArchiveUrl('/code/.git', { includeHidden: true }), '/api/files/archive?path=%2Fcode%2F.git&hidden=1');
+
   const now = new Date(2026, 9, 1).getTime();
   assert.equal(formatModified(new Date(2026, 2, 5).getTime(), now, 'en-US'), 'Mar 5');
   assert.equal(formatModified(new Date(2024, 11, 31).getTime(), now, 'en-US'), 'Dec 31, 2024');
@@ -84,12 +92,16 @@ test('files dialog markup puts the folder listing first and keeps a single path 
   for (const id of [
     'upload-error', 'upload-choose', 'upload-files', 'upload-file-list', 'upload-path-form',
     'upload-destination-fields', 'upload-location', 'upload-breadcrumbs', 'upload-edit-path',
-    'upload-path-editor', 'upload-toggle-hidden', 'upload-directory', 'upload-folder-filter', 'upload-folders',
+    'upload-path-editor', 'upload-toggle-hidden', 'upload-download-folder', 'upload-directory', 'upload-folder-filter', 'upload-folders',
     'upload-summary', 'upload-cancel', 'upload-submit',
   ]) {
     assert.match(dialog, new RegExp(`id="${id}"`), id);
   }
   assert.ok(dialog.indexOf('id="upload-folders"') < dialog.indexOf('id="upload-choose"'));
+  // The current-folder download is the location bar's last control, above the rows' download column.
+  const location = dialog.slice(dialog.indexOf('id="upload-location"'), dialog.indexOf('id="upload-path-editor"'));
+  assert.ok(location.indexOf('id="upload-edit-path"') < location.indexOf('id="upload-download-folder"'));
+  assert.match(location, /<a id="upload-download-folder" class="icon-button files-download" aria-disabled="true"/);
   assert.match(dialog, /<h2 id="upload-title">Files<\/h2>/);
   assert.match(view, /<button id="upload-open" class="sidebar-action" type="button" disabled>Files<\/button>/);
   assert.match(dialog, /<div id="upload-path-editor" class="upload-path-row" hidden>/);

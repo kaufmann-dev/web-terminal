@@ -264,7 +264,7 @@ or control unrelated native Wayland windows.
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
   clipboard-image uploads, accepted file-upload submissions, accepted transcription submissions,
   scheduled-job changes and manual runs, and accepted terminal input or paste extend the idle
-  deadline. Folder browsing, opening and downloading files, upload progress, job list and log
+  deadline. Folder browsing, opening and downloading files and folders, upload progress, job list and log
   viewing, schedule previews,
   polling, voice availability checks, transcription processing, CSRF
   retrieval, WebSocket reconnect/resize/heartbeat traffic, PTY output, static assets, health checks,
@@ -348,8 +348,17 @@ or control unrelated native Wayland windows.
   audio, and MP4, M4V, MOV, and WebM video. Any other file that is valid UTF-8 text opens as
   plain text, so source code, logs, Markdown, JSON, and HTML are shown as source and never
   rendered or executed. Files the browser cannot display are downloaded instead. The download
-  arrow on each row always saves the file to your computer, with no size limit. Folders cannot be
-  downloaded; create an archive in the terminal first.
+  arrow on each row always saves the file to your computer, with no size limit.
+- Folders download as ZIP files: use the download arrow on a folder row, or the arrow at the end of
+  the **Location** bar for the folder being viewed. `images` downloads as `images.zip`, which
+  extracts to a single `images` folder with every subfolder, including empty ones, and keeps
+  modification times and executable bits. The archive holds what the list shows: hidden files and
+  folders are included at every depth only while the eye button shows them. Symlinks, pipes, and
+  other special files are left out. The ZIP is built while it downloads, so it starts at once and
+  has no size limit; the browser shows the bytes received rather than a percentage. Images, audio,
+  video, and existing archives are stored as-is, and other files are compressed. If a file cannot
+  be read during the download, the browser reports the download as failed instead of saving an
+  incomplete archive.
 - To upload, drop files on the dashed **Upload to this folder** area or click it (**Choose files**
   on mobile), then click **Upload N files**; they are saved into the folder being viewed and the
   list refreshes when the transfer finishes. Desktop users can also drop files onto the terminal
