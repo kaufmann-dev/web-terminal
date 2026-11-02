@@ -34,10 +34,24 @@ async function fixture(options = {}) {
     }
   }
   let view;
+  const decoded = [];
+  class AudioContext {
+    constructor(channels, length, sampleRate) {
+      assert.deepEqual([channels, length, sampleRate], [1, 1, 16000]);
+    }
+    async decodeAudioData(buffer) {
+      decoded.push(buffer);
+      if (options.decode) return options.decode(buffer);
+      const left = Float32Array.of(0.5, -1);
+      const right = Float32Array.of(0.5, 0);
+      return { numberOfChannels: 2, length: 2, sampleRate: 16000, getChannelData: (index) => [left, right][index] };
+    }
+  }
   const voice = new VoiceRecorder({ getTarget: () => target,
     submit: options.submit || (async (audio) => {
       calls++;
-      assert.equal(audio.type, options.mime || 'audio/webm;codecs=opus');
+      assert.equal(audio.type, 'audio/wav');
+      assert.equal(audio.size, 48);
       return { text: cleanTranscript(' do\nthis\tplease\x03 ') };
     }),
     render: (state) => { view = state; },
@@ -47,22 +61,23 @@ async function fixture(options = {}) {
     timers: { setInterval: (fn) => { intervals.set(++timerId, fn); return timerId; },
       clearInterval: (id) => intervals.delete(id),
       setTimeout: (fn, delay) => { deadlines.set(++timerId, { fn, delay }); return timerId; },
-      clearTimeout: (id) => deadlines.delete(id) },
+      clearTimeout: (id) => deadlines.delete(id) }, AudioContext,
   });
-  voice.config = { configured: true, maxBytes: 10 * 1024 * 1024, maxDurationMs: 300000 };
+  voice.config = { available: true, maxBytes: 10 * 1024 * 1024, maxDurationMs: 300000 };
   voice.update();
-  return { voice, inserted, stream, intervals, deadlines, controller,
+  return { voice, inserted, stream, intervals, deadlines, controller, decoded,
     get recorder() { return recorder; }, get stopped() { return stopped; },
     get calls() { return calls; }, get view() { return view; },
     changeTarget: (next) => { target = next; }, tick: (ms) => { clock += ms; intervals.forEach((fn) => fn()); } };
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test('recording submits the actual format exactly once, cleans text and never appends Enter', async () => {
+test('recording is converted to WAV, submitted exactly once, cleaned and never followed by Enter', async () => {
   for (const mime of ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus']) {
     const f = await fixture({ mime });
     await Promise.all([f.voice.start(), f.voice.start()]);
     assert.equal(f.voice.state, 'recording');
+    assert.equal(f.recorder.mimeType, mime);
     f.tick(65000);
     assert.equal(f.view.elapsed, '1:05');
     f.recorder.chunk();
@@ -73,6 +88,7 @@ test('recording submits the actual format exactly once, cleans text and never ap
     duplicateStop();
     await settle();
     assert.equal(f.calls, 1);
+    assert.equal(f.decoded.length, 1);
     assert.deepEqual(f.inserted, ['do this please']);
     assert.equal(f.voice.operation, null);
     assert.equal(f.intervals.size + f.deadlines.size, 0);
@@ -153,7 +169,7 @@ test('cancel or terminal/connection changes discard pending transcription withou
   }
 });
 
-test('empty speech inserts nothing and provider failures can be retried manually', async () => {
+test('empty speech inserts nothing and transcription failures can be retried manually', async () => {
   const f = await fixture({ submit: async () => ({ text: '' }) });
   await f.voice.start(); f.voice.stop(); await settle();
   assert.deepEqual(f.inserted, []);
@@ -165,9 +181,9 @@ test('empty speech inserts nothing and provider failures can be retried manually
   assert.equal(f.voice.operation, null);
 });
 
-test('unsupported, insecure, unconfigured, or disconnected recording is disabled', async () => {
+test('unsupported, insecure, model-less, or disconnected recording is disabled', async () => {
   const f = await fixture();
-  for (const [key, value] of [['secure', false], ['mediaDevices', {}], ['Recorder', {}], ['config', { configured: false }]]) {
+  for (const [key, value] of [['secure', false], ['mediaDevices', {}], ['Recorder', {}], ['AudioContext', undefined], ['config', { available: false }]]) {
     const original = f.voice[key]; f.voice[key] = value;
     f.voice.update(); await f.voice.start();
     assert.equal(f.view.disabled, true);
@@ -176,6 +192,37 @@ test('unsupported, insecure, unconfigured, or disconnected recording is disabled
   }
   f.changeTarget(null); f.voice.update();
   assert.equal(f.view.disabled, true);
+});
+
+test('WAV encoding writes a 16-bit PCM header and averages channels to mono', async () => {
+  const { encodeWav } = await import('../public/js/voice-recorder.mjs');
+  const left = Float32Array.of(1, -1, 0.5, 2);
+  const right = Float32Array.of(1, -1, -0.5, 2);
+  const blob = encodeWav({ numberOfChannels: 2, length: 4, sampleRate: 16000, getChannelData: (index) => [left, right][index] });
+  assert.equal(blob.type, 'audio/wav');
+  const view = new DataView(await blob.arrayBuffer());
+  const text = (offset) => String.fromCharCode(...new Uint8Array(view.buffer, offset, 4));
+  assert.deepEqual([text(0), text(8), text(12), text(36)], ['RIFF', 'WAVE', 'fmt ', 'data']);
+  assert.deepEqual([view.getUint32(4, true), view.getUint32(16, true), view.getUint16(20, true),
+    view.getUint16(22, true), view.getUint32(24, true), view.getUint32(28, true), view.getUint16(32, true),
+    view.getUint16(34, true), view.getUint32(40, true)], [44, 16, 1, 1, 16000, 32000, 2, 16, 8]);
+  assert.deepEqual([0, 1, 2, 3].map((index) => view.getInt16(44 + index * 2, true)), [32767, -32768, 0, 32767]);
+});
+
+test('audio that cannot be decoded fails without submitting, and cancel during decoding discards it', async () => {
+  const f = await fixture({ decode: async () => { throw new Error('EncodingError'); } });
+  await f.voice.start(); f.voice.stop(); await settle();
+  assert.equal(f.voice.state, 'error');
+  assert.equal(f.view.message, 'Audio could not be processed. Record again.');
+  assert.equal(f.calls, 0);
+  const decoding = deferred();
+  const g = await fixture({ decode: () => decoding.promise });
+  await g.voice.start(); g.voice.stop(); await settle();
+  g.voice.cancel();
+  decoding.resolve({ numberOfChannels: 1, length: 1, sampleRate: 16000, getChannelData: () => Float32Array.of(0) });
+  await settle();
+  assert.equal(g.calls, 0);
+  assert.equal(g.voice.state, 'idle');
 });
 
 test('terminal programmatic paste bypasses armed modifiers and preserves them', () => {

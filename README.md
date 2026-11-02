@@ -53,6 +53,10 @@ permanent compatibility pin. Application dependencies remain exactly locked for 
 images and are advanced when compatible stable releases are available. Nix is not installed.
 Nixpacks is included only as a terminal CLI for working on other projects.
 
+The image also bundles the checksum-verified NVIDIA Parakeet TDT 0.6B v3 speech-recognition model
+(about 650 MB) for local voice dictation. Dictation needs no external service or credentials. While
+it is in use, its helper process occupies roughly 0.85–1.3 GB of memory; it uses none when idle.
+
 CentOS Stream 10's x86_64 image requires an x86-64-v3 CPU. Confirm that an x86_64 Coolify host
 meets that baseline before deploying; this restriction does not apply to an Arm64 deployment.
 
@@ -82,9 +86,6 @@ Required:
 
 Optional:
 
-- `ELEVENLABS_API_KEY` — optional ElevenLabs key for Scribe v2 voice dictation. Keep it in the
-  application environment; it is excluded from PTY and chezmoi environments. Without it the app
-  starts normally with voice controls disabled.
 - `NODE_ENV` — defaults to `production`.
 
 `NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`, `SOURCE_COMMIT`, and Coolify's `COOLIFY_*`
@@ -97,7 +98,7 @@ Coolify supplies `PORT` automatically. Do not set a fixed application port.
 If you override it outside Coolify, use port 1024 or higher because the application runs as a
 non-root user.
 
-Keep `OIDC_CLIENT_SECRET`, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` secret. Copy the generated
+Keep `OIDC_CLIENT_SECRET` and `SESSION_SECRET` secret. Copy the generated
 client ID, client secret, and exact discovery issuer into the corresponding variables without
 exposing their values. Remove
 `OIDC_ALLOWED_SUBJECT` from existing deployments; it is no longer supported.
@@ -304,24 +305,28 @@ or control unrelated native Wayland windows.
   or mouse-tracking programs such as Codex and Claude Code, the drag is passed to xterm.js as
   one-line wheel input instead, so it scrolls exactly as a desktop wheel does; pinch-to-zoom
   remains available.
-- The microphone button starts dictation; while recording it becomes a red stop button, which sends the recording to ElevenLabs Scribe v2 and inserts cleaned
-  text once into the terminal where recording began. Press **Enter** yourself to execute. Scribe
-  detects the language and removes fillers and false starts with `no_verbatim=true`; line breaks
-  and tabs become spaces and terminal control characters are removed. There is no transcript
-  editor or second processing call. Empty results show “No speech detected”.
+- The microphone button starts dictation; while recording it becomes a red stop button. The browser
+  converts the recording to 16 kHz mono WAV, and the server transcribes it locally with NVIDIA
+  Parakeet TDT 0.6B v3 through sherpa-onnx, then inserts cleaned text once into the terminal where
+  recording began. Press **Enter** yourself to execute. Parakeet detects the language among 25
+  European languages, including German and English, and adds punctuation; filler words are
+  transcribed as spoken. Line breaks and tabs become spaces and terminal control characters are
+  removed. There is no transcript editor. Empty results show “No speech detected”.
 - Voice controls sit at the bottom of the desktop sidebar and in the mobile voice row. They require a connected
   terminal, HTTPS (or a secure localhost context), browser microphone permission, MediaRecorder,
-  and configured credentials. WebM/Opus, MP4/AAC, MP4, or Ogg/Opus is selected at runtime without
-  transcoding. Controls preserve the software keyboard's visibility and ignore armed modifiers.
+  Web Audio decoding, and the bundled voice model. WebM/Opus, MP4/AAC, MP4, or Ogg/Opus is recorded
+  as the browser supports. Controls preserve the software keyboard's visibility and ignore armed modifiers.
   **Cancel** discards recording or transcription. Hiding/leaving the page, logging out, changing
   sessions, or disconnecting cancels pending work and releases the microphone; results never
   replay after reconnecting.
 - Recordings automatically stop and submit at five minutes; recordings over 10 MiB are discarded.
-  Only one transcription per login session may run at a time, with a 60-second provider timeout
-  and no automatic retries. Web Terminal keeps audio in memory only for the operation and does
-  not save recordings or log transcripts. Audio is sent to ElevenLabs, whose own retention rules
-  apply; cancellation does not guarantee that already-submitted provider processing or billing
-  stops. See the [Scribe API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert).
+  Only one transcription per login session may run at a time, and the server decodes one recording
+  at a time, with a 60-second timeout and no automatic retries. The model loads in a helper process
+  on the first dictation (about two seconds) and stays loaded until ten minutes pass without
+  dictation; the helper then exits and releases its memory. Audio is split into segments of at most
+  30 seconds, cut at quiet points, so memory stays near 1 GB for any length. Audio never leaves the
+  server, and Web Terminal keeps it in memory only for the operation; it does not save recordings or
+  log transcripts. Worker failures are logged without audio or transcript content.
 - Selecting terminal text copies it to the browser clipboard automatically and displays a brief
   confirmation. Programs that draw their own mouse selection, such as Codex and Claude Code, copy
   through OSC 52; the browser applies those clipboard writes and ignores OSC 52 clipboard read

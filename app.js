@@ -2,7 +2,7 @@
 
 require('dotenv').config({ quiet: true });
 
-const { AUDIO_TYPES, MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
+const { MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
   cleanTranscript, createTranscriptionService } = require('./voice-transcription');
 const http = require('http');
 const path = require('path');
@@ -38,6 +38,7 @@ const OIDC_TRANSACTION_TTL_MS = 10 * 60 * 1000;
 const SESSION_IDLE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WEBSOCKET_ACTIVITY_DEBOUNCE_MS = 15000;
+const VOICE_MODEL_DIRECTORY = '/opt/web-terminal/voice-model';
 
 function isValidTerminalSessionId(id) {
   return typeof id === 'string' && TERMINAL_SESSION_ID_PATTERN.test(id);
@@ -105,7 +106,6 @@ function createTerminalEnvironment({
     }
   }
   delete terminalEnvironment.SESSION_SECRET;
-  delete terminalEnvironment.ELEVENLABS_API_KEY;
   delete terminalEnvironment.LC_ALL;
   // Server and deployment settings would otherwise change the behavior of projects run in the terminal.
   for (const name of SERVER_ONLY_ENVIRONMENT) {
@@ -225,7 +225,6 @@ function createWebTerminal(options = {}) {
   const configuredPublicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN;
   const configuredIssuerUrl = options.oidcIssuerUrl ?? process.env.OIDC_ISSUER_URL;
   const config = {
-    elevenlabsApiKey: options.elevenlabsApiKey ?? process.env.ELEVENLABS_API_KEY,
     oidcIssuerUrl: normalizeIssuerUrl(configuredIssuerUrl),
     oidcClientId: options.oidcClientId ?? process.env.OIDC_CLIENT_ID,
     oidcClientSecret: options.oidcClientSecret ?? process.env.OIDC_CLIENT_SECRET,
@@ -362,8 +361,8 @@ function createWebTerminal(options = {}) {
   const uploadRequests = new Map();
   const uploadTasks = new Set();
   const archiveRequests = new Set();
-  const transcribe = options.transcribe || createTranscriptionService({
-    apiKey: config.elevenlabsApiKey,
+  const transcription = options.transcription || createTranscriptionService({
+    modelDirectory: options.voiceModelDirectory ?? VOICE_MODEL_DIRECTORY,
   });
 
   function trackLoginSocket(loginSessionId, socket) {
@@ -591,7 +590,7 @@ function createWebTerminal(options = {}) {
 
   app.get('/api/voice', requireApiAuth, (req, res) => {
     res.set('Cache-Control', 'no-store').json({
-      configured: Boolean(config.elevenlabsApiKey?.trim()),
+      available: transcription.available,
       maxBytes: MAX_VOICE_BYTES,
       maxDurationMs: MAX_VOICE_DURATION_MS,
     });
@@ -599,13 +598,11 @@ function createWebTerminal(options = {}) {
 
   app.post('/api/voice/transcriptions', requireApiAuth, doubleCsrfProtection,
     (req, res, next) => {
-      if (!config.elevenlabsApiKey?.trim()) {
-        return res.status(503).json({ error: 'Voice dictation is not configured.' });
+      if (!transcription.available) {
+        return res.status(503).json({ error: 'Voice model is not installed.' });
       }
-      const mimeType = (req.get('content-type') || '').toLowerCase();
-      if (!/^audio\/(?:webm|mp4|ogg)(?:\s*;\s*codecs=(?:"[a-z0-9., -]+"|[a-z0-9.,-]+))?$/.test(mimeType)
-        || !AUDIO_TYPES[mimeType.split(';')[0].trim()]) {
-        return res.status(415).json({ error: 'Use WebM, MP4, or Ogg audio.' });
+      if (req.get('content-type') !== 'audio/wav' || req.get('content-encoding')) {
+        return res.status(415).json({ error: 'Send 16 kHz mono WAV audio.' });
       }
       if (voiceRequests.has(req.sessionID)) {
         return res.status(429).json({ error: 'A transcription is already in progress.' });
@@ -632,18 +629,17 @@ function createWebTerminal(options = {}) {
         if (!recordHttpActivity(req)) {
           return res.status(401).json({ error: 'Authentication required.' });
         }
-        // Persist the submission timestamp now, before background provider work.
+        // Persist the submission timestamp now, before background transcription work.
         await saveRequestSession(req);
         req.voiceAbort.signal.throwIfAborted();
         const audio = req.body;
         req.body = undefined;
-        const text = await transcribe({ audio,
-          mimeType: req.get('content-type').toLowerCase(), signal: req.voiceAbort.signal });
+        const text = await transcription.transcribe({ audio, signal: req.voiceAbort.signal });
         if (!req.voiceAbort.signal.aborted) res.json({ text: cleanTranscript(text) });
       } catch (err) {
         if (!req.voiceAbort.signal.aborted) {
           res.status(err instanceof VoiceError ? err.status : 502).json({
-            error: err instanceof VoiceError ? err.message : 'Transcription provider unavailable.',
+            error: err instanceof VoiceError ? err.message : 'Voice transcription failed. Record again.',
           });
         } else if (!res.destroyed) {
           res.status(409).json({ error: 'Transcription canceled.' });
@@ -1336,7 +1332,7 @@ function createWebTerminal(options = {}) {
       for (const abort of uploadRequests.values()) abort.abort();
       await Promise.all(uploadTasks);
       for (const abort of archiveRequests) abort.abort();
-      await Promise.all([sessionManager.shutdown(), jobManager.shutdown()]);
+      await Promise.all([sessionManager.shutdown(), jobManager.shutdown(), transcription.close()]);
       if (webSocketServer) {
         for (const socket of webSocketServer.clients) {
           if (socket.readyState === 0 || socket.readyState === 1) {

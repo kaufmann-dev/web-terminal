@@ -20,6 +20,9 @@ npm ci
   `opencode-ai`, and `@anthropic-ai/claude-code`. Their installation scripts provide required native
   executables; update each approval with its dependency version instead of allowing all dependency
   scripts.
+- Keep `sherpa-onnx-node@2.0.1` as an exact production dependency. It has no installation script;
+  its native runtime comes from the platform optional dependencies, so it needs no `allowScripts`
+  approval.
 
 - The repository has no lint, type-check, or build script. After JavaScript changes, run the
   applicable syntax checks and targeted Node tests:
@@ -28,6 +31,7 @@ npm ci
 node --check app.js
 node --check terminal-session-manager.js
 node --check voice-transcription.js
+node --check transcription-worker.js
 node --check workspace-file-store.js
 node --check scheduled-job-manager.js
 node --check error-page.js
@@ -83,6 +87,13 @@ node --test test/*.test.js
   two seconds. Missed runs are not replayed after downtime, and runs active at shutdown are
   recorded as interrupted. Job APIs require authentication, mutations require CSRF, and only
   mutations and manual runs record interactive activity.
+- Keep voice dictation transcription local in `voice-transcription.js`. The browser converts each
+  recording to 16 kHz mono 16-bit PCM WAV; the server accepts only `audio/wav`, validates it
+  strictly, splits audio into segments of at most 30 seconds at quiet points, and sends them to
+  `transcription-worker.js`. The worker is forked lazily with an empty environment, loads the bundled
+  Parakeet TDT 0.6B v3 model from `/opt/web-terminal/voice-model` through `sherpa-onnx-node`, decodes
+  one request at a time, and is stopped after ten idle minutes, on timeout, and on shutdown. Log
+  worker failures without audio or transcript content. No audio leaves the server.
 - Keep workspace file access in `workspace-file-store.js`, rooted at `TERMINAL_WORKDIR` and resolved
   through pinned directory descriptors with `O_NOFOLLOW`. `/api/files/content/*` serves single
   workspace files and `/api/files/archive` serves folders; no other route serves workspace content.
@@ -96,7 +107,7 @@ node --test test/*.test.js
   reads require authentication and do not record interactive activity.
 - Keep Express configured for exactly one trusted proxy hop. Do not use unrestricted `trust proxy`.
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
-- Keep all `OIDC_*` variables, `SESSION_SECRET`, and `ELEVENLABS_API_KEY` out of terminal and chezmoi environments.
+- Keep all `OIDC_*` variables and `SESSION_SECRET` out of terminal and chezmoi environments.
   Express must retain them.
 - Also keep server and deployment settings (`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`,
   `SOURCE_COMMIT`, `COOLIFY_*` metadata) out of those environments so they cannot change projects run in a
@@ -135,6 +146,11 @@ node --test test/*.test.js
   during the image build and verify it with `muse --version`. Keep its version and architecture
   checksums pinned in `scripts/install-muse-code.sh`; users authenticate on the first `muse` run
   after deployment.
+- Install the architecture-independent Parakeet TDT 0.6B v3 int8 sherpa-onnx model during the image
+  build with `scripts/install-voice-model.sh`, which pins its release asset URL and SHA-256 and
+  installs only the encoder, decoder, joiner, and tokens into `/opt/web-terminal/voice-model`. Keep
+  `bzip2` in the DNF list to extract it. Advance the model when a newer compatible sherpa-onnx
+  export is a measured improvement for short German and English dictation on a four-core CPU.
 - Chromium and the native `/etc/fonts` configuration support `agent-browser`; do not use
   agent-browser's runtime browser installer. Keep `FONTCONFIG_FILE`, `FONTCONFIG_PATH`, and
   `AGENT_BROWSER_CONTENT_BOUNDARIES=1` in the terminal environment.

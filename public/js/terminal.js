@@ -1320,7 +1320,7 @@
         voice.config = config;
         voice.update();
       }).catch(() => {
-        voice.config = { configured: false };
+        voice.config = { available: false };
         voice.update();
       });
 

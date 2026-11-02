@@ -36,7 +36,7 @@ require_absolute_path() {
 }
 
 run_in_terminal_environment() {
-  local -a unset_environment=(-u SESSION_SECRET -u ELEVENLABS_API_KEY)
+  local -a unset_environment=(-u SESSION_SECRET)
   # Keep in sync with SERVER_ONLY_ENVIRONMENT in app.js.
   local -a server_only_environment=(
     NODE_ENV PORT HOST PUBLIC_ORIGIN TRUST_PROXY SOURCE_COMMIT

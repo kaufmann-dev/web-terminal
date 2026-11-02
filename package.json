@@ -29,6 +29,7 @@
     "opencode-ai": "1.18.9",
     "openid-client": "6.8.4",
     "pnpm": "11.18.0",
+    "sherpa-onnx-node": "2.0.1",
     "vitest": "4.1.12",
     "ws": "8.21.1",
     "yazl": "3.3.1"

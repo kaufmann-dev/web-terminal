@@ -308,14 +308,12 @@ test('the terminal environment given to jobs excludes application secrets', () =
   const saved = { ...process.env };
   process.env.OIDC_CLIENT_SECRET = 'secret';
   process.env.SESSION_SECRET = 'secret';
-  process.env.ELEVENLABS_API_KEY = 'secret';
   try {
     const environment = createTerminalEnvironment({ terminalHome: '/home-dir', terminalWorkdir: '/work' });
     assert.equal(environment.OIDC_CLIENT_SECRET, undefined);
     assert.equal(environment.SESSION_SECRET, undefined);
-    assert.equal(environment.ELEVENLABS_API_KEY, undefined);
   } finally {
-    for (const name of ['OIDC_CLIENT_SECRET', 'SESSION_SECRET', 'ELEVENLABS_API_KEY']) {
+    for (const name of ['OIDC_CLIENT_SECRET', 'SESSION_SECRET']) {
       if (saved[name] === undefined) delete process.env[name];
       else process.env[name] = saved[name];
     }

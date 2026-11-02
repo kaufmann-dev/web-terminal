@@ -1,12 +1,42 @@
 export const RECORDING_TYPES = [
   'audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus',
 ];
+// The server's speech recognizer accepts only 16 kHz mono 16-bit PCM WAV.
+export const TRANSCRIPTION_SAMPLE_RATE = 16000;
+
+export function encodeWav(audioBuffer) {
+  const channels = Array.from({ length: audioBuffer.numberOfChannels },
+    (_, index) => audioBuffer.getChannelData(index));
+  const length = audioBuffer.length;
+  const view = new DataView(new ArrayBuffer(44 + length * 2));
+  const text = (offset, value) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + length * 2, true);
+  text(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, audioBuffer.sampleRate, true);
+  view.setUint32(28, audioBuffer.sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, length * 2, true);
+  for (let index = 0; index < length; index++) {
+    let sample = 0;
+    for (const channel of channels) sample += channel[index];
+    sample = Math.max(-1, Math.min(1, sample / channels.length));
+    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  return new Blob([view.buffer], { type: 'audio/wav' });
+}
 
 export class VoiceRecorder {
   constructor({ getTarget, submit, render, mediaDevices = globalThis.navigator?.mediaDevices,
     Recorder = globalThis.MediaRecorder, secure = globalThis.isSecureContext,
-    now = () => performance.now(), timers = globalThis }) {
-    Object.assign(this, { getTarget, submit, render, mediaDevices, Recorder, secure, now, timers });
+    now = () => performance.now(), timers = globalThis, AudioContext = globalThis.OfflineAudioContext }) {
+    Object.assign(this, { getTarget, submit, render, mediaDevices, Recorder, secure, now, timers,
+      AudioContext });
     this.config = null;
     this.operation = null;
     this.state = 'idle';
@@ -15,11 +45,11 @@ export class VoiceRecorder {
 
   unavailable() {
     if (!this.secure) return 'Microphone requires HTTPS.';
-    if (!this.mediaDevices?.getUserMedia || !this.Recorder?.isTypeSupported) {
+    if (!this.mediaDevices?.getUserMedia || !this.Recorder?.isTypeSupported || !this.AudioContext) {
       return 'Microphone recording is unsupported.';
     }
     if (!this.config) return 'Checking voice availability…';
-    if (!this.config.configured) return 'Voice dictation is not configured.';
+    if (!this.config.available) return 'Voice model is not installed.';
     if (!RECORDING_TYPES.some((type) => this.Recorder.isTypeSupported(type))) {
       return 'No supported audio recording format.';
     }
@@ -146,10 +176,23 @@ export class VoiceRecorder {
     operation.stream.getTracks().forEach((track) => track.stop());
     this.update();
     try {
-      const audio = new Blob(operation.chunks, { type: operation.recorder.mimeType });
+      const recording = new Blob(operation.chunks, { type: operation.recorder.mimeType });
       operation.chunks = [];
-      if (!audio.size) {
+      if (!recording.size) {
         this.fail(operation, 'No audio recorded. Try again.');
+        return;
+      }
+      let audio;
+      try {
+        // decodeAudioData resamples to the context's rate.
+        const context = new this.AudioContext(1, 1, TRANSCRIPTION_SAMPLE_RATE);
+        audio = encodeWav(await context.decodeAudioData(await recording.arrayBuffer()));
+      } catch {
+        this.fail(operation, 'Audio could not be processed. Record again.');
+        return;
+      }
+      if (!this.isCurrent(operation)) {
+        if (this.operation === operation) this.cancel();
         return;
       }
       const { text } = await this.submit(audio, operation.abort.signal);

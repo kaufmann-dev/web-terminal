@@ -11,6 +11,7 @@ RUN dnf --assumeyes update \
       bash-completion \
       bat \
       bind-utils \
+      bzip2 \
       ca-certificates \
       cage \
       chezmoi \
@@ -95,6 +96,7 @@ RUN bash /tmp/install-xdotool.sh \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
     && node -e 'require("node-pty")' \
+    && node -e 'require("sherpa-onnx-node")' \
     && ./node_modules/.bin/agent-browser --version \
     && ./node_modules/.bin/claude --version \
     && ./node_modules/.bin/opencode --version \
@@ -106,6 +108,7 @@ RUN bash scripts/install-git-wrangler.sh \
     && bash scripts/install-nixpacks.sh \
     && bash scripts/install-muse-code.sh \
     && /usr/local/bin/muse --version \
+    && bash scripts/install-voice-model.sh \
     && bash scripts/install-rootless-podman.sh
 
 ENV NODE_ENV=production
