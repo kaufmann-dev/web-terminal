@@ -58,20 +58,35 @@ async function archiveEntries(store, value, options = {}) {
   return readZip(Buffer.concat(chunks));
 }
 
+// File URLs carry the absolute path, one encoded component per segment.
+function contentUrl(base, ...parts) {
+  return `${base}/api/files/content/${path.join(...parts).split('/').filter(Boolean).map(encodeURIComponent).join('/')}`;
+}
+
 function source(data, headers = {}) {
   const stream = Readable.from([data]);
   stream.headers = headers;
   return stream;
 }
 
-test('directory browsing and uploads stay inside the workspace', async (t) => {
-  const { directory, store } = await workspace(t);
-  assert.deepEqual((await store.list()).directories, ['.hidden', 'project']);
+test('browsing starts at the workspace, resolves relative paths there, and reaches any folder', async (t) => {
+  const { directory, root, store } = await workspace(t);
+  const start = await store.list();
+  assert.equal(start.directory, directory);
+  assert.deepEqual(start.directories, ['.hidden', 'project']);
   assert.equal((await store.list('project')).directory, path.join(directory, 'project'));
-  for (const destination of ['../outside', 'escape', '/', '\0', ['project']]) {
-    await assert.rejects(store.list(destination));
+  for (const destination of ['../outside', 'escape', path.join(root, 'outside')]) {
+    assert.equal((await store.list(destination)).directory, path.join(root, 'outside'), destination);
+  }
+  assert.equal((await store.list('/')).directory, '/');
+  for (const destination of ['\0', ['project']]) {
+    await assert.rejects(store.list(destination), { status: 400 });
   }
   await assert.rejects(store.list('missing'), { code: 'ENOENT' });
+  const outside = await store.save(source('x'), { directory: path.join(root, 'outside'), filename: 'note',
+    signal: new AbortController().signal });
+  assert.equal(outside.path, path.join(root, 'outside', 'note'));
+  assert.equal(await fs.readFile(outside.path, 'utf8'), 'x');
   for (const filename of ['../oops', 'a/b', 'a\\b', '.', '..', '', 'bad\nname', 'a'.repeat(256)]) {
     await assert.rejects(store.save(source('x'), { directory: 'project', filename,
       signal: new AbortController().signal }), { status: 400 });
@@ -121,7 +136,7 @@ test('concurrent uploads publish atomically and never overwrite files or symlink
   assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
 });
 
-test('swapping the destination for an outside symlink cannot redirect an upload', async (t) => {
+test('swapping the destination for a symlink cannot redirect an upload', async (t) => {
   const { store, directory, root } = await workspace(t);
   await assert.rejects(store.save(source('data'), { directory: 'project', filename: 'file',
     signal: new AbortController().signal,
@@ -161,7 +176,7 @@ test('only allowlisted images, PDFs and UTF-8 text have an inline type', () => {
   assert.equal(inlineType('long.txt', sample), 'text/plain; charset=utf-8');
 });
 
-test('files open only as regular files inside the workspace', async (t) => {
+test('files open by relative or absolute path, only as regular files', async (t) => {
   const { directory, root, store } = await workspace(t);
   await fs.writeFile(path.join(directory, 'project', 'a.txt'), 'hello');
   await fs.writeFile(path.join(root, 'outside', 'secret'), 'secret');
@@ -173,14 +188,19 @@ test('files open only as regular files inside the workspace', async (t) => {
       { name: 'a.txt', size: 5, type: 'text/plain; charset=utf-8' });
     await file.handle.close();
   }
-  for (const value of ['../outside/secret', 'escape/secret', 'leak', 'project/link', 'project', '', '.', 'a\0b',
+  for (const value of ['../outside/secret', 'escape/secret', path.join(root, 'outside', 'secret')]) {
+    const file = await store.openFile(value);
+    assert.equal(file.name, 'secret', value);
+    await file.handle.close();
+  }
+  for (const value of ['leak', 'project/link', 'project', '', '.', 'a\0b',
     ['project/a.txt'], undefined]) {
     await assert.rejects(store.openFile(value), `${value}`);
   }
   await assert.rejects(store.openFile('project/missing'), { code: 'ENOENT' });
 });
 
-test('folders archive as ZIPs of regular files and directories inside the workspace', async (t) => {
+test('folders archive as ZIPs of regular files and directories without following symlinks', async (t) => {
   const { directory, root, store } = await workspace(t);
   const project = path.join(directory, 'project');
   const text = 'compressible '.repeat(200);
@@ -215,7 +235,10 @@ test('folders archive as ZIPs of regular files and directories inside the worksp
   for (const name of ['project/.env', 'project/.git/', 'project/.git/HEAD']) assert.ok(hidden.includes(name), name);
   assert.equal((await archiveEntries(store, '')).at(0).name, 'workspace/');
 
-  for (const value of ['../outside', 'escape', 'a\0b', ['project']]) {
+  for (const value of ['../outside', 'escape']) {
+    assert.deepEqual((await archiveEntries(store, value)).map((entry) => entry.name), ['outside/', 'outside/secret'], value);
+  }
+  for (const value of ['a\0b', ['project']]) {
     await assert.rejects(store.archive(value, { signal: new AbortController().signal }), `${value}`);
   }
   const abort = new AbortController();
@@ -257,7 +280,7 @@ test('upload API enforces authentication, CSRF, MIME type and filename conflicts
   assert.equal((await fetch(url, { method: 'POST', headers, body: 'replace' })).status, 409);
   assert.equal(await fs.readFile(path.join(directory, 'project', 'file.json'), 'utf8'), '{"test":true}');
   assert.equal((await fetch(`${base}/static/project/file.json`, { headers })).status, 404);
-  assert.equal((await fetch(`${base}/api/uploads?directory=escape&filename=bad`, { method: 'POST', headers, body: 'x' })).status, 403);
+  assert.equal((await fetch(`${base}/api/uploads?directory=missing&filename=bad`, { method: 'POST', headers, body: 'x' })).status, 400);
 });
 
 test('streaming API enforces the real 100 MiB boundary without Content-Length', async (t) => {
@@ -342,10 +365,10 @@ test('only accepted submissions extend activity; browsing, invalid paths and tra
   advance(1000);
   await fetch(`${base}/api/files`, { headers });
   await fs.writeFile(path.join(directory, 'note.txt'), 'note');
-  assert.equal(await (await fetch(`${base}/api/files/content/note.txt`, { headers })).text(), 'note');
+  assert.equal(await (await fetch(contentUrl(base, directory, 'note.txt'), { headers })).text(), 'note');
   await fs.rm(path.join(directory, 'note.txt'));
   await (await fetch(`${base}/api/files/archive?path=project`, { headers })).arrayBuffer();
-  await fetch(`${base}/api/uploads?directory=escape&filename=bad`, { method: 'POST', headers, body: 'x' });
+  await fetch(`${base}/api/uploads?directory=missing&filename=bad`, { method: 'POST', headers, body: 'x' });
   assert.equal(await activity(), initial);
   const slow = await startSlowUpload(base, headers, 'activity');
   await waitForPartial(directory);
@@ -379,7 +402,7 @@ test('a disconnected request removes partials and releases its upload slot', asy
 });
 
 test('file content is served inline only as inert types and otherwise as an attachment', async (t) => {
-  const { base, headers, directory } = await serviceFixture(t);
+  const { base, headers, directory, root } = await serviceFixture(t);
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
   const text = 'compressible '.repeat(2000);
   await fs.writeFile(path.join(directory, 'project', 'image.png'), png);
@@ -389,15 +412,16 @@ test('file content is served inline only as inert types and otherwise as an atta
   await fs.writeFile(path.join(directory, 'project', 'data.bin'), png);
   await fs.writeFile(path.join(directory, 'project', "café (1)'s.txt"), text);
   await fs.writeFile(path.join(directory, 'project', 'empty'), '');
-  const get = (name, extra = '') => fetch(
-    `${base}/api/files/content/project/${encodeURIComponent(name)}${extra}`,
+  await fs.writeFile(path.join(root, 'outside', 'secret'), 'secret');
+  await fs.symlink(path.join(root, 'outside', 'secret'), path.join(directory, 'project', 'leak'));
+  const get = (name, extra = '') => fetch(`${contentUrl(base, directory, 'project', name)}${extra}`,
     { headers: { Cookie: headers.Cookie, 'Accept-Encoding': 'gzip' } });
 
-  assert.equal((await fetch(`${base}/api/files/content/project/image.png`)).status, 401);
+  assert.equal((await fetch(contentUrl(base, directory, 'project', 'image.png'))).status, 401);
   assert.equal((await get('missing')).status, 400);
-  assert.equal((await fetch(`${base}/api/files/content/escape/x`, { headers })).status, 403);
-  assert.equal((await fetch(`${base}/api/files/content/project`, { headers })).status, 400);
-  assert.equal((await fetch(`${base}/api/files/content/project/%2E%2E%2F%2E%2E%2Fetc%2Fpasswd`, { headers })).status, 403);
+  assert.equal((await get('leak')).status, 400);
+  assert.equal((await fetch(contentUrl(base, directory, 'project'), { headers })).status, 400);
+  assert.equal(await (await fetch(contentUrl(base, root, 'outside', 'secret'), { headers })).text(), 'secret');
 
   const image = await get('image.png');
   assert.equal(image.status, 200);
@@ -434,7 +458,7 @@ test('file content is served inline only as inert types and otherwise as an atta
   assert.equal(download.headers.get('content-length'), String(Buffer.byteLength(text)));
   assert.equal(await download.text(), text);
 
-  const range = (value) => fetch(`${base}/api/files/content/project/image.png`,
+  const range = (value) => fetch(contentUrl(base, directory, 'project', 'image.png'),
     { headers: { Cookie: headers.Cookie, Range: value } });
   const partial = await range('bytes=1-3');
   assert.equal(partial.status, 206);
@@ -460,7 +484,9 @@ test('folder archive API streams authenticated ZIP attachments', async (t) => {
     { headers: { Cookie: headers.Cookie, 'Accept-Encoding': 'gzip' } });
 
   assert.equal((await fetch(`${base}/api/files/archive?path=project`)).status, 401);
-  assert.equal((await get('path=escape')).status, 403);
+  const escaped = await get('path=escape');
+  assert.equal(escaped.headers.get('content-disposition'), "attachment; filename*=UTF-8''outside.zip");
+  await escaped.arrayBuffer();
   assert.equal((await get('path=missing')).status, 400);
   assert.equal((await get('path=a&path=b')).status, 400);
 

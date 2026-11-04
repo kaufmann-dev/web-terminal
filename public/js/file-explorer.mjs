@@ -115,20 +115,19 @@ export function formatBytes(bytes) {
   return `${value < 100 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
-export function breadcrumbSegments(root, directory) {
-  const segments = [{ label: root, path: root }];
-  let accumulated = root;
-  for (const part of directory.slice(root.length).split('/').filter(Boolean)) {
-    accumulated = `${accumulated.replace(/\/$/, '')}/${part}`;
+export function breadcrumbSegments(directory) {
+  const segments = [{ label: '/', path: '/' }];
+  let accumulated = '';
+  for (const part of directory.split('/').filter(Boolean)) {
+    accumulated = `${accumulated}/${part}`;
     segments.push({ label: part, path: accumulated });
   }
   return segments;
 }
 
-export function parentDirectory(root, directory) {
-  if (!root || !directory || directory === root || !directory.startsWith(root)) return null;
-  const parent = directory.slice(0, directory.lastIndexOf('/')) || '/';
-  return parent.length < root.length ? root : parent;
+export function parentDirectory(directory) {
+  if (!directory || directory === '/') return null;
+  return directory.slice(0, directory.lastIndexOf('/')) || '/';
 }
 
 // Entries are folder names or file objects with a name.
@@ -143,13 +142,13 @@ export function isHidden(entry) {
   return (entry.name ?? entry).startsWith('.');
 }
 
-export function fileContentUrl(root, path, { download = false } = {}) {
-  const relative = path.slice(root.length).split('/').filter(Boolean).map(encodeURIComponent).join('/');
-  return `/api/files/content/${relative}${download ? '?download=1' : ''}`;
+export function fileContentUrl(path, { download = false } = {}) {
+  const encoded = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return `/api/files/content/${encoded}${download ? '?download=1' : ''}`;
 }
 
 export function folderName(directory) {
-  return directory.split('/').filter(Boolean).pop() || 'workspace';
+  return directory.split('/').filter(Boolean).pop() || 'root';
 }
 
 export function folderArchiveUrl(path, { includeHidden = false } = {}) {
@@ -226,7 +225,6 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   const downloadFolder = get('upload-download-folder');
   const workspace = document.querySelector('.terminal-workspace');
   const storageKey = 'terminal.files-directory';
-  let root = null;
   let destination = null;
   let directories = [];
   let files = [];
@@ -274,9 +272,10 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
       breadcrumbs.append(element('span', browsing ? 'Loading…' : 'No folder selected', 'upload-breadcrumb-placeholder'));
       return;
     }
-    const segments = breadcrumbSegments(root, destination);
+    const segments = breadcrumbSegments(destination);
     segments.forEach((segment, index) => {
-      if (index) {
+      // The root crumb is itself a slash, so the first folder follows it directly.
+      if (index > 1) {
         const separator = element('span', '/', 'upload-breadcrumb-separator');
         separator.setAttribute('aria-hidden', 'true');
         breadcrumbs.append(separator);
@@ -347,14 +346,14 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     const filePath = `${destination.replace(/\/$/, '')}/${file.name}`;
     const entry = element('div', '', 'files-entry files-entry-file');
     const link = element('a', '', 'app-list-row files-file');
-    link.href = fileContentUrl(root, filePath);
+    link.href = fileContentUrl(filePath);
     link.target = '_blank';
     link.rel = 'noopener';
     link.title = filePath;
     link.append(icon(FILE_ICON, 'app-list-icon'), element('span', file.name, 'upload-folder-name'),
       element('span', `${formatBytes(file.size)} · ${formatModified(file.modified)}`, 'files-meta'));
     const download = element('a', '', 'icon-button icon-button-compact files-download');
-    download.href = fileContentUrl(root, filePath, { download: true });
+    download.href = fileContentUrl(filePath, { download: true });
     download.download = file.name;
     download.title = 'Download';
     download.setAttribute('aria-label', `Download ${file.name}`);
@@ -387,7 +386,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
       return;
     }
     if (!destination) return;
-    const parent = parentDirectory(root, destination);
+    const parent = parentDirectory(destination);
     if (parent) folders.append(folderRow('..', parent, PARENT_ICON, { ariaLabel: 'Parent folder', download: false }));
     const query = filter.hidden ? '' : filter.value;
     const visibleFolders = filterEntries(listedFolders, query);
@@ -496,7 +495,6 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     try {
       const data = await apiRequest(`/api/files?${new URLSearchParams({ path })}`);
       if (sequence !== browseSequence) return false;
-      root = data.root;
       destination = data.directory;
       directories = data.directories;
       files = data.files;

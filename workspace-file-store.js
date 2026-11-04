@@ -54,14 +54,9 @@ function uploadError(error) {
   if (error.name === 'AbortError') return new UploadError(409, 'Upload cancelled.');
   if (error.code === 'EEXIST') return new UploadError(409, 'A file with this name already exists. Rename it and retry.');
   if (['EACCES', 'EPERM', 'EROFS'].includes(error.code)) return new UploadError(403, 'The destination is not writable or accessible.');
-  if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return new UploadError(400, 'Choose an existing location inside the workspace.');
+  if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return new UploadError(400, 'Choose an existing folder.');
   if (error.code === 'ENOSPC' || error.code === 'EDQUOT') return new UploadError(507, 'There is not enough space to save this file.');
   return new UploadError(503, 'File storage is unavailable.');
-}
-
-function isWithin(root, target) {
-  const relative = path.relative(root, target);
-  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function validateFilename(filename) {
@@ -150,29 +145,25 @@ class WorkspaceFileStore {
     this.maxBytes = maxBytes;
   }
 
+  // Empty and relative paths resolve against the workspace; any folder the server user can reach
+  // may be opened.
   async openDirectory(value = '') {
     if (typeof value !== 'string' || /[\x00-\x1f\x7f]/.test(value)) {
       throw new UploadError(400, 'Enter a valid destination directory.');
     }
-    const root = await fs.realpath(this.directory);
-    const requested = path.resolve(this.directory, value);
-    if (!isWithin(this.directory, requested) && !isWithin(root, requested)) {
-      throw new UploadError(403, 'The destination must be inside the workspace.');
-    }
-    const directory = await fs.realpath(requested);
-    if (!isWithin(root, directory)) throw new UploadError(403, 'The destination must be inside the workspace.');
+    const directory = await fs.realpath(path.resolve(this.directory, value));
 
-    // Walk canonical components through pinned Linux directory descriptors. A swapped
+    // Walk canonical components from / through pinned Linux directory descriptors. A swapped
     // symlink cannot redirect a later temporary-file creation or publication.
-    let handle = await fs.open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    let handle = await fs.open('/', constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
     try {
-      for (const component of path.relative(root, directory).split(path.sep).filter(Boolean)) {
+      for (const component of directory.split(path.sep).filter(Boolean)) {
         const next = await fs.open(`/proc/self/fd/${handle.fd}/${component}`,
           constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
         await handle.close();
         handle = next;
       }
-      return { root, directory, handle, anchoredPath: `/proc/self/fd/${handle.fd}` };
+      return { directory, handle, anchoredPath: `/proc/self/fd/${handle.fd}` };
     } catch (error) {
       await handle.close();
       throw error;
@@ -192,7 +183,6 @@ class WorkspaceFileStore {
         }
       }));
       return {
-        root: target.root,
         directory: target.directory,
         directories: entries.filter((entry) => entry.isDirectory())
           .map((entry) => entry.name).sort((a, b) => a.localeCompare(b)),
@@ -205,7 +195,7 @@ class WorkspaceFileStore {
 
   async openFile(value) {
     if (typeof value !== 'string' || !value || /[\x00-\x1f\x7f]/.test(value)) {
-      throw new UploadError(400, 'Choose a file inside the workspace.');
+      throw new UploadError(400, 'Choose a regular file.');
     }
     const name = path.basename(value);
     validateFilename(name);
@@ -216,7 +206,7 @@ class WorkspaceFileStore {
       handle = await fs.open(`${target.anchoredPath}/${name}`,
         constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       const stats = await handle.stat();
-      if (!stats.isFile()) throw new UploadError(400, 'Choose a file inside the workspace.');
+      if (!stats.isFile()) throw new UploadError(400, 'Choose a regular file.');
       const sample = Buffer.alloc(Math.min(TYPE_SAMPLE_BYTES, stats.size));
       const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
       return { handle, name, size: stats.size, type: inlineType(name, sample.subarray(0, bytesRead)) };
@@ -232,7 +222,7 @@ class WorkspaceFileStore {
   // directories are included, each opened through its parent's pinned descriptor with O_NOFOLLOW.
   async archive(value, { includeHidden = false, signal }) {
     const target = await this.openDirectory(value);
-    const name = path.basename(target.directory) || 'workspace';
+    const name = path.basename(target.directory) || 'root';
     const zip = new ZipFile();
     const stream = zip.outputStream;
     // The walk stops when the caller aborts or the stream closes early, for example on disconnect.
@@ -299,7 +289,7 @@ class WorkspaceFileStore {
       signal.throwIfAborted();
       await beforePublish();
       const actualDirectory = await fs.realpath(target.anchoredPath);
-      if (actualDirectory !== target.directory || !isWithin(target.root, actualDirectory)) {
+      if (actualDirectory !== target.directory) {
         throw new UploadError(409, 'The destination moved during upload. Choose it again.');
       }
       // Hard-link publication is atomic and fails if any entry already has this name.

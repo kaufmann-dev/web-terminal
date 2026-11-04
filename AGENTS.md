@@ -94,8 +94,9 @@ node --test test/*.test.js
   Parakeet TDT 0.6B v3 model from `/opt/web-terminal/voice-model` through `sherpa-onnx-node`, decodes
   one request at a time, and is stopped after ten idle minutes, on timeout, and on shutdown. Log
   worker failures without audio or transcript content. No audio leaves the server.
-- Keep workspace file access in `workspace-file-store.js`, rooted at `TERMINAL_WORKDIR` and resolved
-  through pinned directory descriptors with `O_NOFOLLOW`. `/api/files/content/*` serves single
+- Keep workspace file access in `workspace-file-store.js`, opening at `TERMINAL_WORKDIR`, with
+  access to any path the server user can reach, resolved from `/` through pinned directory
+  descriptors with `O_NOFOLLOW`. `/api/files/content/*` serves single
   workspace files and `/api/files/archive` serves folders; no other route serves workspace content.
   Folder archives are streamed with the exact `yazl` dependency as `application/zip` attachments
   with `nosniff`, contain only regular files and directories opened through their parents' pinned

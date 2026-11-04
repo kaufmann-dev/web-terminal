@@ -26,19 +26,20 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
   assert.equal(formatBytes(12.4 * 1024 * 1024), '12.4 MiB');
   assert.equal(formatBytes(250 * 1024 * 1024), '250 MiB');
 
-  assert.deepEqual(breadcrumbSegments('/code', '/code'), [{ label: '/code', path: '/code' }]);
-  assert.deepEqual(breadcrumbSegments('/code', '/code/.cargo/registry'), [
-    { label: '/code', path: '/code' },
+  assert.deepEqual(breadcrumbSegments('/'), [{ label: '/', path: '/' }]);
+  assert.deepEqual(breadcrumbSegments('/code/.cargo/registry'), [
+    { label: '/', path: '/' },
+    { label: 'code', path: '/code' },
     { label: '.cargo', path: '/code/.cargo' },
     { label: 'registry', path: '/code/.cargo/registry' },
   ]);
-  assert.deepEqual(breadcrumbSegments('/', '/srv/app').map((segment) => segment.path), ['/', '/srv', '/srv/app']);
+  assert.deepEqual(breadcrumbSegments('/tmp').map((segment) => segment.path), ['/', '/tmp']);
 
-  assert.equal(parentDirectory('/code', '/code'), null);
-  assert.equal(parentDirectory('/code', '/code/project'), '/code');
-  assert.equal(parentDirectory('/code', '/code/.cargo/registry'), '/code/.cargo');
-  assert.equal(parentDirectory('/', '/srv'), '/');
-  assert.equal(parentDirectory('/code', '/elsewhere'), null);
+  assert.equal(parentDirectory('/'), null);
+  assert.equal(parentDirectory(''), null);
+  assert.equal(parentDirectory('/code'), '/');
+  assert.equal(parentDirectory('/code/project'), '/code');
+  assert.equal(parentDirectory('/code/.cargo/registry'), '/code/.cargo');
 
   const names = ['api', 'Web-App', '.cargo', 'webhooks'];
   assert.deepEqual(filterEntries(names, ''), names);
@@ -50,13 +51,13 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
   const files = [{ name: 'README.md' }, { name: 'web.config' }];
   assert.deepEqual(filterEntries(files, 'web'), [files[1]]);
 
-  assert.equal(fileContentUrl('/code', '/code/a b/é&#?.txt'), '/api/files/content/a%20b/%C3%A9%26%23%3F.txt');
-  assert.equal(fileContentUrl('/code', '/code/a.zip', { download: true }), '/api/files/content/a.zip?download=1');
-  assert.equal(fileContentUrl('/', '/srv/a.txt'), '/api/files/content/srv/a.txt');
+  assert.equal(fileContentUrl('/code/a b/é&#?.txt'), '/api/files/content/code/a%20b/%C3%A9%26%23%3F.txt');
+  assert.equal(fileContentUrl('/code/a.zip', { download: true }), '/api/files/content/code/a.zip?download=1');
+  assert.equal(fileContentUrl('/tmp/a.txt'), '/api/files/content/tmp/a.txt');
 
   assert.equal(folderName('/code/scratchpads/clothes/images'), 'images');
   assert.equal(folderName('/code'), 'code');
-  assert.equal(folderName('/'), 'workspace');
+  assert.equal(folderName('/'), 'root');
   assert.equal(folderArchiveUrl('/code/a b/é&'), '/api/files/archive?path=%2Fcode%2Fa+b%2F%C3%A9%26');
   assert.equal(folderArchiveUrl('/code/.git', { includeHidden: true }), '/api/files/archive?path=%2Fcode%2F.git&hidden=1');
 

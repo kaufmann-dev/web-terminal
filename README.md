@@ -337,17 +337,16 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
-- **Files** is in the session sidebar on desktop and mobile. The dialog browses
-  `TERMINAL_WORKDIR`: the **Location** bar shows clickable breadcrumbs, and the list below shows
-  the folder's subfolders and files with their size and modification date. Click a folder to open
-  it, `..` to go up one level; a filter appears when a folder has more than eight entries. The
-  pencil button switches the bar to a text field where absolute paths and paths relative to the
-  workspace are accepted; press Enter to open the folder or Escape to return to the breadcrumbs.
-  Browsing starts at the workspace root and the last valid folder is remembered in the browser
-  tab. The list is re-read every time the dialog opens; if the folder no longer exists, the
-  dialog returns to the workspace root. Hidden files and directories (names starting with `.`) are not listed by default; the eye button in the **Location** bar shows them until the page reloads. Symlinks are omitted from the list; directory
-  symlinks can still be entered if they resolve inside the workspace, and file symlinks cannot be
-  opened.
+- **Files** is in the session sidebar on desktop and mobile. The dialog opens at
+  `TERMINAL_WORKDIR` and can browse the whole filesystem with the permissions of the server user:
+  the **Location** bar shows clickable breadcrumbs from `/`, and the list below shows the folder's
+  subfolders and files with their size and modification date. Click a folder to open it, `..` to
+  go up one level; a filter appears when a folder has more than eight entries. The pencil button
+  switches the bar to a text field where absolute paths and paths relative to `TERMINAL_WORKDIR`
+  are accepted; press Enter to open the folder or Escape to return to the breadcrumbs. The last
+  valid folder is remembered in the browser tab. The list is re-read every time the dialog opens;
+  if the folder no longer exists, the dialog returns to `TERMINAL_WORKDIR`. Hidden files and directories (names starting with `.`) are not listed by default; the eye button in the **Location** bar shows them until the page reloads. Symlinks are omitted from the list; directory
+  symlinks can still be entered by typing their path, and file symlinks cannot be opened.
 - Click a file to open it in a new browser tab, where the browser's own viewer displays it:
   PNG, JPEG, GIF, WebP, AVIF, SVG, BMP, and ICO images, PDFs, MP3, M4A, WAV, Ogg, Opus, and FLAC
   audio, and MP4, M4V, MOV, and WebM video. Any other file that is valid UTF-8 text opens as
@@ -366,7 +365,8 @@ or control unrelated native Wayland windows.
   incomplete archive.
 - To upload, drop files on the dashed **Upload to this folder** area or click it (**Choose files**
   on mobile), then click **Upload N files**; they are saved into the folder being viewed and the
-  list refreshes when the transfer finishes. Desktop users can also drop files onto the terminal
+  list refreshes when the transfer finishes. Folders outside the workspace accept uploads only
+  where the server user can write. Desktop users can also drop files onto the terminal
   to open the dialog.
 - Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
   sequentially with one active upload per login session. The dialog shows progress and saved paths;

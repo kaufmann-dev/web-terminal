@@ -659,12 +659,12 @@ function createWebTerminal(options = {}) {
     }
   });
 
-  // The workspace-relative path is part of the URL so browser tabs and viewers show the filename.
+  // The absolute path is part of the URL so browser tabs and viewers show the filename.
   app.get('/api/files/content/*path', requireApiAuth, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     let file;
     try {
-      file = await workspaceFileStore.openFile(req.params.path.join('/'));
+      file = await workspaceFileStore.openFile(`/${req.params.path.join('/')}`);
     } catch (error) {
       const failure = uploadError(error);
       return res.status(failure.status).json({ error: failure.message });
