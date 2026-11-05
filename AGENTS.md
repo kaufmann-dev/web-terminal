@@ -124,7 +124,7 @@ node --test test/*.test.js
 ## Deployment Configuration
 
 - The production image is built by the repository `Dockerfile` from CentOS Stream 10. Coolify uses
-  its Dockerfile build pack with `/Dockerfile`; do not add a Nixpacks deployment plan.
+  its Dockerfile build pack with `/Dockerfile`; do not add a Railpack deployment plan (`railpack.json`).
 - CentOS Stream 10's x86_64 image requires an x86-64-v3 host CPU. Keep that operator constraint in
   the Coolify README whenever the base remains CentOS Stream 10.
 - Keep runtime versions in the native `package.json` engine declaration. Node.js 24 remains the
@@ -138,11 +138,10 @@ node --test test/*.test.js
 - The floating CentOS Stream 10 base and `dnf update` intentionally take current distribution
   updates on each image rebuild. Install system tools, Chromium, Fontconfig, Mesa, uv, Podman, and
   build dependencies natively with DNF; do not add a Nix runtime or Nix store paths.
-- Git Wrangler v1.1.3, Nixpacks v1.41.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
+- Git Wrangler v1.1.3, Railpack v0.43.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
   the current checksum-verified artifact releases. Their installers must support the documented architectures,
-  reject unknown artifacts, and be advanced when newer compatible stable releases exist. Nixpacks
-  is a bundled terminal command for working on other projects, not this application's build pack
-  or system package manager.
+  reject unknown artifacts, and be advanced when newer compatible stable releases exist. Railpack
+  is a bundled terminal command for working on other projects, not this application's build pack.
 - Install Muse Code's checksum-verified x86_64 or ARM64 Linux binary at `/usr/local/bin/muse`
   during the image build and verify it with `muse --version`. Keep its version and architecture
   checksums pinned in `scripts/install-muse-code.sh`; users authenticate on the first `muse` run

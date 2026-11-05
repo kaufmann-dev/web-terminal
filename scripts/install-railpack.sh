@@ -2,19 +2,19 @@
 
 set -Eeuo pipefail
 
-readonly NIXPACKS_VERSION="1.41.0"
-readonly NIXPACKS_BASE_URL="https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}"
+readonly RAILPACK_VERSION="0.43.0"
+readonly RAILPACK_BASE_URL="https://github.com/railwayapp/railpack/releases/download/v${RAILPACK_VERSION}"
 
 archive_name() {
   case "$1" in
     x86_64 | amd64)
-      printf 'nixpacks-v%s-x86_64-unknown-linux-musl.tar.gz\n' "$NIXPACKS_VERSION"
+      printf 'railpack-v%s-x86_64-unknown-linux-musl.tar.gz\n' "$RAILPACK_VERSION"
       ;;
     aarch64 | arm64)
-      printf 'nixpacks-v%s-aarch64-unknown-linux-musl.tar.gz\n' "$NIXPACKS_VERSION"
+      printf 'railpack-v%s-arm64-unknown-linux-musl.tar.gz\n' "$RAILPACK_VERSION"
       ;;
     *)
-      printf 'Unsupported Nixpacks architecture: %s\n' "$1" >&2
+      printf 'Unsupported Railpack architecture: %s\n' "$1" >&2
       return 1
       ;;
   esac
@@ -23,13 +23,13 @@ archive_name() {
 archive_checksum() {
   case "$1" in
     x86_64 | amd64)
-      printf '0f55de7874507b9cf7502113120bd96f2ab6979f78d10eaf2eb2ade9207b3af6\n'
+      printf '248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb\n'
       ;;
     aarch64 | arm64)
-      printf '912bd02dd2bb6f9c3a9ed965fe8a68b4aa318dc7a2546e2eca6f2806a894ba39\n'
+      printf '732ece14eb4f4676a43ebba19431f954edf7b130acb76159ef0f2ff86ac42ac9\n'
       ;;
     *)
-      printf 'Unsupported Nixpacks architecture: %s\n' "$1" >&2
+      printf 'Unsupported Railpack architecture: %s\n' "$1" >&2
       return 1
       ;;
   esac
@@ -45,11 +45,11 @@ main() (
 
   cd "$work_dir"
   curl --fail --location --silent --show-error --retry 3 \
-    --output "$archive" "$NIXPACKS_BASE_URL/$archive"
+    --output "$archive" "$RAILPACK_BASE_URL/$archive"
   printf '%s  %s\n' "$checksum" "$archive" |
     sha256sum --check --strict
   tar --extract --gzip --file "$archive"
-  install -D -m 0755 nixpacks /usr/local/bin/nixpacks
+  install -D -m 0755 railpack /usr/local/bin/railpack
 )
 
 main "$@"

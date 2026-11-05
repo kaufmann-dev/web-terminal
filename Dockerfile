@@ -105,7 +105,7 @@ RUN npm ci --omit=dev \
 COPY . .
 
 RUN bash scripts/install-git-wrangler.sh \
-    && bash scripts/install-nixpacks.sh \
+    && bash scripts/install-railpack.sh \
     && bash scripts/install-muse-code.sh \
     && /usr/local/bin/muse --version \
     && bash scripts/install-voice-model.sh \

@@ -41,17 +41,16 @@ Connect this repository to a Coolify application with:
 - **Custom Docker Options:**
   `--device /dev/fuse --device /dev/net/tun --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined`
 
-For an existing deployment, changing the Build Pack from Nixpacks to Dockerfile and setting the
-Dockerfile location is a required one-time Coolify change. Remove any old
-`NIXPACKS_NODE_VERSION`, install, or build-command overrides; the deployment needs no pre- or
-post-deployment command.
+Keep the Build Pack on Dockerfile rather than Railpack: the image depends on the CentOS toolchain
+that only the Dockerfile installs. Remove any old `RAILPACK_*`, install, or build-command
+overrides; the deployment needs no pre- or post-deployment command.
 
 The image is built from the current CentOS Stream 10 base. Each rebuild applies the maintained DNF
 updates and installs Node.js 24 (with its full ICU locale data) from the current LTS stream plus the
 native development toolchain, Chromium, and Podman 6 or newer. Node 24 is retained because it is the current LTS line, not as a
 permanent compatibility pin. Application dependencies remain exactly locked for reproducible
 images and are advanced when compatible stable releases are available. Nix is not installed.
-Nixpacks is included only as a terminal CLI for working on other projects.
+Railpack is included only as a terminal CLI for working on other projects.
 
 The image also bundles the checksum-verified NVIDIA Parakeet TDT 0.6B v3 speech-recognition model
 (about 650 MB) for local voice dictation. Dictation needs no external service or credentials. While
@@ -155,7 +154,8 @@ The terminal includes:
 - `xwfb-run` with Cage for isolated Xwayland displays, plus xdotool 4.20260303.1 for controlling
   X11 clients inside those displays
 - rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
-- Python 3 with PyYAML, plus Nixpacks 1.41.0 and uv for Python projects
+- Python 3 with PyYAML, plus uv for Python projects
+- Railpack 0.43.0 for inspecting the Coolify build plans of other projects
 - `gh`, `git-wrangler` 1.1.3, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `bat`, `openssl`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
@@ -166,8 +166,10 @@ preserves the native CentOS image PATH. npm's global prefix is `~/.local`, so us
 commands stored on `/code` override locked image commands and survive redeployments. Locked npm
 commands remain available as fallbacks alongside Git Wrangler, Muse Code, and DNF packages.
 
-Nixpacks can inspect or emit build contexts for other projects, and the bundled Podman can build
-and run them directly. This application itself is built by its Dockerfile and has no Nix runtime.
+Railpack can generate and inspect build plans for other projects with `railpack plan` and
+`railpack info`; `railpack build` also needs a reachable BuildKit daemon (`BUILDKIT_HOST`), which
+the image does not provide. This application itself is built by its Dockerfile and has no Nix
+runtime.
 
 Nested Podman uses `fuse-overlayfs`, persistent storage below `TERMINAL_HOME`, Buildah chroot
 isolation, SQLite state, and a single UID mapping. Files owned by different users inside a nested
@@ -517,9 +519,8 @@ documented for Coolify.
   is required.
 - **Podman storage consumes too much space:** Inspect it with `podman system df` and remove unused
   data with `podman system prune`; Podman storage persists below `TERMINAL_HOME`.
-- **Build logs mention Nixpacks or `nodejs_18`:** Change the Coolify Build Pack to Dockerfile and
-  set the Dockerfile location to `/Dockerfile`. Remove stale Nixpacks version overrides, then
-  rebuild.
+- **Build logs mention Railpack or Mise:** Change the Coolify Build Pack to Dockerfile and set the
+  Dockerfile location to `/Dockerfile`. Remove stale `RAILPACK_*` overrides, then rebuild.
 - **The CentOS base exits with an x86-64-v3 error:** Move the deployment to an x86_64 host whose
   CPU supports the x86-64-v3 baseline, or use a supported Arm64 host.
 - **Terminal stays on “Connecting” or repeatedly reconnects:** Confirm the reverse proxy preserves

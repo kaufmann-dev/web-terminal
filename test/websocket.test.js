@@ -367,8 +367,8 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     path.join(__dirname, '..', 'scripts', 'install-git-wrangler.sh'),
     'utf8',
   );
-  const nixpacksInstaller = fs.readFileSync(
-    path.join(__dirname, '..', 'scripts', 'install-nixpacks.sh'),
+  const railpackInstaller = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'install-railpack.sh'),
     'utf8',
   );
   const podmanInstaller = fs.readFileSync(
@@ -455,7 +455,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     './node_modules/.bin/agent-browser --version',
     './node_modules/.bin/opencode --version',
     'bash scripts/install-git-wrangler.sh',
-    'bash scripts/install-nixpacks.sh',
+    'bash scripts/install-railpack.sh',
     'bash scripts/install-rootless-podman.sh',
   ]) {
     assert.equal(dockerfile.includes(imageCommand), true);
@@ -469,7 +469,7 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
     assert.match(dockerfile, new RegExp(`^ENV ${name}="${value}"$`, 'm'));
   }
   assert.doesNotMatch(dockerfile, /(?:apt-get|slirp4netns|\/nix\/|nix-env)/);
-  assert.equal(fs.existsSync(path.join(__dirname, '..', 'nixpacks.toml')), false);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'railpack.json')), false);
   assert.match(dockerignore, /^\.env$/m);
   assert.match(dockerignore, /^\.git$/m);
   assert.match(dockerignore, /^node_modules$/m);
@@ -489,8 +489,8 @@ test('CentOS image provides current GUI, rootless Podman, and terminal developme
 
   assert.match(gitWranglerInstaller, /^readonly GIT_WRANGLER_VERSION="1\.1\.3"$/m);
   assert.match(gitWranglerInstaller, /sha256sum --check --strict/);
-  assert.match(nixpacksInstaller, /^readonly NIXPACKS_VERSION="1\.41\.0"$/m);
-  assert.match(nixpacksInstaller, /sha256sum --check --strict/);
+  assert.match(railpackInstaller, /^readonly RAILPACK_VERSION="0\.43\.0"$/m);
+  assert.match(railpackInstaller, /sha256sum --check --strict/);
   assert.match(xdotoolInstaller, /^readonly XDOTOOL_VERSION="4\.20260303\.1"$/m);
   assert.match(
     xdotoolInstaller,
