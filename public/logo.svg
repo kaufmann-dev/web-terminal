@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <style>
-    svg { fill: #45a29e; }
-    @media (prefers-color-scheme: dark) { svg { fill: #66fcf1; } }
-  </style>
-  <path d="M2 3L10 12L2 21L5 23L15 12L5 1Z" />
-  <rect x="13" y="19" width="9" height="3" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><title>Web Terminal</title><defs><linearGradient id="g" x1="3" y1="3" x2="29" y2="29" gradientUnits="userSpaceOnUse"><stop class="g-a"/><stop class="g-b" offset="1"/></linearGradient></defs><style>.g-a{stop-color:#00a19c}.g-b{stop-color:#077494}@media (prefers-color-scheme:dark){.g-a{stop-color:#53e0da}.g-b{stop-color:#33add7}}</style><g stroke-width="3" stroke-linecap="butt" stroke-linejoin="miter"><polyline points="5,6.5 14.5,16 5,25.5" fill="none" stroke="url(#g)"/><rect x="17" y="23.5" width="11" height="3" fill="url(#g)"/></g></svg>
