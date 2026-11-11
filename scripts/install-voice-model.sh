@@ -7,7 +7,7 @@ set -Eeuo pipefail
 readonly MODEL_NAME="sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 readonly MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${MODEL_NAME}.tar.bz2"
 # SHA-256 published as the release asset digest.
-readonly MODEL_CHECKSUM="5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf"
+readonly MODEL_CHECKSUM="1495e91b59d7fc53ddca91f3431758ec99f8fa253fdb0e1e851be0f72b14b0f9"
 readonly MODEL_DIRECTORY="/opt/web-terminal/voice-model"
 readonly MODEL_FILES=(encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt)
 
