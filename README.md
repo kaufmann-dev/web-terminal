@@ -156,7 +156,7 @@ The terminal includes:
 - rootless Podman 6 or newer with Netavark, Aardvark DNS, Pasta, rootlessport, and fuse-overlayfs
 - Python 3 with PyYAML, plus uv for Python projects
 - Railpack 0.43.0 for inspecting the Coolify build plans of other projects
-- `gh`, `git-wrangler` 2.0.0, Git, SSH, and `git-filter-repo`
+- `gh`, `git-wrangler` 2.1.0, Git, SSH, and `git-filter-repo`
 - `chezmoi`, `micro`, `bat`, `openssl`, `fzf`, `rg`, `fd`, `jq`, `yq`, and common archive/build tools
 - focused process, network, and DNS diagnostics
 
