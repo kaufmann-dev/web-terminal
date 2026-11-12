@@ -53,6 +53,7 @@ RUN dnf --assumeyes update \
       perl-podlators \
       pkgconf-pkg-config \
       podman \
+      poppler-utils \
       procps-ng \
       python3 \
       python3-pyyaml \
@@ -79,6 +80,8 @@ RUN dnf --assumeyes update \
     && node -e 'if ([...new Intl.Segmenter().segment("ab")].length !== 2 || new Date(0).toLocaleDateString("de-AT", { timeZone: "UTC" }) !== "1.1.1970") process.exit(1)' \
     && bat --version \
     && openssl version \
+    && pdftoppm -v \
+    && pdftotext -v \
     && python3 -c 'import yaml' \
     && sed --regexp-extended --in-place \
       's/^[[:space:]]*Compositor[[:space:]]*=.*$/    Compositor = cage/' \

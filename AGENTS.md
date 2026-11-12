@@ -138,6 +138,8 @@ node --test test/*.test.js
 - The floating CentOS Stream 10 base and `dnf update` intentionally take current distribution
   updates on each image rebuild. Install system tools, Chromium, Fontconfig, Mesa, uv, Podman, and
   build dependencies natively with DNF; do not add a Nix runtime or Nix store paths.
+- Keep `poppler-utils` in the DNF list. Claude Code's Read tool needs `pdftoppm` to open PDFs, and
+  `pdftotext` extracts their text; the Dockerfile verifies both at build time.
 - Git Wrangler v2.1.0, Railpack v0.43.0, Muse Code 1.4.0-R4161.1, and xdotool v4.20260303.1 are
   the current checksum-verified artifact releases. Their installers must support the documented architectures,
   reject unknown artifacts, and be advanced when newer compatible stable releases exist. Railpack
