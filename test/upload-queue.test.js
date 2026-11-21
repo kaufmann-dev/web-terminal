@@ -50,19 +50,20 @@ test('cancel stops the active and remaining uploads while preserving saved files
 });
 
 test('oversized files never transfer, empty files transfer, and expired authentication stops the queue', async () => {
-  const { UploadQueue, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
+  const { UploadQueue } = await import('../public/js/file-explorer.mjs');
   let expired = 0;
   const calls = [];
-  const queue = new UploadQueue({ onAuthExpired: () => { expired += 1; }, send: async ({ name }) => {
+  const queue = new UploadQueue({ maxBytes: 1024 * 1024, onAuthExpired: () => { expired += 1; }, send: async ({ name }) => {
     calls.push(name);
     if (name === 'expired') throw Object.assign(new Error('Expired'), { status: 401 });
     return { path: `/code/${name}` };
   } });
-  queue.add([{ name: 'too-large', size: MAX_UPLOAD_BYTES + 1 }, { name: 'empty', size: 0 },
+  queue.add([{ name: 'too-large', size: 1024 * 1024 + 1 }, { name: 'empty', size: 0 },
     { name: 'expired', size: 1 }, { name: 'remaining', size: 1 }]);
   await queue.run('/code');
   assert.deepEqual(calls, ['empty', 'expired']);
   assert.equal(expired, 1);
+  assert.equal(queue.items[0].message, 'File exceeds the 1.0 MiB limit.');
   assert.deepEqual(queue.items.map((item) => item.status), ['error', 'saved', 'error', 'cancelled']);
 });
 

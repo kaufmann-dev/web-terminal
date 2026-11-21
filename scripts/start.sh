@@ -39,7 +39,7 @@ run_in_terminal_environment() {
   local -a unset_environment=(-u SESSION_SECRET)
   # Keep in sync with SERVER_ONLY_ENVIRONMENT in app.js.
   local -a server_only_environment=(
-    NODE_ENV PORT HOST PUBLIC_ORIGIN TRUST_PROXY SOURCE_COMMIT
+    NODE_ENV PORT HOST PUBLIC_ORIGIN TRUST_PROXY UPLOAD_LIMIT_MIB SOURCE_COMMIT
     COOLIFY_BRANCH COOLIFY_CONTAINER_NAME COOLIFY_FQDN COOLIFY_RESOURCE_UUID COOLIFY_URL
   )
   local -a podman_environment=()

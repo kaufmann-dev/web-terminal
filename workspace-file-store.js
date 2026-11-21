@@ -8,7 +8,8 @@ const { PassThrough } = require('node:stream');
 const { finished } = require('node:stream/promises');
 const { ZipFile } = require('yazl');
 
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MIB = 1024 * 1024;
+const DEFAULT_UPLOAD_LIMIT_MIB = 100;
 const TYPE_SAMPLE_BYTES = 8 * 1024;
 const INLINE_TYPES = new Map([
   ['.png', 'image/png'],
@@ -140,9 +141,10 @@ async function addDirectory(zip, directory, prefix, options) {
 }
 
 class WorkspaceFileStore {
-  constructor({ directory, maxBytes = MAX_UPLOAD_BYTES }) {
+  constructor({ directory, maxBytes = DEFAULT_UPLOAD_LIMIT_MIB * MIB }) {
     this.directory = directory;
     this.maxBytes = maxBytes;
+    this.tooLargeMessage = `File exceeds the ${maxBytes % MIB ? `${maxBytes}-byte` : `${maxBytes / MIB} MiB`} limit.`;
   }
 
   // Empty and relative paths resolve against the workspace; any folder the server user can reach
@@ -250,7 +252,7 @@ class WorkspaceFileStore {
     validateFilename(filename);
     const length = request.headers?.['content-length'];
     if (length !== undefined && (!/^\d+$/.test(length) || Number(length) > this.maxBytes)) {
-      throw new UploadError(413, 'File exceeds the 100 MiB limit.');
+      throw new UploadError(413, this.tooLargeMessage);
     }
     const target = await this.openDirectory(directory);
     const temporary = `${target.anchoredPath}/.web-terminal-upload-${randomUUID()}.part`;
@@ -281,7 +283,7 @@ class WorkspaceFileStore {
       for await (const chunk of input) {
         signal.throwIfAborted();
         bytes += chunk.length;
-        if (bytes > this.maxBytes) throw new UploadError(413, 'File exceeds the 100 MiB limit.');
+        if (bytes > this.maxBytes) throw new UploadError(413, this.tooLargeMessage);
         await file.writeFile(chunk);
       }
       await file.close();
@@ -316,4 +318,4 @@ class WorkspaceFileStore {
   }
 }
 
-module.exports = { WorkspaceFileStore, UploadError, uploadError, inlineType, MAX_UPLOAD_BYTES };
+module.exports = { WorkspaceFileStore, UploadError, uploadError, inlineType, DEFAULT_UPLOAD_LIMIT_MIB };

@@ -67,10 +67,11 @@ test('files dialog helpers format sizes, dates, breadcrumbs, parents, filters, a
 });
 
 test('upload summaries describe the selection, progress, and results', async () => {
-  const { selectionSummary, uploadableItems, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
+  const { selectionSummary, uploadableItems } = await import('../public/js/file-explorer.mjs');
   const item = (status, size = 1024 * 1024) => ({ status, file: { size } });
 
-  assert.equal(selectionSummary([], '/code'), 'No files selected · up to 100 MiB each');
+  assert.equal(selectionSummary([], '/code', false, 100 * 1024 * 1024), 'No files selected · up to 100 MiB each');
+  assert.equal(selectionSummary([], '/code', false, 2 * 1024 ** 3), 'No files selected · up to 2.0 GiB each');
   assert.equal(selectionSummary([item('pending')], '/code/project'), '1 file · 1.0 MiB → /code/project');
   assert.equal(selectionSummary([item('pending'), item('pending')], null), '2 files · 2.0 MiB');
   assert.equal(
@@ -82,7 +83,7 @@ test('upload summaries describe the selection, progress, and results', async () 
     '1 of 3 saved. 1 failed. 1 cancelled.',
   );
 
-  const tooLarge = item('error', MAX_UPLOAD_BYTES + 1);
+  const tooLarge = { ...item('error'), tooLarge: true };
   const retryable = item('error');
   assert.deepEqual(uploadableItems([item('saved'), tooLarge, retryable]), [retryable]);
 });
@@ -132,13 +133,13 @@ test('files and job dialogs share one dialog structure and component set', () =>
 });
 
 test('upload file rows use the shared status badge vocabulary', async () => {
-  const { describeUploadStatus, MAX_UPLOAD_BYTES } = await import('../public/js/file-explorer.mjs');
+  const { describeUploadStatus } = await import('../public/js/file-explorer.mjs');
   const file = { size: 200 };
   assert.equal(describeUploadStatus({ status: 'pending', file }), null);
   assert.deepEqual(describeUploadStatus({ status: 'uploading', loaded: 50, file }), { label: 'Uploading 25%', tone: 'running' });
   assert.deepEqual(describeUploadStatus({ status: 'uploading', loaded: 200, file }), { label: 'Saving', tone: 'running' });
   assert.deepEqual(describeUploadStatus({ status: 'saved', file }), { label: 'Saved', tone: 'success' });
   assert.deepEqual(describeUploadStatus({ status: 'error', file }), { label: 'Failed', tone: 'error' });
-  assert.deepEqual(describeUploadStatus({ status: 'error', file: { size: MAX_UPLOAD_BYTES + 1 } }), { label: 'Too large', tone: 'error' });
+  assert.deepEqual(describeUploadStatus({ status: 'error', tooLarge: true, file }), { label: 'Too large', tone: 'error' });
   assert.deepEqual(describeUploadStatus({ status: 'cancelled', file }), { label: 'Cancelled', tone: 'idle' });
 });

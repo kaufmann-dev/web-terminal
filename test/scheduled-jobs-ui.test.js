@@ -80,7 +80,7 @@ test('the sidebar exposes a jobs dialog beside files', () => {
   );
   assert.match(view, /<dialog id="jobs-dialog" class="app-dialog jobs-dialog"/);
   assert.match(script, /import\('\/static\/js\/scheduled-jobs\.mjs'\)/);
-  assert.match(script, /uploads\.enable\(\);\s*scheduledJobs\.enable\(\);/);
+  assert.match(script, /uploads\.enable\(\(await apiRequest\('\/api\/uploads'\)\)\.maxBytes\);\s*scheduledJobs\.enable\(\);/);
 });
 
 test('common cron schedules are described in words', async () => {

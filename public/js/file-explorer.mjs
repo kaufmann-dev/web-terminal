@@ -1,5 +1,3 @@
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
-
 export function sendUpload({ file, name, directory, csrfToken, signal, onProgress,
   createRequest = () => new XMLHttpRequest() }) {
   return new Promise((resolve, reject) => {
@@ -36,8 +34,9 @@ export function sendUpload({ file, name, directory, csrfToken, signal, onProgres
 }
 
 export class UploadQueue {
-  constructor({ send, render = () => {}, onAuthExpired = () => {} }) {
+  constructor({ send, render = () => {}, onAuthExpired = () => {}, maxBytes = Infinity }) {
     this.send = send;
+    this.maxBytes = maxBytes;
     this.render = render;
     this.onAuthExpired = onAuthExpired;
     this.items = [];
@@ -48,9 +47,9 @@ export class UploadQueue {
   add(files) {
     if (this.running) return;
     for (const file of files) {
-      const tooLarge = file.size > MAX_UPLOAD_BYTES;
-      this.items.push({ file, name: file.name, status: tooLarge ? 'error' : 'pending',
-        message: tooLarge ? 'File exceeds the 100 MiB limit.' : 'Ready', loaded: 0 });
+      const tooLarge = file.size > this.maxBytes;
+      this.items.push({ file, name: file.name, tooLarge, status: tooLarge ? 'error' : 'pending',
+        message: tooLarge ? `File exceeds the ${formatBytes(this.maxBytes)} limit.` : 'Ready', loaded: 0 });
     }
     this.render();
   }
@@ -70,7 +69,7 @@ export class UploadQueue {
           item.message = 'Cancelled';
           continue;
         }
-        if (item.file.size > MAX_UPLOAD_BYTES) continue;
+        if (item.tooLarge) continue;
         item.status = 'uploading';
         item.loaded = 0;
         item.message = 'Uploading…';
@@ -163,7 +162,7 @@ export function formatModified(ms, now = Date.now(), locale = undefined) {
 }
 
 export function uploadableItems(items) {
-  return items.filter((item) => item.status !== 'saved' && item.file.size <= MAX_UPLOAD_BYTES);
+  return items.filter((item) => item.status !== 'saved' && !item.tooLarge);
 }
 
 export function describeUploadStatus(item) {
@@ -174,16 +173,16 @@ export function describeUploadStatus(item) {
     }
     case 'saved': return { label: 'Saved', tone: 'success' };
     case 'error':
-      return { label: item.file.size > MAX_UPLOAD_BYTES ? 'Too large' : 'Failed', tone: 'error' };
+      return { label: item.tooLarge ? 'Too large' : 'Failed', tone: 'error' };
     case 'cancelled': return { label: 'Cancelled', tone: 'idle' };
     default: return null;
   }
 }
 
-export function selectionSummary(items, destination, running = false) {
+export function selectionSummary(items, destination, running = false, maxBytes = 0) {
   const saved = items.filter((item) => item.status === 'saved').length;
   if (running) return `${saved} of ${items.length} saved. Uploading…`;
-  if (!items.length) return 'No files selected · up to 100 MiB each';
+  if (!items.length) return `No files selected · up to ${formatBytes(maxBytes)} each`;
   const failed = items.filter((item) => item.status === 'error').length;
   const cancelled = items.filter((item) => item.status === 'cancelled').length;
   if (saved || failed || cancelled) {
@@ -431,7 +430,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
         main.append(badge);
       }
       if (!queue.running) {
-        if (['error', 'cancelled'].includes(item.status) && item.file.size <= MAX_UPLOAD_BYTES) {
+        if (['error', 'cancelled'].includes(item.status) && !item.tooLarge) {
           const retry = button('Retry', () => upload([item]), 'btn-compact');
           retry.disabled = !destination || browsing || editingPath;
           retry.setAttribute('aria-label', `Retry ${item.name}`);
@@ -473,7 +472,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     const current = queue.items.find((item) => item.status === 'uploading');
     const percent = current ? Math.min(100, Math.round(current.loaded / Math.max(1, current.file.size) * 100)) : 0;
     opener.textContent = queue.running ? `Files · ${percent}%` : 'Files';
-    summary.textContent = selectionSummary(queue.items, destination, queue.running);
+    summary.textContent = selectionSummary(queue.items, destination, queue.running, queue.maxBytes);
     renderFiles();
   }
 
@@ -635,7 +634,11 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   renderEntries();
   queue.render();
   return {
-    enable() { configured = true; opener.disabled = false; },
+    enable(maxBytes) {
+      queue.maxBytes = maxBytes;
+      configured = true;
+      opener.disabled = false;
+    },
     cancel() { queue.cancel(); },
   };
 }

@@ -11,7 +11,7 @@ const test = require('node:test');
 const { inflateRawSync } = require('node:zlib');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { WorkspaceFileStore, MAX_UPLOAD_BYTES, inlineType } = require('../workspace-file-store');
+const { WorkspaceFileStore, inlineType } = require('../workspace-file-store');
 const { createWebTerminal } = require('../app');
 const { authenticate, cookieHeader, createFakeOpenidClient, oidcServiceOptions } = require('./oidc-test-helpers');
 
@@ -248,13 +248,13 @@ test('folders archive as ZIPs of regular files and directories without following
   assert.equal(stream.destroyed, true);
 });
 
-async function serviceFixture(t) {
+async function serviceFixture(t, options = {}) {
   const fixture = await workspace(t);
   let clock = Date.now();
   const openidClient = createFakeOpenidClient();
   const service = createWebTerminal(oidcServiceOptions({ openidClient,
     terminalWorkdir: fixture.directory, terminalHome: fixture.directory,
-    sessionManager: { shutdown: async () => {} }, now: () => clock,
+    sessionManager: { shutdown: async () => {} }, now: () => clock, ...options,
   }));
   await service.start({ port: 0, host: '127.0.0.1' });
   t.after(() => service.stop());
@@ -283,11 +283,25 @@ test('upload API enforces authentication, CSRF, MIME type and filename conflicts
   assert.equal((await fetch(`${base}/api/uploads?directory=missing&filename=bad`, { method: 'POST', headers, body: 'x' })).status, 400);
 });
 
-test('streaming API enforces the real 100 MiB boundary without Content-Length', async (t) => {
+test('upload limit defaults to 100 MiB and rejects invalid overrides', async (t) => {
   const { base, headers, directory } = await serviceFixture(t);
+  assert.equal((await fetch(`${base}/api/uploads`)).status, 401);
+  const config = await fetch(`${base}/api/uploads`, { headers });
+  assert.equal(config.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await config.json(), { maxBytes: 100 * 1024 * 1024 });
+  for (const uploadLimitMib of ['0', '-1', '1.5', '10MB', '99999999999']) {
+    assert.throws(() => createWebTerminal(oidcServiceOptions({ terminalWorkdir: directory, terminalHome: directory,
+      uploadLimitMib })), /UPLOAD_LIMIT_MIB must be a positive whole number of MiB/, uploadLimitMib);
+  }
+});
+
+test('streaming API enforces the configured boundary without Content-Length', async (t) => {
+  const { base, headers, directory } = await serviceFixture(t, { uploadLimitMib: '2' });
+  const maxBytes = 2 * 1024 * 1024;
+  assert.deepEqual(await (await fetch(`${base}/api/uploads`, { headers })).json(), { maxBytes });
   const chunk = Buffer.alloc(1024 * 1024, 42);
   async function* bytes(extra) {
-    for (let i = 0; i < MAX_UPLOAD_BYTES / chunk.length; i += 1) yield chunk;
+    for (let i = 0; i < maxBytes / chunk.length; i += 1) yield chunk;
     if (extra) yield Buffer.from('x');
   }
   for (const extra of [false, true]) {
@@ -295,9 +309,10 @@ test('streaming API enforces the real 100 MiB boundary without Content-Length', 
       method: 'POST', headers, body: Readable.from(bytes(extra)), duplex: 'half',
     });
     assert.equal(response.status, extra ? 413 : 201);
-    await response.text();
+    if (extra) assert.deepEqual(await response.json(), { error: 'File exceeds the 2 MiB limit.' });
+    else await response.text();
   }
-  assert.equal((await fs.stat(path.join(directory, 'exact'))).size, MAX_UPLOAD_BYTES);
+  assert.equal((await fs.stat(path.join(directory, 'exact'))).size, maxBytes);
   await assert.rejects(fs.stat(path.join(directory, 'too-big')), { code: 'ENOENT' });
   assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
 });

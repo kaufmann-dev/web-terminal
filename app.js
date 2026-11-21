@@ -7,7 +7,7 @@ const { MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
 const http = require('http');
 const path = require('path');
 const { pipeline } = require('stream');
-const { WorkspaceFileStore, UploadError, uploadError } = require('./workspace-file-store');
+const { WorkspaceFileStore, UploadError, uploadError, DEFAULT_UPLOAD_LIMIT_MIB } = require('./workspace-file-store');
 const { JobError, ScheduledJobManager } = require('./scheduled-job-manager');
 const { renderErrorPage } = require('./error-page');
 const express = require('express');
@@ -50,6 +50,7 @@ const SERVER_ONLY_ENVIRONMENT = [
   'HOST',
   'PUBLIC_ORIGIN',
   'TRUST_PROXY',
+  'UPLOAD_LIMIT_MIB',
   'SOURCE_COMMIT',
   'COOLIFY_BRANCH',
   'COOLIFY_CONTAINER_NAME',
@@ -237,6 +238,7 @@ function createWebTerminal(options = {}) {
       ?? '/code',
     nodeEnv: options.nodeEnv ?? process.env.NODE_ENV ?? 'production',
     port: options.port ?? Number(process.env.PORT || 3000),
+    uploadLimitMib: String(options.uploadLimitMib ?? (process.env.UPLOAD_LIMIT_MIB || DEFAULT_UPLOAD_LIMIT_MIB)),
     heartbeatIntervalMs: options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS,
     websocketActivityDebounceMs:
       options.websocketActivityDebounceMs ?? WEBSOCKET_ACTIVITY_DEBOUNCE_MS,
@@ -270,9 +272,13 @@ function createWebTerminal(options = {}) {
   if (!path.isAbsolute(config.terminalWorkdir) || !path.isAbsolute(config.terminalHome)) {
     throw new Error('TERMINAL_WORKDIR and TERMINAL_HOME must be absolute paths.');
   }
+  const uploadMaxBytes = Number(config.uploadLimitMib) * 1024 * 1024;
+  if (!/^[1-9]\d*$/.test(config.uploadLimitMib) || !Number.isSafeInteger(uploadMaxBytes)) {
+    throw new Error('UPLOAD_LIMIT_MIB must be a positive whole number of MiB.');
+  }
 
   const terminalEnvironment = createTerminalEnvironment(config);
-  const workspaceFileStore = new WorkspaceFileStore({ directory: config.terminalWorkdir });
+  const workspaceFileStore = new WorkspaceFileStore({ directory: config.terminalWorkdir, maxBytes: uploadMaxBytes });
   const clipboardImageStore = options.clipboardImageStore || new ClipboardImageStore({
     directory: config.clipboardImageDirectory,
   });
@@ -732,6 +738,10 @@ function createWebTerminal(options = {}) {
       abort.abort();
       archiveRequests.delete(abort);
     });
+  });
+
+  app.get('/api/uploads', requireApiAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ maxBytes: uploadMaxBytes });
   });
 
   app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {

@@ -110,7 +110,7 @@ node --test test/*.test.js
 - Never commit `.env` or real credentials. Keep variable names and defaults synchronized across `app.js`, `.env.example`, and the user-facing README.
 - Keep all `OIDC_*` variables and `SESSION_SECRET` out of terminal and chezmoi environments.
   Express must retain them.
-- Also keep server and deployment settings (`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`,
+- Also keep server and deployment settings (`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`, `UPLOAD_LIMIT_MIB`,
   `SOURCE_COMMIT`, `COOLIFY_*` metadata) out of those environments so they cannot change projects run in a
   terminal. Keep `SERVER_ONLY_ENVIRONMENT` in `app.js` and `server_only_environment` in `scripts/start.sh` identical.
 - Login sessions use a bounded, expiring in-process `memorystore`, and PTY sessions are also

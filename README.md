@@ -86,12 +86,15 @@ Required:
 Optional:
 
 - `NODE_ENV` — defaults to `production`.
-
-`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`, `SOURCE_COMMIT`, and Coolify's `COOLIFY_*`
-deployment metadata configure only the web-terminal server. They are removed from terminal sessions,
-scheduled jobs, and chezmoi so they do not change how projects run in the terminal behave.
 - `TERMINAL_WORKDIR` — defaults to `/code`, where new terminal sessions start.
 - `TERMINAL_HOME` — defaults to `TERMINAL_WORKDIR`; controls `~` and persisted tool state.
+- `UPLOAD_LIMIT_MIB` — maximum size of each uploaded file in MiB, a positive whole number;
+  defaults to `100`.
+
+`NODE_ENV`, `PORT`, `HOST`, `PUBLIC_ORIGIN`, `TRUST_PROXY`, `UPLOAD_LIMIT_MIB`, `SOURCE_COMMIT`, and
+Coolify's `COOLIFY_*` deployment metadata configure only the web-terminal server. They are removed
+from terminal sessions, scheduled jobs, and chezmoi so they do not change how projects run in the
+terminal behave.
 
 Coolify supplies `PORT` automatically. Do not set a fixed application port.
 If you override it outside Coolify, use port 1024 or higher because the application runs as a
@@ -135,8 +138,8 @@ included programs from current CentOS Stream 10 packages or the repository lockf
 deployment; tool credentials and personal state remain on `/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
-proxy must preserve WebSocket upgrades. Any proxy or CDN body-size limit must allow a 100 MiB
-request to `/api/uploads`, and request timeouts must accommodate uploads over slower connections.
+proxy must preserve WebSocket upgrades. Any proxy or CDN body-size limit must allow a request of
+`UPLOAD_LIMIT_MIB` (default 100 MiB) to `/api/uploads`, and request timeouts must accommodate uploads over slower connections.
 Configure these in the Coolify proxy or upstream CDN when applicable. `PUBLIC_ORIGIN` must exactly
 match the origin shown in the browser address bar. Startup deliberately fails before listening if
 `/dev/fuse`, `/dev/net/tun`,
@@ -371,7 +374,8 @@ or control unrelated native Wayland windows.
   list refreshes when the transfer finishes. Folders outside the workspace accept uploads only
   where the server user can write. Desktop users can also drop files onto the terminal
   to open the dialog.
-- Files of any type, including empty files, can be uploaded up to **100 MiB each**. Transfers run
+- Files of any type, including empty files, can be uploaded up to **100 MiB each** by default
+  (`UPLOAD_LIMIT_MIB`). Transfers run
   sequentially with one active upload per login session. The dialog shows progress and saved paths;
   closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
   A filename conflict fails that file without overwriting anything; edit its filename and click

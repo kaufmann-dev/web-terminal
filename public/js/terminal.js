@@ -1313,7 +1313,7 @@
       if (!csrfToken) {
         throw new Error('Unable to initialize request protection.');
       }
-      uploads.enable();
+      uploads.enable((await apiRequest('/api/uploads')).maxBytes);
       scheduledJobs.enable();
 
       apiRequest('/api/voice').then((config) => {
