@@ -3,13 +3,17 @@
 const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { createHash } = require('node:crypto');
 const { PassThrough } = require('node:stream');
 const { finished } = require('node:stream/promises');
 const { ZipFile } = require('yazl');
 
 const MIB = 1024 * 1024;
 const DEFAULT_UPLOAD_LIMIT_MIB = 100;
+const UPLOAD_CHUNK_BYTES = 8 * MIB;
+const PART_PREFIX = '.web-terminal-upload-';
+const PART_SUFFIX = '.part';
+const STALE_PART_MS = 24 * 60 * 60 * 1000;
 const TYPE_SAMPLE_BYTES = 8 * 1024;
 const INLINE_TYPES = new Map([
   ['.png', 'image/png'],
@@ -58,6 +62,24 @@ function uploadError(error) {
   if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return new UploadError(400, 'Choose an existing folder.');
   if (error.code === 'ENOSPC' || error.code === 'EDQUOT') return new UploadError(507, 'There is not enough space to save this file.');
   return new UploadError(503, 'File storage is unavailable.');
+}
+
+async function assertAvailable(target, filename) {
+  try {
+    await fs.lstat(`${target.anchoredPath}/${filename}`);
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  throw new UploadError(409, 'A file with this name already exists. Rename it and retry.');
+}
+
+async function removeEntry(entryPath) {
+  try {
+    await fs.unlink(entryPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 }
 
 function validateFilename(filename) {
@@ -144,6 +166,7 @@ class WorkspaceFileStore {
   constructor({ directory, maxBytes = DEFAULT_UPLOAD_LIMIT_MIB * MIB }) {
     this.directory = directory;
     this.maxBytes = maxBytes;
+    this.activeParts = new Set();
     this.tooLargeMessage = `File exceeds the ${maxBytes % MIB ? `${maxBytes}-byte` : `${maxBytes / MIB} MiB`} limit.`;
   }
 
@@ -248,15 +271,63 @@ class WorkspaceFileStore {
     return { name, stream };
   }
 
-  async save(request, { directory, filename, signal, onAccepted = () => {}, beforePublish = () => {} }) {
+  // Partial uploads live beside their destination, so publication is a same-filesystem hard link.
+  // The partial's name derives from the file's identity and its size is the resume offset, so an
+  // upload resumes after a disconnect, page reload, or server restart.
+  identify({ filename, size, lastModified }) {
     validateFilename(filename);
+    if (!/^\d+$/.test(String(size)) || !Number.isSafeInteger(Number(size))) {
+      throw new UploadError(400, 'Enter a valid file size.');
+    }
+    if (!/^-?\d+$/.test(String(lastModified)) || !Number.isSafeInteger(Number(lastModified))) {
+      throw new UploadError(400, 'Enter a valid modification time.');
+    }
+    if (Number(size) > this.maxBytes) throw new UploadError(413, this.tooLargeMessage);
+    const digest = createHash('sha256')
+      .update(JSON.stringify([filename, Number(size), Number(lastModified)])).digest('hex').slice(0, 32);
+    return { filename, size: Number(size), part: `${PART_PREFIX}${digest}${PART_SUFFIX}` };
+  }
+
+  async begin(upload, { directory }) {
+    const { filename, size, part } = this.identify(upload);
+    const target = await this.openDirectory(directory);
+    try {
+      await this.removeStaleParts(target);
+      await assertAvailable(target, filename);
+      let offset = 0;
+      try {
+        const stats = await fs.lstat(`${target.anchoredPath}/${part}`);
+        if (stats.isFile() && stats.size <= size) offset = stats.size;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      return { directory: target.directory, offset };
+    } finally {
+      await target.handle.close();
+    }
+  }
+
+  // Appends one chunk at `offset`. Bytes received before a disconnect stay in the partial, and the
+  // final chunk publishes the file.
+  async append(request, upload, { directory, offset, signal, onAccepted = () => {}, beforePublish = () => {} }) {
+    const { filename, size, part } = this.identify(upload);
+    if (!/^\d+$/.test(String(offset)) || Number(offset) > size) {
+      throw new UploadError(400, 'Enter a valid upload offset.');
+    }
+    const start = Number(offset);
+    const limit = Math.min(size - start, UPLOAD_CHUNK_BYTES);
     const length = request.headers?.['content-length'];
-    if (length !== undefined && (!/^\d+$/.test(length) || Number(length) > this.maxBytes)) {
-      throw new UploadError(413, this.tooLargeMessage);
+    if (length !== undefined && (!/^\d+$/.test(length) || Number(length) > limit)) {
+      throw new UploadError(413, 'The upload chunk is too large.');
     }
     const target = await this.openDirectory(directory);
-    const temporary = `${target.anchoredPath}/.web-terminal-upload-${randomUUID()}.part`;
-    const destination = `${target.anchoredPath}/${filename}`;
+    const key = `${target.directory}\0${part}`;
+    if (this.activeParts.has(key)) {
+      await target.handle.close();
+      throw new UploadError(409, 'This file is already uploading in another window.');
+    }
+    this.activeParts.add(key);
+    const partial = `${target.anchoredPath}/${part}`;
     let file;
     let input;
     let bytes = 0;
@@ -264,14 +335,19 @@ class WorkspaceFileStore {
     const disconnected = () => input?.destroy(new DOMException('Disconnected', 'AbortError'));
     try {
       signal.throwIfAborted();
-      try {
-        await fs.lstat(destination);
-        throw new UploadError(409, 'A file with this name already exists. Rename it and retry.');
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+      await assertAvailable(target, filename);
+      file = await fs.open(partial,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+      const stats = await file.stat();
+      if (!stats.isFile()) throw new UploadError(409, 'The partial upload is not a regular file.');
+      let current = stats.size;
+      if (current > size) {
+        await file.truncate(0);
+        current = 0;
       }
-      file = await fs.open(temporary, 'wx', 0o600);
-      signal.throwIfAborted();
+      if (current !== start) {
+        throw Object.assign(new UploadError(409, 'The upload position changed.'), { offset: current });
+      }
       await onAccepted();
       input = new PassThrough();
       signal.addEventListener('abort', abortInput, { once: true });
@@ -282,21 +358,32 @@ class WorkspaceFileStore {
       request.pipe(input);
       for await (const chunk of input) {
         signal.throwIfAborted();
+        if (bytes + chunk.length > limit) {
+          await file.truncate(start);
+          throw new UploadError(413, 'The upload chunk is too large.');
+        }
         bytes += chunk.length;
-        if (bytes > this.maxBytes) throw new UploadError(413, this.tooLargeMessage);
         await file.writeFile(chunk);
       }
+      if (start + bytes < size) return { offset: start + bytes };
+      await file.sync();
       await file.close();
       file = null;
       signal.throwIfAborted();
       await beforePublish();
-      const actualDirectory = await fs.realpath(target.anchoredPath);
-      if (actualDirectory !== target.directory) {
-        throw new UploadError(409, 'The destination moved during upload. Choose it again.');
+      // A partial that cannot be published here is useless: a renamed or redirected upload has a
+      // different identity.
+      try {
+        const actualDirectory = await fs.realpath(target.anchoredPath);
+        if (actualDirectory !== target.directory) {
+          throw new UploadError(409, 'The destination moved during upload. Choose it again.');
+        }
+        // Hard-link publication is atomic and fails if any entry already has this name.
+        await fs.link(partial, `${target.anchoredPath}/${filename}`);
+      } finally {
+        await removeEntry(partial);
       }
-      // Hard-link publication is atomic and fails if any entry already has this name.
-      await fs.link(temporary, destination);
-      return { path: path.join(target.directory, filename), bytes };
+      return { path: path.join(target.directory, filename), bytes: size };
     } finally {
       signal.removeEventListener('abort', abortInput);
       request.removeListener('aborted', disconnected);
@@ -306,16 +393,44 @@ class WorkspaceFileStore {
         input.destroy();
       }
       request.resume();
-      await file?.close();
       try {
-        await fs.unlink(temporary);
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+        await file?.close();
       } finally {
+        this.activeParts.delete(key);
         await target.handle.close();
+      }
+    }
+  }
+
+  async discard(upload, { directory }) {
+    const { part } = this.identify(upload);
+    const target = await this.openDirectory(directory);
+    try {
+      if (this.activeParts.has(`${target.directory}\0${part}`)) {
+        throw new UploadError(409, 'This file is still uploading.');
+      }
+      await removeEntry(`${target.anchoredPath}/${part}`);
+    } finally {
+      await target.handle.close();
+    }
+  }
+
+  // Abandoned partials are removed when a later upload starts in the same folder.
+  async removeStaleParts(target) {
+    const now = Date.now();
+    for (const entry of await fs.readdir(target.anchoredPath, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.startsWith(PART_PREFIX) || !entry.name.endsWith(PART_SUFFIX)
+        || this.activeParts.has(`${target.directory}\0${entry.name}`)) continue;
+      const entryPath = `${target.anchoredPath}/${entry.name}`;
+      try {
+        const stats = await fs.lstat(entryPath);
+        if (stats.isFile() && now - stats.mtimeMs > STALE_PART_MS) await removeEntry(entryPath);
+      } catch (error) {
+        if (!VANISHED_CODES.has(error.code)) throw error;
       }
     }
   }
 }
 
-module.exports = { WorkspaceFileStore, UploadError, uploadError, inlineType, DEFAULT_UPLOAD_LIMIT_MIB };
+module.exports = { WorkspaceFileStore, UploadError, uploadError, inlineType, DEFAULT_UPLOAD_LIMIT_MIB,
+  UPLOAD_CHUNK_BYTES, STALE_PART_MS };

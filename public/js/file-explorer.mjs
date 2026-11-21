@@ -1,41 +1,133 @@
-export function sendUpload({ file, name, directory, csrfToken, signal, onProgress,
-  createRequest = () => new XMLHttpRequest() }) {
+// A transfer with no upload progress or response for this long is treated as a lost connection.
+const STALL_MS = 30_000;
+// Consecutive failures without progress retry after these delays, then the file fails.
+const RETRY_DELAYS_MS = [1000, 2000, 5000, 10_000, 20_000, 30_000];
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+const cancelled = () => new DOMException('Upload cancelled.', 'AbortError');
+
+function transferError(message) {
+  return Object.assign(new Error(message), { status: 0, retryable: true });
+}
+
+function responseError({ status, data }) {
+  const error = new Error(data?.error || `Upload failed (HTTP ${status}).`);
+  error.status = status;
+  error.retryable = RETRYABLE_STATUSES.has(status) || (status === 409 && Number.isInteger(data?.offset));
+  return error;
+}
+
+function uploadRequest({ method, url, body, csrfToken, signal, onProgress = () => {}, createRequest, stallMs }) {
   return new Promise((resolve, reject) => {
     const request = createRequest();
+    let stallTimer;
+    let stalled = false;
+    const armStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        request.abort();
+      }, stallMs);
+    };
     const abort = () => request.abort();
     const done = (callback, value) => {
+      clearTimeout(stallTimer);
       signal.removeEventListener('abort', abort);
       callback(value);
     };
-    request.open('POST', `/api/uploads?${new URLSearchParams({ directory, filename: name })}`);
-    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.open(method, url);
     request.setRequestHeader('CSRF-Token', csrfToken);
-    request.upload.onprogress = (event) => onProgress(event.loaded, event.total || file.size);
-    request.onload = () => {
-      let data;
-      try { data = JSON.parse(request.responseText); } catch { /* Proxy errors may be HTML. */ }
-      if (request.status === 201 && typeof data?.path === 'string') {
-        done(resolve, data);
-      } else {
-        const error = new Error(data?.error || `Upload failed (HTTP ${request.status}). Retry when ready.`);
-        error.status = request.status;
-        done(reject, error);
-      }
+    if (body !== undefined) {
+      request.setRequestHeader('Content-Type', typeof body === 'string' ? 'application/json' : 'application/octet-stream');
+    }
+    request.upload.onprogress = (event) => {
+      armStall();
+      onProgress(event.loaded);
     };
-    request.onerror = () => done(reject, new Error('Connection lost. Check the destination before retrying.'));
-    request.onabort = () => done(reject, new DOMException('Upload cancelled.', 'AbortError'));
+    request.onload = () => {
+      let data = null;
+      try { data = JSON.parse(request.responseText); } catch { /* Proxy errors may be HTML. */ }
+      done(resolve, { status: request.status, data });
+    };
+    request.onerror = () => done(reject, transferError('Connection lost.'));
+    request.onabort = () => done(reject, stalled ? transferError('The connection stalled.') : cancelled());
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) {
-      done(reject, new DOMException('Upload cancelled.', 'AbortError'));
+      done(reject, cancelled());
       return;
     }
-    request.send(file);
+    armStall();
+    request.send(body ?? null);
   });
 }
 
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      clearTimeout(timer);
+      reject(cancelled());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', stop);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', stop, { once: true });
+    if (signal.aborted) stop();
+  });
+}
+
+const uploadQuery = ({ file, name, directory }) => ({
+  directory, filename: name, size: file.size, lastModified: file.lastModified,
+});
+
+// Sends a file in chunks. After a failure the server reports how many bytes it already holds, and
+// the transfer continues from there.
+export async function uploadFile({ file, name, directory, csrfToken, signal, chunkBytes, onProgress = () => {},
+  onRetry = () => {}, createRequest = () => new XMLHttpRequest(), stallMs = STALL_MS,
+  retryDelays = RETRY_DELAYS_MS, wait = sleep }) {
+  const call = (options) => uploadRequest({ csrfToken, signal, createRequest, stallMs, ...options });
+  let failures = 0;
+  for (;;) {
+    try {
+      const begin = await call({ method: 'POST', url: '/api/uploads',
+        body: JSON.stringify(uploadQuery({ file, name, directory })) });
+      if (begin.status !== 200 || !Number.isInteger(begin.data?.offset)) throw responseError(begin);
+      const query = uploadQuery({ file, name, directory: begin.data.directory });
+      let { offset } = begin.data;
+      onProgress(offset);
+      for (;;) {
+        const start = offset;
+        const chunk = await call({ method: 'PUT', url: `/api/uploads?${new URLSearchParams({ ...query, offset: start })}`,
+          body: file.slice(start, Math.min(file.size, start + chunkBytes)),
+          onProgress: (loaded) => onProgress(start + loaded) });
+        if (chunk.status === 201 && typeof chunk.data?.path === 'string') return chunk.data;
+        if (chunk.status !== 200 || !Number.isInteger(chunk.data?.offset)) throw responseError(chunk);
+        offset = chunk.data.offset;
+        failures = 0;
+        onProgress(offset);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError' || !error.retryable) throw error;
+      if (failures >= retryDelays.length) {
+        throw Object.assign(new Error(`${error.message} Retry to resume.`), { status: error.status });
+      }
+      onRetry(retryDelays[failures], error);
+      await wait(retryDelays[failures], signal);
+      failures += 1;
+    }
+  }
+}
+
+// Removes the server's partial copy of a file that will not be resumed.
+export function discardUpload({ file, name, directory, csrfToken, createRequest = () => new XMLHttpRequest() }) {
+  return uploadRequest({ method: 'DELETE', url: `/api/uploads?${new URLSearchParams(uploadQuery({ file, name, directory }))}`,
+    csrfToken, signal: new AbortController().signal, createRequest, stallMs: STALL_MS }).catch(() => {});
+}
+
 export class UploadQueue {
-  constructor({ send, render = () => {}, onAuthExpired = () => {}, maxBytes = Infinity }) {
+  constructor({ send, discard = () => {}, render = () => {}, onAuthExpired = () => {}, maxBytes = Infinity }) {
     this.send = send;
+    this.discard = discard;
     this.maxBytes = maxBytes;
     this.render = render;
     this.onAuthExpired = onAuthExpired;
@@ -51,6 +143,14 @@ export class UploadQueue {
       this.items.push({ file, name: file.name, tooLarge, status: tooLarge ? 'error' : 'pending',
         message: tooLarge ? `File exceeds the ${formatBytes(this.maxBytes)} limit.` : 'Ready', loaded: 0 });
     }
+    this.render();
+  }
+
+  // A removed file that started uploading leaves a partial on the server; discard it.
+  remove(item) {
+    if (this.running) return;
+    this.items = this.items.filter((entry) => entry !== item);
+    if (item.directory && item.status !== 'saved') this.discard(item);
     this.render();
   }
 
@@ -71,7 +171,7 @@ export class UploadQueue {
         }
         if (item.tooLarge) continue;
         item.status = 'uploading';
-        item.loaded = 0;
+        item.directory = directory;
         item.message = 'Uploading…';
         this.render();
         try {
@@ -80,13 +180,17 @@ export class UploadQueue {
               item.loaded = loaded;
               item.message = loaded >= item.file.size ? 'Saving…' : 'Uploading…';
               this.render();
+            },
+            onRetry: (ms, error) => {
+              item.message = `${error.message} Retrying in ${Math.round(ms / 1000)} s…`;
+              this.render();
             } });
           item.status = 'saved';
           item.path = result.path;
           item.message = `Saved to ${result.path}`;
         } catch (error) {
           item.status = error.name === 'AbortError' ? 'cancelled' : 'error';
-          item.message = error.message;
+          item.message = error.name === 'AbortError' ? 'Cancelled. Retry to resume.' : error.message;
           if (error.status === 401) {
             this.cancel();
             this.onAuthExpired();
@@ -438,8 +542,7 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
         }
         const action = item.status === 'saved' ? 'Dismiss' : 'Remove';
         const remove = button('×', () => {
-          queue.items = queue.items.filter((entry) => entry !== item);
-          queue.render();
+          queue.remove(item);
           (fileList.querySelector('input, button') || choose).focus({ preventScroll: true });
         }, 'icon-button icon-button-compact upload-file-remove');
         remove.setAttribute('aria-label', `${action} ${item.name}`);
@@ -476,8 +579,11 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
     renderFiles();
   }
 
+  let chunkBytes = 0;
   const queue = new UploadQueue({
-    send: (options) => sendUpload({ ...options, csrfToken: getCsrfToken() }),
+    send: (options) => uploadFile({ ...options, chunkBytes, csrfToken: getCsrfToken() }),
+    discard: (item) => discardUpload({ file: item.file, name: item.name, directory: item.directory,
+      csrfToken: getCsrfToken() }),
     onAuthExpired,
     render,
   });
@@ -634,8 +740,9 @@ export function bindFileExplorer({ document, apiRequest, getCsrfToken, closeSide
   renderEntries();
   queue.render();
   return {
-    enable(maxBytes) {
-      queue.maxBytes = maxBytes;
+    enable(config) {
+      queue.maxBytes = config.maxBytes;
+      chunkBytes = config.chunkBytes;
       configured = true;
       opener.disabled = false;
     },

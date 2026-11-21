@@ -138,8 +138,9 @@ included programs from current CentOS Stream 10 packages or the repository lockf
 deployment; tool credentials and personal state remain on `/code`.
 
 Check `https://your-domain.example/health` to confirm the application is responding. The reverse
-proxy must preserve WebSocket upgrades. Any proxy or CDN body-size limit must allow a request of
-`UPLOAD_LIMIT_MIB` (default 100 MiB) to `/api/uploads`, and request timeouts must accommodate uploads over slower connections.
+proxy must preserve WebSocket upgrades. Uploads are sent in chunks of at most 8 MiB, so any proxy or CDN body-size limit must allow
+8 MiB requests to `/api/uploads`, and request timeouts must accommodate one chunk over slower
+connections.
 Configure these in the Coolify proxy or upstream CDN when applicable. `PUBLIC_ORIGIN` must exactly
 match the origin shown in the browser address bar. Startup deliberately fails before listening if
 `/dev/fuse`, `/dev/net/tun`,
@@ -269,7 +270,7 @@ or control unrelated native Wayland windows.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
-  clipboard-image uploads, accepted file-upload submissions, accepted transcription submissions,
+  clipboard-image uploads, accepted file-upload chunks, accepted transcription submissions,
   scheduled-job changes and manual runs, and accepted terminal input or paste extend the idle
   deadline. Folder browsing, opening and downloading files and folders, upload progress, job list and log
   viewing, schedule previews,
@@ -375,19 +376,24 @@ or control unrelated native Wayland windows.
   where the server user can write. Desktop users can also drop files onto the terminal
   to open the dialog.
 - Files of any type, including empty files, can be uploaded up to **100 MiB each** by default
-  (`UPLOAD_LIMIT_MIB`). Transfers run
-  sequentially with one active upload per login session. The dialog shows progress and saved paths;
-  closing it or switching terminals does not stop uploads. Uploads never insert terminal input.
-  A filename conflict fails that file without overwriting anything; edit its filename and click
-  **Retry**. Successful files remain saved if another file fails. **Dismiss** only removes the
-  result from the dialog. **Cancel remaining** stops the active transfer and queued files.
+  (`UPLOAD_LIMIT_MIB`). Files transfer one at a time in chunks of up to 8 MiB; a newer chunk from the
+  same login replaces an older one still in progress. The dialog shows progress confirmed by the
+  server and saved paths; closing it or switching terminals does not stop uploads. Uploads never
+  insert terminal input. A filename conflict fails that file without overwriting anything; edit its
+  filename and click **Retry**. Successful files remain saved if another file fails. **Dismiss**
+  only removes the result from the dialog. **Cancel remaining** stops the active transfer and queued
+  files.
+- Uploads resume instead of starting over. Received bytes are kept in a hidden
+  `.web-terminal-upload-*.part` file in the destination folder, identified by the file's name, size,
+  and modification time. A transfer with no progress for 30 seconds, a lost connection, or a gateway
+  error retries automatically with increasing delays and continues where the server stopped; after
+  six failed attempts without progress the file fails and **Retry** resumes it. After a page reload,
+  logout, session expiry, or redeployment, choosing the same file for the same folder resumes it.
+  Removing an unfinished file from the dialog deletes its partial, and partials untouched for 24
+  hours are deleted when another upload starts in that folder. If a connection fails after the
+  server saved a file, check the destination before retrying.
 - Uploaded files remain until manually deleted and survive redeployment only on a mounted persistent
-  volume. Refreshing or leaving the
-  page, logout, session expiry, and graceful shutdown cancel unfinished transfers and remove their
-  temporary files. A forced process termination can leave hidden `.web-terminal-upload-*.part`
-  files in the destination; remove those manually when no uploads are running. Interrupted transfers
-  do not resume automatically. If a connection fails after the server saved a file, check the
-  destination before retrying. Folder uploads, folder creation, deleting, renaming, and automatic
+  volume. Folder uploads, folder creation, deleting, renaming, and automatic
   archive extraction are not provided; use the terminal, and upload a ZIP file when needed.
 - **Jobs** is next to **Files** in the session sidebar and manages scheduled background commands.
   The list shows each job's schedule in words (for example "Weekdays at 09:00 · Europe/Vienna"),

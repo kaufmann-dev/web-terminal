@@ -7,7 +7,8 @@ const { MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS, VoiceError,
 const http = require('http');
 const path = require('path');
 const { pipeline } = require('stream');
-const { WorkspaceFileStore, UploadError, uploadError, DEFAULT_UPLOAD_LIMIT_MIB } = require('./workspace-file-store');
+const { WorkspaceFileStore, UploadError, uploadError, DEFAULT_UPLOAD_LIMIT_MIB,
+  UPLOAD_CHUNK_BYTES } = require('./workspace-file-store');
 const { JobError, ScheduledJobManager } = require('./scheduled-job-manager');
 const { renderErrorPage } = require('./error-page');
 const express = require('express');
@@ -388,7 +389,7 @@ function createWebTerminal(options = {}) {
 
   function closeLoginSockets(loginSessionId, code, reason) {
     voiceRequests.get(loginSessionId)?.abort();
-    uploadRequests.get(loginSessionId)?.abort();
+    uploadRequests.get(loginSessionId)?.abort.abort();
     const sockets = loginSockets.get(loginSessionId);
     if (!sockets) {
       return;
@@ -740,29 +741,57 @@ function createWebTerminal(options = {}) {
     });
   });
 
+  const uploadIdentity = (source = {}) => ({
+    filename: source.filename, size: source.size, lastModified: source.lastModified,
+  });
+  const sendUploadError = (res, error) => {
+    const failure = uploadError(error);
+    if (res.destroyed) return;
+    res.status(failure.status).json({
+      error: failure.message,
+      ...(Number.isInteger(failure.offset) ? { offset: failure.offset } : {}),
+    });
+  };
+  // A newer upload request from the same login replaces an older one, which may belong to a stalled
+  // connection the browser has already given up on.
+  async function releaseUploadSlot(loginSessionId) {
+    while (uploadRequests.has(loginSessionId)) {
+      const previous = uploadRequests.get(loginSessionId);
+      previous.abort.abort();
+      await previous.task;
+    }
+  }
+
   app.get('/api/uploads', requireApiAuth, (req, res) => {
-    res.set('Cache-Control', 'no-store').json({ maxBytes: uploadMaxBytes });
+    res.set('Cache-Control', 'no-store').json({ maxBytes: uploadMaxBytes, chunkBytes: UPLOAD_CHUNK_BYTES });
   });
 
-  app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
+  app.post('/api/uploads', requireApiAuth, doubleCsrfProtection, express.json(), async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      return res.json(await workspaceFileStore.begin(uploadIdentity(req.body), { directory: req.body?.directory }));
+    } catch (error) {
+      return sendUploadError(res, error);
+    }
+  });
+
+  app.put('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     if (req.get('content-type') !== 'application/octet-stream' || req.get('content-encoding')) {
       return res.status(415).json({ error: 'Send an uncompressed file as application/octet-stream.' });
     }
     const loginSessionId = req.sessionID;
-    if (uploadRequests.has(loginSessionId)) {
-      return res.status(409).json({ error: 'Another upload is running. Wait for it to finish and retry.' });
-    }
+    await releaseUploadSlot(loginSessionId);
     const abort = new AbortController();
-    uploadRequests.set(loginSessionId, abort);
     let finish;
     const task = new Promise((resolve) => { finish = resolve; });
+    uploadRequests.set(loginSessionId, { abort, task });
     uploadTasks.add(task);
     let deadlineTimer;
     try {
-      const result = await workspaceFileStore.save(req, {
+      const result = await workspaceFileStore.append(req, uploadIdentity(req.query), {
         directory: req.query.directory,
-        filename: req.query.filename,
+        offset: req.query.offset,
         signal: abort.signal,
         onAccepted: async () => {
           if (!recordHttpActivity(req)) throw new UploadError(401, 'Your login session has expired.');
@@ -781,16 +810,26 @@ function createWebTerminal(options = {}) {
           abort.signal.throwIfAborted();
         },
       });
-      return res.status(201).json(result);
+      return res.status(result.path ? 201 : 200).json(result);
     } catch (error) {
-      const failure = uploadError(error);
-      if (!res.destroyed) res.status(failure.status).json({ error: failure.message });
+      return sendUploadError(res, error);
     } finally {
       clearTimeout(deadlineTimer);
       req.resume();
-      uploadRequests.delete(loginSessionId);
+      if (uploadRequests.get(loginSessionId)?.task === task) uploadRequests.delete(loginSessionId);
       uploadTasks.delete(task);
       finish();
+    }
+  });
+
+  app.delete('/api/uploads', requireApiAuth, doubleCsrfProtection, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      await releaseUploadSlot(req.sessionID);
+      await workspaceFileStore.discard(uploadIdentity(req.query), { directory: req.query.directory });
+      return res.status(204).end();
+    } catch (error) {
+      return sendUploadError(res, error);
     }
   });
 
@@ -1339,7 +1378,7 @@ function createWebTerminal(options = {}) {
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
       }
-      for (const abort of uploadRequests.values()) abort.abort();
+      for (const { abort } of uploadRequests.values()) abort.abort();
       await Promise.all(uploadTasks);
       for (const abort of archiveRequests) abort.abort();
       await Promise.all([sessionManager.shutdown(), jobManager.shutdown(), transcription.close()]);

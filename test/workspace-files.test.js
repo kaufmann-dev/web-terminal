@@ -11,7 +11,7 @@ const test = require('node:test');
 const { inflateRawSync } = require('node:zlib');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { WorkspaceFileStore, inlineType } = require('../workspace-file-store');
+const { WorkspaceFileStore, inlineType, UPLOAD_CHUNK_BYTES, STALE_PART_MS } = require('../workspace-file-store');
 const { createWebTerminal } = require('../app');
 const { authenticate, cookieHeader, createFakeOpenidClient, oidcServiceOptions } = require('./oidc-test-helpers');
 
@@ -69,6 +69,17 @@ function source(data, headers = {}) {
   return stream;
 }
 
+const signal = () => new AbortController().signal;
+const identity = (filename, data) => ({ filename, size: Buffer.byteLength(data), lastModified: 1 });
+const partials = async (directory) => (await fs.readdir(directory)).filter((name) => name.endsWith('.part'));
+
+// Starts or resumes an upload and sends the rest of the file as one chunk.
+async function storeUpload(store, data, filename, options = {}) {
+  const upload = identity(filename, data);
+  const { offset } = await store.begin(upload, { directory: options.directory });
+  return store.append(source(Buffer.from(data).subarray(offset)), upload, { offset, signal: signal(), ...options });
+}
+
 test('browsing starts at the workspace, resolves relative paths there, and reaches any folder', async (t) => {
   const { directory, root, store } = await workspace(t);
   const start = await store.list();
@@ -83,63 +94,97 @@ test('browsing starts at the workspace, resolves relative paths there, and reach
     await assert.rejects(store.list(destination), { status: 400 });
   }
   await assert.rejects(store.list('missing'), { code: 'ENOENT' });
-  const outside = await store.save(source('x'), { directory: path.join(root, 'outside'), filename: 'note',
-    signal: new AbortController().signal });
+  const outside = await storeUpload(store, 'x', 'note', { directory: path.join(root, 'outside') });
   assert.equal(outside.path, path.join(root, 'outside', 'note'));
   assert.equal(await fs.readFile(outside.path, 'utf8'), 'x');
   for (const filename of ['../oops', 'a/b', 'a\\b', '.', '..', '', 'bad\nname', 'a'.repeat(256)]) {
-    await assert.rejects(store.save(source('x'), { directory: 'project', filename,
-      signal: new AbortController().signal }), { status: 400 });
+    await assert.rejects(store.begin({ filename, size: 1, lastModified: 1 }, { directory: 'project' }), { status: 400 });
   }
-  const saved = await store.save(source(Buffer.from('héllo')), { directory: 'project', filename: 'café image.txt',
-    signal: new AbortController().signal });
+  for (const upload of [{ filename: 'x', size: -1, lastModified: 1 }, { filename: 'x', size: 1, lastModified: 'now' }]) {
+    await assert.rejects(store.begin(upload, { directory: 'project' }), { status: 400 });
+  }
+  const saved = await storeUpload(store, Buffer.from('héllo'), 'café image.txt', { directory: 'project' });
   assert.equal(saved.path, path.join(directory, 'project', 'café image.txt'));
   assert.equal(saved.bytes, 6);
   assert.equal(await fs.readFile(saved.path, 'utf8'), 'héllo');
   assert.equal((await fs.stat(saved.path)).mode & 0o777, 0o600);
-  const empty = await store.save(source(Buffer.alloc(0)), { directory: 'project', filename: 'empty',
-    signal: new AbortController().signal });
+  const empty = await storeUpload(store, Buffer.alloc(0), 'empty', { directory: 'project' });
   assert.equal(empty.bytes, 0);
   assert.equal((await fs.stat(empty.path)).size, 0);
 });
 
-test('size checks, cancellation and write failures leave no partial destination', async (t) => {
+test('chunks resume from the partial, enforce sizes, and keep received bytes after cancellation', async (t) => {
   const { directory } = await workspace(t);
-  const store = new WorkspaceFileStore({ directory, maxBytes: 4 });
-  const save = (stream, options = {}) => store.save(stream, { filename: 'file', signal: new AbortController().signal, ...options });
-  await assert.rejects(save(source('12345', { 'content-length': '5' })), { status: 413 });
-  await assert.rejects(save(source('12345')), { status: 413 });
-  await assert.rejects(save(source('1'), { beforePublish: () => { throw new Error('write refused'); } }), /write refused/);
-  assert.deepEqual((await fs.readdir(directory)).sort(), ['.hidden', 'escape', 'project']);
+  const store = new WorkspaceFileStore({ directory, maxBytes: 8 });
+  const upload = identity('file', '12345678');
+  await assert.rejects(store.begin(identity('big', '123456789'), {}), { status: 413, message: 'File exceeds the 8-byte limit.' });
+  assert.deepEqual(await store.begin(upload, {}), { directory, offset: 0 });
+  assert.deepEqual(await store.append(source('123'), upload, { offset: 0, signal: signal() }), { offset: 3 });
+  assert.deepEqual(await store.begin(upload, {}), { directory, offset: 3 });
+  await assert.rejects(store.append(source('x'), upload, { offset: 0, signal: signal() }), { status: 409, offset: 3 });
+  await assert.rejects(store.append(source('x'), upload, { offset: 9, signal: signal() }), { status: 400 });
+  await assert.rejects(store.append(source('456789', { 'content-length': '6' }), upload, { offset: 3, signal: signal() }),
+    { status: 413 });
+  await assert.rejects(store.append(source('456789'), upload, { offset: 3, signal: signal() }), { status: 413 });
+  assert.equal((await store.begin(upload, {})).offset, 3);
+
   const abort = new AbortController();
   const stream = new PassThrough();
-  const saving = save(stream, { signal: abort.signal });
-  await once(stream, 'resume');
-  stream.write('12');
+  const resumed = once(stream, 'resume');
+  const appending = store.append(stream, upload, { offset: 3, signal: abort.signal });
+  await resumed;
+  await assert.rejects(store.append(source('4'), upload, { offset: 3, signal: signal() }), { status: 409 });
+  await assert.rejects(store.discard(upload, {}), { status: 409 });
+  stream.write('45');
+  for (let attempt = 0; (await store.begin(upload, {})).offset < 5 && attempt < 200; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
   abort.abort();
-  await assert.rejects(saving, { name: 'AbortError' });
-  assert.deepEqual((await fs.readdir(directory)).sort(), ['.hidden', 'escape', 'project']);
-  const exact = await save(source('1234'));
-  assert.equal(exact.bytes, 4);
+  await assert.rejects(appending, { name: 'AbortError' });
+  assert.equal((await store.begin(upload, {})).offset, 5);
+
+  await assert.rejects(store.append(source('678'), upload, { offset: 5, signal: signal(),
+    beforePublish: () => { throw new Error('write refused'); } }), /write refused/);
+  assert.equal((await store.begin(upload, {})).offset, 8);
+  assert.deepEqual(await store.append(source(Buffer.alloc(0)), upload, { offset: 8, signal: signal() }),
+    { path: path.join(directory, 'file'), bytes: 8 });
+  assert.equal(await fs.readFile(path.join(directory, 'file'), 'utf8'), '12345678');
+  assert.deepEqual(await partials(directory), []);
+});
+
+test('discarded and stale partials are removed', async (t) => {
+  const { store, directory } = await workspace(t);
+  const upload = identity('other', 'abc');
+  await store.append(source('a'), upload, { offset: 0, signal: signal() });
+  await store.discard(upload, {});
+  await store.discard(upload, {});
+  assert.deepEqual(await partials(directory), []);
+  await store.append(source('a'), upload, { offset: 0, signal: signal() });
+  const [part] = await partials(directory);
+  assert.equal((await fs.stat(path.join(directory, part))).mode & 0o777, 0o600);
+  assert.equal((await store.begin({ ...upload, lastModified: 2 }, {})).offset, 0, 'a changed file starts over');
+  const old = new Date(Date.now() - STALE_PART_MS - 1000);
+  await fs.utimes(path.join(directory, part), old, old);
+  assert.equal((await store.begin(upload, {})).offset, 0);
+  assert.deepEqual(await partials(directory), []);
 });
 
 test('concurrent uploads publish atomically and never overwrite files or symlinks', async (t) => {
   const { store, directory } = await workspace(t);
-  const save = (data) => store.save(source(data), { filename: 'same', signal: new AbortController().signal });
+  const save = (data) => storeUpload(store, data, 'same');
   const outcomes = await Promise.allSettled([save('first'), save('second')]);
   assert.equal(outcomes.filter((result) => result.status === 'fulfilled').length, 1);
   assert.equal(outcomes.filter((result) => result.status === 'rejected').length, 1);
   assert.ok(['first', 'second'].includes(await fs.readFile(path.join(directory, 'same'), 'utf8')));
   await fs.symlink('same', path.join(directory, 'link'));
-  await assert.rejects(store.save(source('replace'), { filename: 'link', signal: new AbortController().signal }), { status: 409 });
+  await assert.rejects(storeUpload(store, 'replace', 'link'), { status: 409 });
   assert.equal((await fs.lstat(path.join(directory, 'link'))).isSymbolicLink(), true);
   assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
 });
 
 test('swapping the destination for a symlink cannot redirect an upload', async (t) => {
   const { store, directory, root } = await workspace(t);
-  await assert.rejects(store.save(source('data'), { directory: 'project', filename: 'file',
-    signal: new AbortController().signal,
+  await assert.rejects(storeUpload(store, 'data', 'file', { directory: 'project',
     beforePublish: async () => {
       await fs.rename(path.join(directory, 'project'), path.join(root, 'moved'));
       await fs.symlink(path.join(root, 'outside'), path.join(directory, 'project'));
@@ -264,23 +309,46 @@ async function serviceFixture(t, options = {}) {
   return { ...fixture, service, base, headers, advance: (ms) => { clock += ms; } };
 }
 
+const uploadUrl = (base, query) => `${base}/api/uploads?${new URLSearchParams(query)}`;
+
+function beginUpload(base, headers, body) {
+  return fetch(`${base}/api/uploads`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) });
+}
+
+// Starts or resumes an upload through the API and sends the rest of the file as one chunk.
+async function apiUpload(base, headers, { directory = '', filename, data }) {
+  const upload = identity(filename, data);
+  const begin = await beginUpload(base, headers, { ...upload, directory });
+  if (begin.status !== 200) return begin;
+  const { directory: resolved, offset } = await begin.json();
+  return fetch(uploadUrl(base, { ...upload, directory: resolved, offset }), { method: 'PUT', headers,
+    body: Buffer.from(data).subarray(offset) });
+}
+
 test('upload API enforces authentication, CSRF, MIME type and filename conflicts', async (t) => {
   const { base, headers, directory } = await serviceFixture(t);
-  const url = `${base}/api/uploads?directory=project&filename=file.json`;
+  const url = uploadUrl(base, { directory: 'project', filename: 'file.json', size: 13, lastModified: 1, offset: 0 });
   assert.equal((await fetch(`${base}/api/files`)).status, 401);
-  assert.equal((await fetch(url, { method: 'POST', body: 'x' })).status, 401);
-  assert.equal((await fetch(url, { method: 'POST', body: 'x', headers: { Cookie: headers.Cookie } })).status, 403);
-  assert.equal((await fetch(url, { method: 'POST', body: 'x', headers: { ...headers, 'Content-Type': 'application/json' } })).status, 415);
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    assert.equal((await fetch(url, { method, body: method === 'DELETE' ? undefined : 'x' })).status, 401, method);
+    assert.equal((await fetch(url, { method, headers: { Cookie: headers.Cookie } })).status, 403, method);
+  }
+  assert.equal((await fetch(url, { method: 'PUT', body: 'x', headers: { ...headers, 'Content-Type': 'application/json' } })).status, 415);
   const listing = await fetch(`${base}/api/files?path=project`, { headers });
   assert.equal(listing.status, 200);
   assert.equal(listing.headers.get('cache-control'), 'no-store');
-  const upload = await fetch(url, { method: 'POST', headers, body: '{"test":true}' });
+  const upload = await apiUpload(base, headers, { directory: 'project', filename: 'file.json', data: '{"test":true}' });
   assert.equal(upload.status, 201);
+  assert.equal(upload.headers.get('cache-control'), 'no-store');
   assert.deepEqual(await upload.json(), { path: path.join(directory, 'project', 'file.json'), bytes: 13 });
-  assert.equal((await fetch(url, { method: 'POST', headers, body: 'replace' })).status, 409);
+  const replace = await apiUpload(base, headers, { directory: 'project', filename: 'file.json', data: 'replace' });
+  assert.equal(replace.status, 409);
+  assert.deepEqual(await replace.json(), { error: 'A file with this name already exists. Rename it and retry.' });
   assert.equal(await fs.readFile(path.join(directory, 'project', 'file.json'), 'utf8'), '{"test":true}');
   assert.equal((await fetch(`${base}/static/project/file.json`, { headers })).status, 404);
-  assert.equal((await fetch(`${base}/api/uploads?directory=missing&filename=bad`, { method: 'POST', headers, body: 'x' })).status, 400);
+  assert.equal((await apiUpload(base, headers, { directory: 'missing', filename: 'bad', data: 'x' })).status, 400);
+  assert.equal((await beginUpload(base, headers, { directory: 'project', filename: 'a/b', size: 1, lastModified: 1 })).status, 400);
 });
 
 test('upload limit defaults to 100 MiB and rejects invalid overrides', async (t) => {
@@ -288,37 +356,45 @@ test('upload limit defaults to 100 MiB and rejects invalid overrides', async (t)
   assert.equal((await fetch(`${base}/api/uploads`)).status, 401);
   const config = await fetch(`${base}/api/uploads`, { headers });
   assert.equal(config.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(await config.json(), { maxBytes: 100 * 1024 * 1024 });
+  assert.deepEqual(await config.json(), { maxBytes: 100 * 1024 * 1024, chunkBytes: UPLOAD_CHUNK_BYTES });
   for (const uploadLimitMib of ['0', '-1', '1.5', '10MB', '99999999999']) {
     assert.throws(() => createWebTerminal(oidcServiceOptions({ terminalWorkdir: directory, terminalHome: directory,
       uploadLimitMib })), /UPLOAD_LIMIT_MIB must be a positive whole number of MiB/, uploadLimitMib);
   }
 });
 
-test('streaming API enforces the configured boundary without Content-Length', async (t) => {
-  const { base, headers, directory } = await serviceFixture(t, { uploadLimitMib: '2' });
-  const maxBytes = 2 * 1024 * 1024;
-  assert.deepEqual(await (await fetch(`${base}/api/uploads`, { headers })).json(), { maxBytes });
-  const chunk = Buffer.alloc(1024 * 1024, 42);
-  async function* bytes(extra) {
-    for (let i = 0; i < maxBytes / chunk.length; i += 1) yield chunk;
-    if (extra) yield Buffer.from('x');
-  }
-  for (const extra of [false, true]) {
-    const response = await fetch(`${base}/api/uploads?filename=${extra ? 'too-big' : 'exact'}`, {
-      method: 'POST', headers, body: Readable.from(bytes(extra)), duplex: 'half',
-    });
-    assert.equal(response.status, extra ? 413 : 201);
-    if (extra) assert.deepEqual(await response.json(), { error: 'File exceeds the 2 MiB limit.' });
-    else await response.text();
-  }
-  assert.equal((await fs.stat(path.join(directory, 'exact'))).size, maxBytes);
-  await assert.rejects(fs.stat(path.join(directory, 'too-big')), { code: 'ENOENT' });
-  assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
+test('chunked API enforces the configured limit and chunk boundaries without Content-Length', async (t) => {
+  const { base, headers, directory } = await serviceFixture(t, { uploadLimitMib: '9' });
+  const maxBytes = 9 * 1024 * 1024;
+  assert.deepEqual(await (await fetch(`${base}/api/uploads`, { headers })).json(), { maxBytes, chunkBytes: UPLOAD_CHUNK_BYTES });
+  const tooBig = await beginUpload(base, headers, { filename: 'too-big', size: maxBytes + 1, lastModified: 1 });
+  assert.equal(tooBig.status, 413);
+  assert.deepEqual(await tooBig.json(), { error: 'File exceeds the 9 MiB limit.' });
+  const data = Buffer.alloc(maxBytes, 42);
+  const upload = { filename: 'big', size: maxBytes, lastModified: 1, directory };
+  const put = (offset, body) => fetch(uploadUrl(base, { ...upload, offset }), {
+    method: 'PUT', headers, body: Readable.from([body]), duplex: 'half',
+  });
+  const first = await put(0, data.subarray(0, UPLOAD_CHUNK_BYTES));
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { offset: UPLOAD_CHUNK_BYTES });
+  const mismatch = await put(0, data.subarray(0, 1));
+  assert.equal(mismatch.status, 409);
+  assert.deepEqual(await mismatch.json(), { error: 'The upload position changed.', offset: UPLOAD_CHUNK_BYTES });
+  const overflow = await put(UPLOAD_CHUNK_BYTES, Buffer.alloc(maxBytes - UPLOAD_CHUNK_BYTES + 1));
+  assert.equal(overflow.status, 413);
+  await overflow.text();
+  const last = await put(UPLOAD_CHUNK_BYTES, data.subarray(UPLOAD_CHUNK_BYTES));
+  assert.equal(last.status, 201);
+  await last.text();
+  assert.deepEqual(await fs.readFile(path.join(directory, 'big')), data);
+  assert.deepEqual(await partials(directory), []);
 });
 
-async function startSlowUpload(base, headers, filename) {
-  const request = http.request(`${base}/api/uploads?filename=${filename}`, { method: 'POST', headers });
+const SLOW_UPLOAD_SIZE = 10;
+
+async function startSlowUpload(base, headers, filename, size = SLOW_UPLOAD_SIZE) {
+  const request = http.request(uploadUrl(base, { filename, size, lastModified: 1, offset: 0 }), { method: 'PUT', headers });
   const response = new Promise((resolve, reject) => {
     request.on('response', (res) => { res.resume(); resolve(res.statusCode); });
     request.on('error', reject);
@@ -327,24 +403,40 @@ async function startSlowUpload(base, headers, filename) {
   return { request, response };
 }
 
-async function waitForPartial(directory) {
+async function partialSize(directory) {
+  const [part] = await partials(directory);
+  return part ? (await fs.stat(path.join(directory, part))).size : 0;
+}
+
+async function waitForPartial(directory, bytes = 'partial'.length) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    if ((await fs.readdir(directory)).some((name) => name.endsWith('.part'))) return;
+    if (await partialSize(directory) >= bytes) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.fail('upload did not start');
 }
 
-test('one upload per login, expiry and logout cancel partial uploads', async (t) => {
+const resumeSlowUpload = (base, headers, filename, rest) => fetch(uploadUrl(base, {
+  filename, size: SLOW_UPLOAD_SIZE, lastModified: 1, offset: 'partial'.length,
+}), { method: 'PUT', headers, body: rest });
+
+test('a newer chunk replaces a stalled one; expiry and logout stop uploads but keep their partials', async (t) => {
   const { base, headers, directory, advance } = await serviceFixture(t);
+  const stalled = await startSlowUpload(base, headers, 'stalled');
+  await waitForPartial(directory);
+  const resumed = await resumeSlowUpload(base, headers, 'stalled', 'abc');
+  assert.equal(resumed.status, 201);
+  assert.equal(await stalled.response, 409);
+  stalled.request.destroy();
+  assert.equal(await fs.readFile(path.join(directory, 'stalled'), 'utf8'), 'partialabc');
+
   const slow = await startSlowUpload(base, headers, 'expired');
   await waitForPartial(directory);
-  const second = await fetch(`${base}/api/uploads?filename=second`, { method: 'POST', headers, body: 'x' });
-  assert.equal(second.status, 409);
   advance(25 * 60 * 60 * 1000);
-  slow.request.end();
+  slow.request.end('abc');
   assert.equal(await slow.response, 401);
   await assert.rejects(fs.stat(path.join(directory, 'expired')), { code: 'ENOENT' });
+  assert.equal(await partialSize(directory), SLOW_UPLOAD_SIZE, 'the complete partial publishes after login');
 
   const fresh = await serviceFixture(t);
   const logoutUpload = await startSlowUpload(fresh.base, fresh.headers, 'logged-out');
@@ -354,10 +446,9 @@ test('one upload per login, expiry and logout cancel partial uploads', async (t)
   assert.equal(await logoutUpload.response, 409);
   logoutUpload.request.end();
   await assert.rejects(fs.stat(path.join(fresh.directory, 'logged-out')), { code: 'ENOENT' });
-  assert.equal((await fs.readdir(fresh.directory)).some((name) => name.endsWith('.part')), false);
 });
 
-test('graceful shutdown cancels uploads and removes partials', async (t) => {
+test('graceful shutdown stops uploads and keeps partials for resumption', async (t) => {
   const { base, headers, directory, service } = await serviceFixture(t);
   const slow = await startSlowUpload(base, headers, 'stopped');
   await waitForPartial(directory);
@@ -365,10 +456,10 @@ test('graceful shutdown cancels uploads and removes partials', async (t) => {
   assert.equal(await slow.response, 409);
   slow.request.end();
   await stopping;
-  assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
+  assert.equal(await partialSize(directory), 'partial'.length);
 });
 
-test('only accepted submissions extend activity; browsing, invalid paths and transfer bytes do not', async (t) => {
+test('only accepted chunks extend activity; browsing, invalid paths and transfer bytes do not', async (t) => {
   const { base, headers, service, directory, advance } = await serviceFixture(t);
   const activity = async () => {
     const sessions = await new Promise((resolve, reject) => service.sessionStore.all((error, values) => (
@@ -383,37 +474,42 @@ test('only accepted submissions extend activity; browsing, invalid paths and tra
   assert.equal(await (await fetch(contentUrl(base, directory, 'note.txt'), { headers })).text(), 'note');
   await fs.rm(path.join(directory, 'note.txt'));
   await (await fetch(`${base}/api/files/archive?path=project`, { headers })).arrayBuffer();
-  await fetch(`${base}/api/uploads?directory=missing&filename=bad`, { method: 'POST', headers, body: 'x' });
+  await apiUpload(base, headers, { directory: 'missing', filename: 'bad', data: 'x' });
+  await beginUpload(base, headers, { filename: 'activity', size: SLOW_UPLOAD_SIZE, lastModified: 1 });
   assert.equal(await activity(), initial);
   const slow = await startSlowUpload(base, headers, 'activity');
   await waitForPartial(directory);
-  // Wait for the acceptance callback to save the local session, not just open the temp file.
+  // Wait for the acceptance callback to save the local session, not just open the partial.
   for (let attempt = 0; (await activity()) === initial && attempt < 100; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.equal(await activity(), initial + 1000);
   advance(1000);
-  slow.request.end('more bytes');
+  slow.request.end('abc');
   assert.equal(await slow.response, 201);
   assert.equal(await activity(), initial + 1000);
 });
 
-test('a disconnected request removes partials and releases its upload slot', async (t) => {
+test('a disconnected chunk keeps its received bytes and the upload resumes from them', async (t) => {
   const { base, headers, directory } = await serviceFixture(t);
   const slow = await startSlowUpload(base, headers, 'disconnected');
   const disconnected = assert.rejects(slow.response, { code: 'ECONNRESET' });
   await waitForPartial(directory);
   slow.request.destroy();
   await disconnected;
-  let response;
+  let begin;
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    response = await fetch(`${base}/api/uploads?filename=next`, { method: 'POST', headers, body: 'ok' });
-    if (response.status !== 409) break;
+    begin = await (await beginUpload(base, headers, { filename: 'disconnected', size: SLOW_UPLOAD_SIZE, lastModified: 1 })).json();
+    if (begin.offset === 'partial'.length) break;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.equal(response.status, 201);
-  await assert.rejects(fs.stat(path.join(directory, 'disconnected')), { code: 'ENOENT' });
-  assert.equal((await fs.readdir(directory)).some((name) => name.endsWith('.part')), false);
+  assert.deepEqual(begin, { directory, offset: 'partial'.length });
+  assert.equal((await resumeSlowUpload(base, headers, 'disconnected', 'abc')).status, 201);
+  assert.equal(await fs.readFile(path.join(directory, 'disconnected'), 'utf8'), 'partialabc');
+  const removed = identity('removed', 'abc');
+  await fetch(uploadUrl(base, { ...removed, offset: 0 }), { method: 'PUT', headers, body: 'a' });
+  assert.equal((await fetch(uploadUrl(base, removed), { method: 'DELETE', headers })).status, 204);
+  assert.deepEqual(await partials(directory), []);
 });
 
 test('file content is served inline only as inert types and otherwise as an attachment', async (t) => {
