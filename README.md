@@ -263,14 +263,14 @@ or control unrelated native Wayland windows.
   a full-height terminal beside the sidebar, with no top bar. Desktop and mobile share the sidebar session controls and
   Logout button; mobile opens the sidebar with the menu button and closes it by tapping outside.
   Session actions show errors beside the creation form; routine progress and success messages
-  are omitted. The desktop sidebar ends with the microphone controls.
+  are omitted. The desktop sidebar ends with the camera and microphone controls.
 - The application and every terminal session run as the fixed non-root UID/GID 1000. Use rootless
   Podman for container builds; `sudo` and host-level container access are intentionally absent.
 - Closing the page, losing the connection, refreshing, or clicking **Logout** detaches the browser.
   Commands, Codex jobs, and other processes keep running in the application-managed PTY.
 - Login sessions expire after 24 hours without accepted interactive activity and always expire
   seven days after the original OIDC login. Terminal-page navigation, session creation/deletion,
-  clipboard-image uploads, accepted file-upload chunks, accepted transcription submissions,
+  clipboard-image and photo uploads, accepted file-upload chunks, accepted transcription submissions,
   scheduled-job changes and manual runs, and accepted terminal input or paste extend the idle
   deadline. Folder browsing, opening and downloading files and folders, upload progress, job list and log
   viewing, schedule previews,
@@ -291,8 +291,9 @@ or control unrelated native Wayland windows.
   `100dvh` without shrinking when the software keyboard opens; its lower rows may therefore sit
   behind the keyboard. If Safari pans the visual viewport during or after keyboard focus, the
   control grid follows that top offset without moving or resizing the terminal. An always-visible
-  voice row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. The microphone
-  Cancel each match one button column, with status text spanning the six columns between them.
+  input row sits above 16 controls in two non-scrolling rows of eight equal-width buttons. The camera,
+  microphone, and Cancel buttons each match one button column, with dictation status spanning the
+  five columns between the microphone and Cancel.
   All three rows are 44px high in an edge-to-edge grid with 1px internal dividers and a bottom
   border, without individual button borders or outer padding. The first button in the second
   row opens the session sidebar, where Logout appears while the sidebar is open. The remaining
@@ -319,7 +320,7 @@ or control unrelated native Wayland windows.
   European languages, including German and English, and adds punctuation; filler words are
   transcribed as spoken. Line breaks and tabs become spaces and terminal control characters are
   removed. There is no transcript editor. Empty results show “No speech detected”.
-- Voice controls sit at the bottom of the desktop sidebar and in the mobile voice row. They require a connected
+- Voice controls sit at the bottom of the desktop sidebar and in the mobile input row. They require a connected
   terminal, HTTPS (or a secure localhost context), browser microphone permission, MediaRecorder,
   Web Audio decoding, and the bundled voice model. WebM/Opus, MP4/AAC, MP4, or Ogg/Opus is recorded
   as the browser supports. Controls preserve the software keyboard's visibility and ignore armed modifiers.
@@ -344,6 +345,13 @@ or control unrelated native Wayland windows.
   physical-keyboard `Ctrl+V` is reserved for browser paste, that chord is not sent to the terminal
   as the `^V` control character; the one-shot on-screen Ctrl modifier remains available for sending
   `^V`.
+- The camera button, beside the microphone, opens the rear camera on phones and tablets; desktop
+  browsers open an image file picker instead. The browser decodes the photo upright, scales it to
+  at most 2048 pixels on its long edge, and re-encodes it as JPEG, which drops metadata such as GPS
+  location. It is stored like a pasted image and its absolute path is inserted once into the
+  terminal where the button was pressed. If leaving for the camera app disconnected the terminal,
+  the path is inserted after it reconnects, for up to 30 seconds. Nothing is executed; press
+  **Enter** yourself.
 - **Files** is in the session sidebar on desktop and mobile. The dialog opens at
   `TERMINAL_WORKDIR` and can browse the whole filesystem with the permissions of the server user:
   the **Location** bar shows clickable breadcrumbs from `/`, and the list below shows the folder's

@@ -15,17 +15,23 @@
 <body class="dark terminal-body">
   <main class="terminal-main">
     <div id="mobile-terminal-controls" class="mobile-terminal-controls" role="group" aria-label="Terminal and session controls">
-      <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
-        <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
-          <svg class="voice-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <div class="input-controls" data-voice-controls role="group" aria-label="Photo and voice input">
+        <button class="input-button" type="button" data-photo-action aria-label="Insert photo" title="Insert photo" disabled>
+          <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M3 7h4l2-3h6l2 3h4v13H3Z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+        </button>
+        <button class="input-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
+          <svg class="input-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3"></path>
           </svg>
-          <svg class="voice-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <svg class="input-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <rect x="7" y="7" width="10" height="10"></rect>
           </svg>
         </button>
         <span class="voice-status" data-voice-status>Checking voice availability…</span>
-        <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
+        <button class="input-button" type="button" data-voice-cancel disabled>Cancel</button>
       </div>
       <button id="sidebar-toggle" class="mobile-terminal-key sidebar-toggle" type="button" aria-controls="session-sidebar" aria-expanded="false" aria-label="Show terminal sessions" title="Show terminal sessions">
         <span class="sidebar-toggle-icon" aria-hidden="true"></span>
@@ -81,17 +87,23 @@
         <button id="upload-open" class="sidebar-action" type="button" disabled>Files</button>
         <button id="jobs-open" class="sidebar-action" type="button" disabled>Jobs</button>
       </div>
-      <div class="sidebar-voice">
-        <div class="voice-controls" data-voice-controls role="group" aria-label="Voice dictation">
-          <button class="voice-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
-            <svg class="voice-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <div class="sidebar-input">
+        <div class="input-controls" data-voice-controls role="group" aria-label="Photo and voice input">
+          <button class="input-button" type="button" data-photo-action aria-label="Insert photo" title="Insert photo" disabled>
+            <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3 7h4l2-3h6l2 3h4v13H3Z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </button>
+          <button class="input-button" type="button" data-voice-action aria-label="Start dictation" title="Start dictation" disabled>
+            <svg class="input-icon voice-icon-mic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3"></path>
             </svg>
-            <svg class="voice-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <svg class="input-icon voice-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <rect x="7" y="7" width="10" height="10"></rect>
             </svg>
           </button>
-          <button class="voice-button" type="button" data-voice-cancel disabled>Cancel</button>
+          <button class="input-button" type="button" data-voice-cancel disabled>Cancel</button>
           <span class="voice-status" data-voice-status>Checking voice availability…</span>
         </div>
       </div>
@@ -249,6 +261,7 @@
       </div>
     </div>
   </dialog>
+  <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
   <span id="voice-announcement" class="sr-only" role="status" aria-live="polite"></span>
   <script src="/static/js/terminal.js"></script>
 </body>

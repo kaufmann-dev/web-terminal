@@ -40,6 +40,7 @@ node --check public/js/file-explorer.mjs
 node --check public/js/scheduled-jobs.mjs
 node --check public/js/terminal.js
 node --check public/js/terminal-clipboard.mjs
+node --check public/js/photo-capture.mjs
 node --test test/*.test.js
 ```
 

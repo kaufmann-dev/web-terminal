@@ -218,7 +218,7 @@ export function bindVoiceControls(root, recorder) {
   const groups = [...root.querySelectorAll('[data-voice-controls]')];
   const live = root.getElementById('voice-announcement');
   for (const group of groups) {
-    for (const button of group.querySelectorAll('button')) {
+    for (const button of group.querySelectorAll('[data-voice-action], [data-voice-cancel]')) {
       const activate = () => {
         if (button.disabled) return;
         if (button.hasAttribute('data-voice-cancel')) recorder.cancel('Dictation canceled.');

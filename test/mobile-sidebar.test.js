@@ -49,7 +49,7 @@ test('mobile layout stays full-height under the keyboard and follows Safari pann
   );
   assert.match(
     mobileStyles,
-    /\.sidebar-voice\s*\{[^}]*display:\s*none;[^}]*\}/s,
+    /\.sidebar-input\s*\{[^}]*display:\s*none;[^}]*\}/s,
   );
   assert.match(
     mobileStyles,
@@ -214,7 +214,7 @@ test('desktop and mobile share one sidebar and logout control without a top bar'
   assert.doesNotMatch(terminalView, /<header|active-session-label|mobile-logout-btn/);
   assert.equal([...terminalView.matchAll(/data-logout/g)].length, 1);
   assert.match(sidebar, /id="logout-btn"[^>]*data-logout/);
-  assert.match(sidebar, /class="sidebar-voice"/);
+  assert.match(sidebar, /class="sidebar-input"/);
   assert.match(stylesheet, /\.btn-logout\s*\{[^}]*height:\s*32px;/s);
   assert.match(terminalScript, /document\.querySelectorAll\('\[data-logout\]'\)/);
   assert.match(terminalScript, /button\.addEventListener\('click', logout\)/);
@@ -256,7 +256,7 @@ test('mobile controls use xterm input modes and adaptive browser paste', () => {
   assert.match(terminalScript, /this\.pasteTerminalProgrammatically\(clipboardContent\.text\)/);
   assert.match(
     terminalScript,
-    /await this\.uploadClipboardImage\(\s*clipboardContent\.image,\s*clipboardContent\.contentType,/s,
+    /await this\.uploadTerminalImage\(\s*clipboardContent\.image,\s*clipboardContent\.contentType,/s,
   );
   const pasteRequest = terminalScript.slice(
     terminalScript.indexOf('requestClipboardPaste ='),
@@ -510,7 +510,7 @@ test('mobile dialogs are always fullscreen with stacked footer actions', () => {
   );
 });
 
-test('sidebar actions and voice controls share one divider with hover feedback', () => {
+test('sidebar actions and input controls share one divider with hover feedback', () => {
   const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
   const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
 
@@ -520,14 +520,47 @@ test('sidebar actions and voice controls share one divider with hover feedback',
   );
   assert.doesNotMatch(
     desktopStyles,
-    /\.sidebar-voice\s*\{[^}]*border-top:/s,
+    /\.sidebar-input\s*\{[^}]*border-top:/s,
   );
   assert.match(
     desktopStyles,
-    /\.sidebar-voice \.voice-status\s*\{[^}]*text-align:\s*center;/s,
+    /\.sidebar-input \.voice-status\s*\{[^}]*text-align:\s*center;/s,
   );
   assert.match(
     desktopStyles,
     /@media \(hover: hover\) \{[\s\S]*\.app-dialog button:hover:not\(:disabled\)[\s\S]*color:\s*var\(--accent-bright\);/s,
   );
+});
+
+test('mobile and sidebar input rows place the camera before the microphone', () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
+  const terminalView = fs.readFileSync(terminalViewPath, 'utf8');
+  const desktopStyles = stylesheet.slice(0, stylesheet.indexOf(mobileMediaQuery));
+  const groups = [...terminalView.matchAll(
+    /<div class="input-controls" data-voice-controls[^>]*>([\s\S]*?)\n\s*<\/div>/g,
+  )].map((match) => match[1]);
+
+  assert.equal(groups.length, 2);
+  const [mobile, sidebar] = groups;
+  for (const group of groups) {
+    assert.equal([...group.matchAll(/data-photo-action/g)].length, 1);
+    assert.ok(group.indexOf('data-photo-action') < group.indexOf('data-voice-action'));
+    assert.match(group, /<button[^>]*data-photo-action[^>]*aria-label="Insert photo"[^>]*disabled>/);
+  }
+  assert.ok(mobile.indexOf('data-voice-status') < mobile.indexOf('data-voice-cancel'));
+  assert.ok(sidebar.indexOf('data-voice-cancel') < sidebar.indexOf('data-voice-status'));
+  assert.equal([...terminalView.matchAll(/id="photo-input"/g)].length, 1);
+  assert.match(
+    terminalView,
+    /<input id="photo-input" type="file" accept="image\/\*" capture="environment" hidden>/,
+  );
+  assert.match(
+    desktopStyles,
+    /\.input-controls > \.voice-status\s*\{\s*grid-column:\s*span 5;\s*\}/,
+  );
+  assert.match(
+    desktopStyles,
+    /\.sidebar-input \.input-controls\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
+  );
+  assert.doesNotMatch(stylesheet, /voice-button|voice-controls|sidebar-voice|\.voice-icon\s*\{/);
 });

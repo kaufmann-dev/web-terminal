@@ -261,7 +261,8 @@ test('touch activates once, movement cancels, keyboard activation works and time
   const cancel = new Element(); cancel.setAttribute('data-voice-cancel', '');
   const status = new Element();
   const group = new Element();
-  group.querySelectorAll = () => [action, cancel];
+  let boundSelector;
+  group.querySelectorAll = (selector) => { boundSelector = selector; return [action, cancel]; };
   group.querySelector = (sel) => ({ '[data-voice-action]': action, '[data-voice-cancel]': cancel,
     '[data-voice-status]': status })[sel];
   let announcements = 0;
@@ -271,6 +272,7 @@ test('touch activates once, movement cancels, keyboard activation works and time
   const voice = { state: 'idle', start() { starts++; this.state = 'recording'; },
     stop() { stops++; }, cancel() { this.state = 'idle'; } };
   const render = bindVoiceControls(root, voice);
+  assert.equal(boundSelector, '[data-voice-action], [data-voice-cancel]', 'the photo button is not a voice control');
   const dispatch = (type, data = {}) => {
     const event = new Event(type, { cancelable: true });
     Object.assign(event, data); action.dispatchEvent(event); return event;

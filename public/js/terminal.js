@@ -18,6 +18,7 @@
     { VoiceRecorder, bindVoiceControls },
     { bindFileExplorer },
     { bindScheduledJobs },
+    { preparePhoto },
   ] = await Promise.all([
     import('/vendor/xterm/xterm.mjs'),
     import('/vendor/xterm/addon-fit.mjs'),
@@ -27,6 +28,7 @@
     import('/static/js/voice-recorder.mjs'),
     import('/static/js/file-explorer.mjs'),
     import('/static/js/scheduled-jobs.mjs'),
+    import('/static/js/photo-capture.mjs'),
   ]);
   await Promise.all([
     document.fonts.load(`400 ${desktopTerminalFontSize}px "JetBrains Mono"`),
@@ -49,12 +51,15 @@
   const mobileTerminalButtons = mobileTerminalControls.querySelectorAll(
     '[data-terminal-control]',
   );
+  const photoInput = document.getElementById('photo-input');
+  const photoButtons = document.querySelectorAll('[data-photo-action]');
   const touchControlActivation = new TouchControlActivationGuard();
   const mobileLayoutQuery = window.matchMedia('(max-width: 720px)');
   const visualViewport = window.visualViewport;
   const mobileViewportOffsetTopProperty = '--mobile-visual-viewport-offset-top';
 
   const refreshIntervalMs = 15000;
+  const imageReconnectTimeoutMs = 30000;
   const noReconnectCloseCodes = new Set([4000, 4001, 4002, 4003, 4004]);
 
   let csrfToken = '';
@@ -64,6 +69,7 @@
   let mutationInProgress = false;
   let clipboardStatusTimer = null;
   let mobileViewportSyncFrame = null;
+  let photoTarget = null;
 
   const voice = new VoiceRecorder({
     getTarget: () => activeController?.ready && !activeController.disposed
@@ -190,6 +196,9 @@
     voice.update();
     const hasActiveTerminal = Boolean(activeController && !activeController.disposed);
     const controlsEnabled = hasActiveTerminal && activeController.ready;
+    for (const button of photoButtons) {
+      button.disabled = !controlsEnabled;
+    }
     for (const button of mobileTerminalButtons) {
       button.disabled = !controlsEnabled;
       const modifier = button.dataset.terminalModifier;
@@ -236,6 +245,7 @@
       this.writeQueue = Promise.resolve();
       this.imageUploadController = null;
       this.clipboardOperationQueue = Promise.resolve();
+      this.readyWaiters = new Set();
       this.programmaticInputDepth = 0;
       this.mobileModifiers = { ctrl: false, shift: false, alt: false };
       this.touchScrollGesture = new TouchScrollGesture();
@@ -665,7 +675,7 @@
         return;
       }
       if (clipboardContent.kind === 'image') {
-        await this.uploadClipboardImage(
+        await this.uploadTerminalImage(
           clipboardContent.image,
           clipboardContent.contentType,
         );
@@ -727,21 +737,65 @@
         setClipboardStatus('Unable to read the clipboard image.', true, 5000);
         return;
       }
-      this.enqueueClipboardOperation(() => this.uploadClipboardImage(image));
+      this.enqueueClipboardOperation(() => this.uploadTerminalImage(image));
     };
 
-    async uploadClipboardImage(image, contentType = image.type) {
+    // Resolves true once the terminal accepts input, or false after the timeout or disposal.
+    waitUntilReady(timeoutMs) {
+      if (this.ready) {
+        return Promise.resolve(true);
+      }
+      if (this.disposed) {
+        return Promise.resolve(false);
+      }
+      return new Promise((resolve) => {
+        const waiter = (ready) => {
+          window.clearTimeout(timer);
+          this.readyWaiters.delete(waiter);
+          resolve(ready);
+        };
+        const timer = window.setTimeout(() => waiter(false), timeoutMs);
+        this.readyWaiters.add(waiter);
+      });
+    }
+
+    settleReadyWaiters(ready) {
+      for (const waiter of [...this.readyWaiters]) {
+        waiter(ready);
+      }
+    }
+
+    async insertPhoto(file) {
       if (this.disposed) {
         return;
       }
-      if (!this.ready) {
-        setClipboardStatus('The terminal is disconnected. Reconnect and paste again.', true, 5000);
+      setClipboardStatus('Preparing photo…');
+      let photo;
+      try {
+        photo = await preparePhoto(file);
+      } catch (err) {
+        if (!this.disposed) {
+          setClipboardStatus(
+            'The photo could not be read. Try again or choose another image.',
+            true,
+            5000,
+          );
+        }
+        return;
+      }
+      await this.uploadTerminalImage(photo, 'image/jpeg');
+    }
+
+    // Uploading does not need the terminal connection. Returning from a phone's camera app
+    // reconnects the terminal, so the path is pasted once it accepts input again.
+    async uploadTerminalImage(image, contentType = image.type) {
+      if (this.disposed) {
         return;
       }
 
       const controller = new AbortController();
       this.imageUploadController = controller;
-      setClipboardStatus('Uploading clipboard image…');
+      setClipboardStatus('Uploading image…');
       try {
         const data = await apiRequest('/api/clipboard-images', {
           method: 'POST',
@@ -756,18 +810,23 @@
           return;
         }
         if (!this.ready) {
-          setClipboardStatus(
-            'The image was uploaded, but the terminal disconnected. Paste again.',
-            true,
-            5000,
-          );
-          return;
+          setClipboardStatus('Image uploaded. Waiting for the terminal to reconnect…');
+          if (!await this.waitUntilReady(imageReconnectTimeoutMs)) {
+            if (!this.disposed) {
+              setClipboardStatus(
+                'The image was uploaded, but the terminal did not reconnect. Try again.',
+                true,
+                5000,
+              );
+            }
+            return;
+          }
         }
         this.pasteTerminalProgrammatically(data.path);
         setClipboardStatus('Image path pasted into the terminal.', false, 3000);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          setClipboardStatus(err.message || 'Unable to upload the clipboard image.', true, 5000);
+          setClipboardStatus(err.message || 'Unable to upload the image.', true, 5000);
         }
       } finally {
         if (this.imageUploadController === controller) {
@@ -881,6 +940,7 @@
             this.ready = true;
             this.reconnectDelay = 250;
             updateMobileTerminalControls();
+            this.settleReadyWaiters(true);
             setConnectionStatus('');
             if (!mobileLayoutQuery.matches) {
               this.terminal.focus();
@@ -1081,6 +1141,7 @@
         this.imageUploadController.abort();
         this.imageUploadController = null;
       }
+      this.settleReadyWaiters(false);
       this.inputDisposable.dispose();
       this.binaryDisposable.dispose();
       this.selectionDisposable.dispose();
@@ -1341,6 +1402,36 @@
   for (const button of logoutButtons) {
     button.addEventListener('click', logout);
   }
+  for (const button of photoButtons) {
+    // Keep desktop focus in the terminal while the picker is open.
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => {
+      if (button.disabled || !activeController?.ready) {
+        return;
+      }
+      photoTarget = activeController;
+      photoInput.value = '';
+      photoInput.click();
+    });
+  }
+  photoInput.addEventListener('change', () => {
+    const [file] = photoInput.files;
+    photoInput.value = '';
+    const target = photoTarget;
+    photoTarget = null;
+    if (!file || !target) {
+      return;
+    }
+    if (target.disposed) {
+      setClipboardStatus(
+        'The terminal session changed before the photo could be inserted.',
+        true,
+        5000,
+      );
+      return;
+    }
+    target.enqueueClipboardOperation(() => target.insertPhoto(file));
+  });
   const mobileControlButton = (target) => {
     if (!target || typeof target.closest !== 'function') {
       return null;
